@@ -1,0 +1,16 @@
+# Keep these files as LF regardless of platform (Windows autocrlf=true strips LF).
+# Shell scripts and Python files MUST stay LF or they break on Unix when executed.
+
+*.sh    text eol=lf
+*.py    text eol=lf
+*.txt   text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binary files — no conversion
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.exe   binary
