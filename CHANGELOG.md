@@ -11,7 +11,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
-- Retire bash scripts from the repo once v3.x proves stable (kept through v3 as reference)
+
+## [3.1.0] - 2026-04-21
+
+Cleanup release — retires the bash/python implementation now that v3.0 is stable. No behavior changes; the Rust binary has been running all three entry points on this machine since v3.0 merged.
+
+### Removed
+
+- `statusline.sh`, `rename.sh`, `turn_hook.sh`, `feed_hook.py` — all replaced by `purrgotchi.exe` subcommands since v3.0
+- `lib/mood.sh`, `lib/render.sh`, `lib/speech.sh`, `lib/sprites.sh` — ported to Rust modules in v3.0
+- `PHASE_2_BACKLOG.md` — historical planning doc, Phase 2 shipped in v2.0
+
+### Changed
+
+- **`install.sh`** no longer ships the bash/python fallback path. Requires `jq` and a built `rust/target/release/purrgotchi.exe`; clear error message if either is missing.
+- **`README.md`** — all bash-fallback references removed; install instructions cut down to build + run.
 
 ## [3.0.0] - 2026-04-21
 

@@ -6,16 +6,14 @@ Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-
 
 ## Install
 
-**v3.0+ (Rust, recommended)** — build the binary first, then run the installer:
+Build the binary, then run the installer:
 
 ```bash
 cd rust && cargo build --release && cd ..
 bash install.sh
 ```
 
-`install.sh` auto-detects `rust/target/release/purrgotchi.exe` and wires all three entry points (statusline + `PostToolUse` feed hook + `UserPromptSubmit` turn hook) to the binary. Restart Claude Code after install.
-
-**Bash fallback (v2.x, no Rust toolchain)** — run `bash install.sh` without building. It falls back to `statusline.sh` + `feed_hook.py` + `turn_hook.sh`. Requires `bash` 5.2+, `jq`, and Python 3.
+`install.sh` wires all three entry points (statusline + `PostToolUse` feed hook + `UserPromptSubmit` turn hook) to `rust/target/release/purrgotchi.exe`. Restart Claude Code after install.
 
 Manual wiring for reference:
 
@@ -41,7 +39,7 @@ Manual wiring for reference:
 
 ## Source vs state
 
-- **Source** (this repo): Rust crate in `rust/`, bash fallback scripts at root, sprites in `sprites/` — versioned
+- **Source** (this repo): Rust crate in `rust/`, sprites in `sprites/` (embedded via `include_str!`) — versioned
 - **State** (`~/.claude/purrgotchi/`): `state.json` (level, coins, feed time) and `turn-start-cost.txt` (per-turn cost anchor) — per-machine, never versioned
 
 ## Subcommands (v3.0+)
@@ -56,7 +54,7 @@ Manual wiring for reference:
 
 ## Customize
 
-- **Rename the kitten**: `rust/target/release/purrgotchi.exe rename "NewName"` (or `bash rename.sh "NewName"` on the bash fallback)
+- **Rename the kitten**: `rust/target/release/purrgotchi.exe rename "NewName"`
 - **Add sprites**: drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild
 - **Add phrases**: edit the per-mood arrays in `rust/src/speech.rs`, rebuild
 - **Tweak colors**: edit the constants at the top of `rust/src/colors.rs`
@@ -67,8 +65,8 @@ Manual wiring for reference:
 - **Cost**: spend since your last prompt submit (anchor cleared by the `turn` hook)
 - **Total**: session cumulative from `.cost.total_cost_usd`
 
-A 500ms anchor grace window (500,000µs — microsecond-precision comparison via `$EPOCHREALTIME` in bash, `SystemTime::now()` in Rust) absorbs Claude Code's async token-finalization of the prior turn so its trailing cents don't leak into the new turn.
+A 500ms anchor grace window (microsecond-precision via `SystemTime::now()`) absorbs Claude Code's async token-finalization of the prior turn so its trailing cents don't leak into the new turn.
 
 ## Platform
 
-Windows 11 only right now. Rust port is `x86_64-pc-windows-msvc`; bash fallback needs Git Bash 5.2+, `jq`, and Python 3. Linux/macOS builds are `cargo build --release` away but not yet validated.
+Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux/macOS builds are `cargo build --release` away but not yet validated. Requires a Rust toolchain to build and `jq` to run the installer.

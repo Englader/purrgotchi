@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# Purrgotchi installer — configures Claude Code to use this statusline + feed hook.
+# Purrgotchi installer — wires Claude Code to the purrgotchi.exe binary.
 #
 # What this does:
-#   1. Checks prerequisites (bash, jq, python)
+#   1. Checks prerequisites (jq, compiled Rust binary)
 #   2. Backs up ~/.claude/settings.json (with timestamped suffix)
 #   3. Creates ~/.claude/purrgotchi/ state directory
-#   4. Merges statusLine + refreshInterval + PostToolUse hook into settings.json
+#   4. Merges statusLine + refreshInterval + PostToolUse + UserPromptSubmit
+#      hooks into settings.json, pointing each at purrgotchi.exe
 #   5. Prints verification instructions
 #
 # Safe to run multiple times — it's idempotent.
 
 set -euo pipefail
 
-# Resolve the repo path — this script lives at the repo root
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SETTINGS="$HOME/.claude/settings.json"
 STATE_DIR="$HOME/.claude/purrgotchi"
+RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi.exe"
 
 echo "=============================================="
 echo "  Purrgotchi installer"
@@ -27,50 +28,23 @@ echo ""
 echo "[1/5] Checking prerequisites..."
 
 missing=()
-command -v jq   >/dev/null 2>&1 || missing+=("jq")
+command -v jq >/dev/null 2>&1 || missing+=("jq")
 
-# Rust binary: if present, hooks use it directly (no python needed)
-RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi.exe"
-HAVE_RUST=0
-if [ -x "$RUST_BIN" ]; then
-    HAVE_RUST=1
-fi
-
-# Python: only needed for the feed_hook.py fallback when Rust binary is absent
-PYTHON_CMD=""
-if [ "$HAVE_RUST" -eq 0 ]; then
-    if [ -x "/c/Windows/py.exe" ]; then
-        PYTHON_CMD="/c/Windows/py.exe"
-    elif command -v python3 >/dev/null 2>&1; then
-        PYTHON_CMD="python3"
-    elif command -v python  >/dev/null 2>&1; then
-        if python --version >/dev/null 2>&1; then
-            PYTHON_CMD="python"
-        fi
-    fi
-    if [ -z "$PYTHON_CMD" ]; then
-        missing+=("python")
-    fi
+if [ ! -x "$RUST_BIN" ]; then
+    missing+=("purrgotchi.exe (build with: cd rust && cargo build --release)")
 fi
 
 if [ ${#missing[@]} -gt 0 ]; then
-    echo "  MISSING: ${missing[*]}"
+    echo "  MISSING:"
+    for m in "${missing[@]}"; do echo "    - $m"; done
     echo ""
     echo "  Install instructions:"
-    echo "    jq:     https://jqlang.github.io/jq/download/"
-    echo "    python: https://www.python.org/downloads/ (check 'Add to PATH')"
-    echo ""
-    echo "  On Windows, also disable the MS Store python shim:"
-    echo "    Settings -> Apps -> Advanced app settings -> App execution aliases"
-    echo "    Toggle OFF python.exe and python3.exe"
+    echo "    jq:    https://jqlang.github.io/jq/download/"
+    echo "    Rust:  https://rustup.rs  (then: cd rust && cargo build --release)"
     exit 1
 fi
 echo "  OK: jq found"
-if [ "$HAVE_RUST" -eq 1 ]; then
-    echo "  OK: Rust binary found ($RUST_BIN)"
-else
-    echo "  OK: $PYTHON_CMD found (Rust binary missing, falling back to bash/python hooks)"
-fi
+echo "  OK: Rust binary found ($RUST_BIN)"
 echo ""
 
 # --- 2. State directory -----------------------------------------------------
@@ -95,20 +69,14 @@ echo ""
 # --- 4. Merge settings.json -------------------------------------------------
 echo "[4/5] Updating settings.json with Purrgotchi config..."
 
-if [ "$HAVE_RUST" -eq 1 ]; then
-    STATUSLINE_CMD="$RUST_BIN statusline"
-    FEED_CMD="$RUST_BIN feed"
-    TURN_CMD="$RUST_BIN turn"
-else
-    STATUSLINE_CMD="bash $REPO_DIR/statusline.sh"
-    FEED_CMD="$PYTHON_CMD $REPO_DIR/feed_hook.py"
-    TURN_CMD="bash $REPO_DIR/turn_hook.sh"
-fi
+STATUSLINE_CMD="$RUST_BIN statusline"
+FEED_CMD="$RUST_BIN feed"
+TURN_CMD="$RUST_BIN turn"
 
-# Use jq to merge in our keys while preserving any existing config.
-# Replace our managed hook entries (any command containing "purrgotchi" —
-# matches both bash/python scripts and the Rust binary, old and new paths)
-# while leaving unrelated hooks untouched.
+# Merge our keys while preserving any existing config. Replace our managed
+# hook entries (any command containing "purrgotchi" — matches both legacy
+# bash/python entries and current Rust binary paths) while leaving unrelated
+# hooks untouched.
 jq --arg sl "$STATUSLINE_CMD" --arg feed "$FEED_CMD" --arg turn "$TURN_CMD" '
     .statusLine = {"type":"command", "command":$sl, "padding":1}
     | .refreshInterval = 1
@@ -137,12 +105,12 @@ echo ""
 echo "[5/5] Install complete!"
 echo ""
 echo "Verify by running:"
-echo "  echo '{}' | bash $REPO_DIR/statusline.sh"
+echo "  echo '{}' | $RUST_BIN statusline"
 echo ""
 echo "Then restart Claude Code — you should see the HUD render on your next turn."
 echo ""
 echo "To rename the kitten:"
-echo "  bash $REPO_DIR/rename.sh \"YourCatName\""
+echo "  $RUST_BIN rename \"YourCatName\""
 echo ""
 echo "To rollback:"
 echo "  cp <latest .bak file> $SETTINGS"
