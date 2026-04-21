@@ -66,16 +66,20 @@ pub fn human_elapsed(d: i64) -> String {
 pub fn short_cwd(full_path: &str, home: &str) -> String {
     let result = if full_path == home {
         "~".to_string()
-    } else if !home.is_empty() && full_path.starts_with(&format!("{home}/")) {
+    } else if !home.is_empty()
+        && full_path.len() > home.len()
+        && full_path.starts_with(home)
+        && full_path.as_bytes()[home.len()] == b'/'
+    {
         format!("~{}", &full_path[home.len()..])
     } else if full_path.is_empty() {
         "?".to_string()
     } else {
         full_path.to_string()
     };
-    let chars: Vec<char> = result.chars().collect();
-    if chars.len() > 25 {
-        let tail: String = chars[chars.len() - 22..].iter().collect();
+    let count = display_width(&result);
+    if count > 25 {
+        let tail: String = result.chars().skip(count - 22).collect();
         format!("...{tail}")
     } else {
         result

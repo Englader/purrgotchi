@@ -51,12 +51,10 @@ pub fn run() {
     };
     let cwd = normalize_windows_path(&cwd_raw);
 
-    let state_snapshot = state::load();
-    let (total_tc, coins, level, last_fed_at, kitten_name) = match state_snapshot {
-        Some(s) => (s.total_tool_calls, s.coins, s.level, s.last_fed_at, s.name),
-        None => (0, 0, 1, 0, "Purrgotchi".to_string()),
+    let (coins, level, last_fed_at, kitten_name) = match state::load() {
+        Some(s) => (s.coins, s.level, s.last_fed_at, s.name),
+        None => (0, 1, 0, "Purrgotchi".to_string()),
     };
-    let _ = total_tc; // not displayed; referenced for future features
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -120,7 +118,7 @@ pub fn run() {
         "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
     );
     let rail_count = BOX_WIDTH.saturating_sub(title_plain.chars().count());
-    let rail: String = std::iter::repeat('═').take(rail_count).collect();
+    let rail = "═".repeat(rail_count);
     let h1 = format!("{C_PINK}╔{C_RESET}{title_ansi}{C_PINK}{rail}╗{C_RESET}");
 
     // H2 — MODEL | DIR | GIT
@@ -234,7 +232,7 @@ pub fn run() {
     let h6 = close_row(&p6, &a6, BOX_WIDTH);
 
     // H7 — bottom rail.
-    let bottom_rail: String = std::iter::repeat('═').take(BOX_WIDTH).collect();
+    let bottom_rail = "═".repeat(BOX_WIDTH);
     let h7 = format!("{C_PINK}╚{C_RESET}{C_PINK}{bottom_rail}╝{C_RESET}");
 
     // --- Compose final output with sprite column + speech bubble ---

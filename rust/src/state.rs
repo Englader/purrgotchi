@@ -70,11 +70,12 @@ pub fn save_atomic(state: &State) -> io::Result<()> {
 }
 
 fn write_json(path: &Path, state: &State) -> io::Result<()> {
+    // Atomicity comes from tempfile + rename below; fsync would add Windows
+    // latency on every feed hook without changing crash behaviour.
     let mut f = fs::File::create(path)?;
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     f.write_all(json.as_bytes())?;
     f.write_all(b"\n")?;
-    f.sync_all()?;
     Ok(())
 }
