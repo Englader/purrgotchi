@@ -13,6 +13,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Eliminate jq, Python, bash/subshell dependencies
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 
+### Measured baseline (motivates Phase 3)
+
+v2.0.0 render latency on Windows 11 + Git Bash (5 runs, cold): **1.27s – 1.74s per render, median ~1.43s** — ~3× over the 500ms target. Dominated by bash startup + `source lib/*.sh` + jq subprocess spawn; Windows `fork+exec` cost is the floor we can't get under in bash. Rust port is the fix.
+
 ## [2.0.0] - 2026-04-21
 
 Phase 2 shipped plus live UX iteration. **Breaking** for anyone with a pinned v1.x settings.json — the HUD grew from 6 rows to 7 rows + 1 speech row, layout flipped (HUD left / sprite right), box widened 60→90 cells, and a new `UserPromptSubmit` hook is required for per-turn cost tracking. Re-run `install.sh` to auto-migrate.

@@ -29,21 +29,28 @@ echo "[1/5] Checking prerequisites..."
 missing=()
 command -v jq   >/dev/null 2>&1 || missing+=("jq")
 
-# Python: prefer py launcher on Windows, python3 elsewhere
-PYTHON_CMD=""
-if [ -x "/c/Windows/py.exe" ]; then
-    PYTHON_CMD="/c/Windows/py.exe"
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON_CMD="python3"
-elif command -v python  >/dev/null 2>&1; then
-    # Verify it's real Python, not the Microsoft Store stub on Windows
-    if python --version >/dev/null 2>&1; then
-        PYTHON_CMD="python"
-    fi
+# Rust binary: if present, hooks use it directly (no python needed)
+RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi.exe"
+HAVE_RUST=0
+if [ -x "$RUST_BIN" ]; then
+    HAVE_RUST=1
 fi
 
-if [ -z "$PYTHON_CMD" ]; then
-    missing+=("python")
+# Python: only needed for the feed_hook.py fallback when Rust binary is absent
+PYTHON_CMD=""
+if [ "$HAVE_RUST" -eq 0 ]; then
+    if [ -x "/c/Windows/py.exe" ]; then
+        PYTHON_CMD="/c/Windows/py.exe"
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+    elif command -v python  >/dev/null 2>&1; then
+        if python --version >/dev/null 2>&1; then
+            PYTHON_CMD="python"
+        fi
+    fi
+    if [ -z "$PYTHON_CMD" ]; then
+        missing+=("python")
+    fi
 fi
 
 if [ ${#missing[@]} -gt 0 ]; then
@@ -59,7 +66,11 @@ if [ ${#missing[@]} -gt 0 ]; then
     exit 1
 fi
 echo "  OK: jq found"
-echo "  OK: $PYTHON_CMD found"
+if [ "$HAVE_RUST" -eq 1 ]; then
+    echo "  OK: Rust binary found ($RUST_BIN)"
+else
+    echo "  OK: $PYTHON_CMD found (Rust binary missing, falling back to bash/python hooks)"
+fi
 echo ""
 
 # --- 2. State directory -----------------------------------------------------
@@ -85,22 +96,28 @@ echo ""
 echo "[4/5] Updating settings.json with Purrgotchi config..."
 
 STATUSLINE_CMD="bash $REPO_DIR/statusline.sh"
-FEED_CMD="$PYTHON_CMD $REPO_DIR/feed_hook.py"
-TURN_CMD="bash $REPO_DIR/turn_hook.sh"
+if [ "$HAVE_RUST" -eq 1 ]; then
+    FEED_CMD="$RUST_BIN feed"
+    TURN_CMD="$RUST_BIN turn"
+else
+    FEED_CMD="$PYTHON_CMD $REPO_DIR/feed_hook.py"
+    TURN_CMD="bash $REPO_DIR/turn_hook.sh"
+fi
 
 # Use jq to merge in our keys while preserving any existing config.
-# Replace our managed hook entries (matcher "*" pointing at feed_hook or
-# turn_hook commands) while leaving unrelated hooks untouched.
+# Replace our managed hook entries (any command containing "purrgotchi" —
+# matches both bash/python scripts and the Rust binary, old and new paths)
+# while leaving unrelated hooks untouched.
 jq --arg sl "$STATUSLINE_CMD" --arg feed "$FEED_CMD" --arg turn "$TURN_CMD" '
     .statusLine = {"type":"command", "command":$sl, "padding":1}
     | .refreshInterval = 1
     | .hooks //= {}
     | .hooks.PostToolUse = (
-        (.hooks.PostToolUse // []) | map(select(.matcher != "*" or ((.hooks[0].command // "") | test("feed_hook") | not)))
+        (.hooks.PostToolUse // []) | map(select(.matcher != "*" or ((.hooks[0].command // "") | test("purrgotchi") | not)))
         + [{"matcher":"*","hooks":[{"type":"command","command":$feed}]}]
       )
     | .hooks.UserPromptSubmit = (
-        (.hooks.UserPromptSubmit // []) | map(select(((.hooks[0].command // "") | test("turn_hook") | not)))
+        (.hooks.UserPromptSubmit // []) | map(select(((.hooks[0].command // "") | test("purrgotchi") | not)))
         + [{"hooks":[{"type":"command","command":$turn}]}]
       )
 ' "$SETTINGS" > "${SETTINGS}.new"

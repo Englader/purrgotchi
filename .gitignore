@@ -17,11 +17,13 @@ last-input.json
 .DS_Store
 Thumbs.db
 
-# Future Rust artifacts
-/target/
-Cargo.lock
+# Rust artifacts
+target/
 *.pdb
 *.exe
 
 # Node/misc
 node_modules/
+
+# Claude Code per-machine settings
+.claude/
