@@ -1,0 +1,9 @@
+pub const C_CYAN: &str = "\x1b[38;2;10;189;198m";
+pub const C_PINK: &str = "\x1b[38;2;234;0;217m";
+pub const C_MAGENTA: &str = "\x1b[38;2;113;28;145m";
+pub const C_YELLOW: &str = "\x1b[38;2;243;243;27m";
+pub const C_GREEN: &str = "\x1b[38;2;87;236;166m";
+pub const C_RED: &str = "\x1b[38;2;255;84;104m";
+pub const C_DIM: &str = "\x1b[2m";
+pub const C_BOLD: &str = "\x1b[1m";
+pub const C_RESET: &str = "\x1b[0m";

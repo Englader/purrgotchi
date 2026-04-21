@@ -1,6 +1,14 @@
+mod colors;
+mod cost;
 mod hooks;
+mod mood;
 mod paths;
+mod payload;
+mod render;
+mod speech;
+mod sprites;
 mod state;
+mod statusline;
 
 use std::env;
 use std::process;
@@ -11,7 +19,7 @@ fn main() {
 
     match cmd {
         "statusline" => {
-            eprintln!("statusline: not yet implemented");
+            statusline::run();
             process::exit(0);
         }
         "feed" => {
