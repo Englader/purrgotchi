@@ -257,15 +257,17 @@ pub fn run() {
 }
 
 fn normalize_windows_path(cwd: &str) -> String {
+    // C:\foo\bar -> C:/foo/bar. Forward slashes so Rust's fs handles it on
+    // Windows, and the literal drive-letter prefix stays intact for the
+    // HOME-starts-with check in short_cwd. Avoids MSYS `/c/...` form since
+    // Windows APIs don't resolve that.
     let bytes = cwd.as_bytes();
     if bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && bytes[2] == b'\\'
     {
-        let drive = (bytes[0] as char).to_ascii_lowercase();
-        let rest: String = cwd[3..].chars().map(|c| if c == '\\' { '/' } else { c }).collect();
-        format!("/{drive}/{rest}")
+        cwd.replace('\\', "/")
     } else {
         cwd.to_string()
     }

@@ -12,6 +12,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.1.1] - 2026-04-21
+
+### Fixed
+
+- **GIT column empty** on Windows. The v3.0 path normalizer produced MSYS-style `/c/Users/...` which Rust's `fs::read_to_string` can't resolve on Windows, so `.git/HEAD` reads silently failed. Normalizer now emits `C:/Users/...` form — Windows fs handles it natively, and the HOME-starts-with check in `short_cwd` still works.
+
 ## [3.1.0] - 2026-04-21
 
 Cleanup release — retires the bash/python implementation now that v3.0 is stable. No behavior changes; the Rust binary has been running all three entry points on this machine since v3.0 merged.
