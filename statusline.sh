@@ -283,9 +283,10 @@ p2=" ${c1p}${SEP_P}${c2p}${SEP_P}${c3p}"
 a2=" ${c1a}${SEP_A}${c2a}${SEP_A}${c3a}"
 close_row H2 "$p2" "$a2"
 
-# H3: 5h │ 7d │ CTX — 7d usage sits directly above 7d reset in H4.
-c1p="5h ${r5h_bar} ${rate_int}%"
-c1a="${C_DIM}5h${C_RESET} ${C_YELLOW}${r5h_bar}${C_RESET} ${C_BOLD}${rate_int}%${C_RESET}"
+# H3: Usage: 5h │ 7d │ CTX — "Usage:" label parallels "RESET:" in H4, and
+# also aligns 5h directly above H4's "RESET: 5h".
+c1p="USAGE: 5h ${r5h_bar} ${rate_int}%"
+c1a="${C_DIM}Usage:${C_RESET} ${C_DIM}5h${C_RESET} ${C_YELLOW}${r5h_bar}${C_RESET} ${C_BOLD}${rate_int}%${C_RESET}"
 pad_col c1p c1a "$c1p" "$c1a" "$W1"
 c2p="7d ${r7d_bar} ${rate_7d_int}%"
 c2a="${C_DIM}7d${C_RESET} ${C_YELLOW}${r7d_bar}${C_RESET} ${C_BOLD}${rate_7d_int}%${C_RESET}"

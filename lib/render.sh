@@ -43,16 +43,20 @@ human_duration() {
 }
 
 # time_until_reset out_var reset_epoch now_epoch — pure bash, no subshells.
+# Drops leading units when they're zero: "in 20h 00m" (no 0d prefix),
+# "in 45m" (no 0h prefix). Minutes always zero-padded when hours are present.
 time_until_reset() {
     local _out="$1" reset_at="${2:-0}" now_ts="${3:-0}"
     if [ "${reset_at:-0}" -le 0 ] 2>/dev/null || [ "$reset_at" -le "$now_ts" ] 2>/dev/null; then
         printf -v "$_out" "%s" "---"
     else
         local delta=$(( reset_at - now_ts ))
-        if [ "$delta" -lt 3600 ]; then
-            printf -v "$_out" "in %dm" "$(( delta / 60 ))"
-        else
-            printf -v "$_out" "in %dh %dm" "$(( delta / 3600 ))" "$(( (delta % 3600) / 60 ))"
+        local d=$(( delta / 86400 ))
+        local h=$(( (delta % 86400) / 3600 ))
+        local m=$(( (delta % 3600) / 60 ))
+        if   [ "$d" -gt 0 ]; then printf -v "$_out" "in %dd %02dh %02dm" "$d" "$h" "$m"
+        elif [ "$h" -gt 0 ]; then printf -v "$_out" "in %dh %02dm" "$h" "$m"
+        else                      printf -v "$_out" "in %dm" "$m"
         fi
     fi
 }
