@@ -7,15 +7,46 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Planned (Phase 3)
+### Planned
 
-- Port to Rust for 25–50× speedup (~5–20ms per render)
-- Eliminate jq, Python, bash/subshell dependencies
 - Nerd Font icon mode (`PURR_NERD=1` gate)
+- Linux/macOS builds (currently Windows-only)
+- Retire bash scripts from the repo once v3.x proves stable (kept through v3 as reference)
 
-### Measured baseline (motivates Phase 3)
+## [3.0.0] - 2026-04-21
 
-v2.0.0 render latency on Windows 11 + Git Bash (5 runs, cold): **1.27s – 1.74s per render, median ~1.43s** — ~3× over the 500ms target. Dominated by bash startup + `source lib/*.sh` + jq subprocess spawn; Windows `fork+exec` cost is the floor we can't get under in bash. Rust port is the fix.
+Phase 3 shipped — full Rust rewrite. **Breaking** for anyone with a pinned v1/v2 `settings.json`: the statusline command and both hooks now point at a single `purrgotchi.exe` binary. Re-run `install.sh` to auto-migrate. The installer auto-detects `rust/target/release/purrgotchi.exe` and wires the binary when present; falls back to the bash/python scripts otherwise.
+
+### Added
+
+- **`rust/`** — new Rust crate. One binary, four subcommands: `statusline`, `feed`, `turn`, `rename <name>`. Dependencies: `serde` + `serde_json` only. No `regex`, no `chrono`, no CLI crate — string ops, `std::time`, hand-rolled dispatch.
+- **Embedded sprites** via `include_str!` — zero runtime disk reads for the 11 sprite files, they ship compiled into the binary.
+- **Embedded speech phrases** — the `_SPEECH_COUNTS` + `_SPEECH` bash associative arrays are now `&[&str]` arrays per mood in `src/speech.rs`, selected by the same `(epoch/30) % N` rotation.
+- **Release profile** tuned for size + speed: `opt-level=3`, `lto=true`, `codegen-units=1`, `strip=true`, `panic="abort"`. Final binary is ~120KB.
+
+### Changed
+
+- **`install.sh`** now picks Rust binary over bash/python when present. Python is no longer required when the Rust binary is available. jq is still required (installer still uses it to merge `settings.json`).
+- **Hook commands** match-in-place rule loosened from `test("feed_hook")` / `test("turn_hook")` to `test("purrgotchi")`, so re-running the installer correctly replaces both legacy and new hook entries.
+- **`.gitignore`** — `target/` instead of `/target/` (catches the `rust/target/` subdirectory), removed `Cargo.lock` ignore (commit the lockfile for a binary crate), added `.claude/` for per-machine CC settings.
+
+### Performance
+
+v3.0.0 render latency on Windows 11 (5 runs, PowerShell, no bash wrapper): **~180ms per render, median ~180ms** vs v2.0's median ~1430ms — **~8× speedup**. Per-invocation render work inside the binary is ~5ms; the remaining ~175ms is Windows process-spawn cost (plausibly Defender real-time scan). Hitting the 5–20ms plan target would need a code-signing cert, a Defender exclusion, or a long-running daemon — not worth it for a 1Hz statusline.
+
+### Removed (from the runtime path)
+
+- `bash` — statusline and `turn` hook no longer shell out
+- `jq` — JSON parsing now via `serde_json` in-process (still needed by `install.sh` for settings merge)
+- `python` — `feed` hook no longer spawns Python
+- `lib/render.sh`, `lib/mood.sh`, `lib/speech.sh`, `lib/sprites.sh` — all ported to Rust modules
+- `feed_hook.py`, `turn_hook.sh` — replaced by `purrgotchi.exe feed` / `purrgotchi.exe turn`
+
+Bash/Python scripts remain in the repo as reference and for users without a Rust toolchain.
+
+### Fixed
+
+- **Windows HOME normalization** — MSYS path-translates `$HOME` to `C:\Users\...` form when passed to a native Windows process, which broke tilde-expansion in `short_cwd`. Rust version normalizes HOME with the same regex applied to cwd, so `~/Desktop/...` renders correctly.
 
 ## [2.0.0] - 2026-04-21
 

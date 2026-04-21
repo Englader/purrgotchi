@@ -95,11 +95,12 @@ echo ""
 # --- 4. Merge settings.json -------------------------------------------------
 echo "[4/5] Updating settings.json with Purrgotchi config..."
 
-STATUSLINE_CMD="bash $REPO_DIR/statusline.sh"
 if [ "$HAVE_RUST" -eq 1 ]; then
+    STATUSLINE_CMD="$RUST_BIN statusline"
     FEED_CMD="$RUST_BIN feed"
     TURN_CMD="$RUST_BIN turn"
 else
+    STATUSLINE_CMD="bash $REPO_DIR/statusline.sh"
     FEED_CMD="$PYTHON_CMD $REPO_DIR/feed_hook.py"
     TURN_CMD="bash $REPO_DIR/turn_hook.sh"
 fi
