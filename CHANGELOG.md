@@ -12,6 +12,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.3.0] - 2026-04-21
+
+### Added
+
+- **Token count in CTX column**. Context usage now renders as `345k (34%)` instead of bare `34%` — shows the absolute token count alongside the percentage. Uses `context_window.current_usage` (sum of input + output + cache_creation + cache_read tokens) from the CC payload. Formats as `N` / `1.2k` / `12k` / `1.2M`. 5h/7d bars stay percentage-only because CC doesn't send raw token counts for rate limits — asymmetric but honest. CTX bar narrowed from 12→11 chars to fit the token string with margin for the 100% edge case.
+
+### Fixed
+
+- **GIT column empty when cwd is a subdirectory**. `read_git_branch` previously only checked `cwd/.git/HEAD`, which returned nothing when CC ran with cwd inside a subfolder (e.g. `.../purrgotchi/rust`). Now walks up the parent chain until `.git/HEAD` is found or the filesystem root is reached — matches git's own discovery behavior.
+- **Progress bar invisible at low percentages**. At <9% with a narrow bar, integer truncation (`pct * width / 100`) rounded to 0 filled blocks, so the bar looked completely empty. Now rounds to nearest and clamps to at least 1 block whenever `pct > 0`. Affects all three bars (5h, 7d, CTX); most visible on CTX where low context usage is common.
+
 ## [3.2.0] - 2026-04-21
 
 ### Added

@@ -32,6 +32,20 @@ pub struct WorkspaceField {
 pub struct ContextWindow {
     #[serde(default)]
     pub used_percentage: f64,
+    #[serde(default)]
+    pub current_usage: CurrentUsage,
+}
+
+#[derive(Deserialize, Default)]
+pub struct CurrentUsage {
+    #[serde(default)]
+    pub input_tokens: i64,
+    #[serde(default)]
+    pub output_tokens: i64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: i64,
+    #[serde(default)]
+    pub cache_read_input_tokens: i64,
 }
 
 #[derive(Deserialize, Default)]

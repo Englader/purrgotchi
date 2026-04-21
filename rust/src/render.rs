@@ -6,7 +6,11 @@ fn display_width(s: &str) -> usize {
 
 pub fn progress_bar(pct: f64, width: usize) -> String {
     let pct_int = pct.round().clamp(0.0, 100.0) as usize;
-    let filled = pct_int * width / 100;
+    let filled = if pct_int == 0 {
+        0
+    } else {
+        ((pct_int * width + 50) / 100).clamp(1, width)
+    };
     let empty = width - filled;
     let mut out = String::with_capacity((filled + empty) * 3);
     for _ in 0..filled {
@@ -47,6 +51,33 @@ pub fn time_until_reset(reset_at: i64, now: i64) -> String {
         format!("in {h}h {m:02}m")
     } else {
         format!("in {m}m")
+    }
+}
+
+pub fn format_tokens(n: i64) -> String {
+    let n = n.max(0);
+    if n >= 1_000_000 {
+        let tenths = (n + 50_000) / 100_000;
+        let whole = tenths / 10;
+        let frac = tenths % 10;
+        if frac == 0 {
+            format!("{whole}M")
+        } else {
+            format!("{whole}.{frac}M")
+        }
+    } else if n >= 10_000 {
+        format!("{}k", (n + 500) / 1000)
+    } else if n >= 1000 {
+        let tenths = (n + 50) / 100;
+        let whole = tenths / 10;
+        let frac = tenths % 10;
+        if frac == 0 {
+            format!("{whole}k")
+        } else {
+            format!("{whole}.{frac}k")
+        }
+    } else {
+        n.to_string()
     }
 }
 

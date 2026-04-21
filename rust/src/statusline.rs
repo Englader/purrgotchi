@@ -11,8 +11,8 @@ use crate::mood::compute_mood;
 use crate::paths;
 use crate::payload::Payload;
 use crate::render::{
-    anchor_col, close_row, human_duration, human_elapsed, pad_col, pad_sprite,
-    progress_bar, short_cwd, time_until_reset,
+    anchor_col, close_row, format_tokens, human_duration, human_elapsed, pad_col,
+    pad_sprite, progress_bar, short_cwd, time_until_reset,
 };
 use crate::speech::compute_speech;
 use crate::sprites::get_sprite_lines;
@@ -86,7 +86,13 @@ pub fn run() {
     let turn = compute_turn_cost(payload.cost.total_cost_usd);
     let turn_cost_fmt = format!("{}.{:02}", turn.whole, turn.cents);
 
-    let ctx_bar = progress_bar(payload.context_window.used_percentage, 12);
+    let ctx_bar = progress_bar(payload.context_window.used_percentage, 11);
+    let usage = &payload.context_window.current_usage;
+    let ctx_tokens = usage.input_tokens
+        + usage.output_tokens
+        + usage.cache_creation_input_tokens
+        + usage.cache_read_input_tokens;
+    let ctx_tok_fmt = format_tokens(ctx_tokens);
     let r5h_bar = progress_bar(payload.rate_limits.five_hour.used_percentage, 5);
     let r7d_bar = progress_bar(payload.rate_limits.seven_day.used_percentage, 5);
     let duration = human_duration(payload.cost.total_duration_ms);
@@ -163,8 +169,8 @@ pub fn run() {
         W2,
     );
     let (c3p, c3a) = pad_col(
-        &format!("CTX: {ctx_bar} {ctx_int}%"),
-        &format!("{C_DIM}CTX:{C_RESET} {C_CYAN}{ctx_bar}{C_RESET} {C_BOLD}{ctx_int}%{C_RESET}"),
+        &format!("CTX: {ctx_bar} {ctx_tok_fmt} ({ctx_int}%)"),
+        &format!("{C_DIM}CTX:{C_RESET} {C_CYAN}{ctx_bar}{C_RESET} {C_BOLD}{ctx_tok_fmt}{C_RESET} {C_DIM}({ctx_int}%){C_RESET}"),
         W3,
     );
     let p3 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
@@ -289,16 +295,18 @@ fn read_git_branch(cwd: &str) -> String {
     if cwd.is_empty() {
         return String::new();
     }
-    let head_path = std::path::Path::new(cwd).join(".git").join("HEAD");
-    match fs::read_to_string(&head_path) {
-        Ok(contents) => {
+    let mut dir = std::path::PathBuf::from(cwd);
+    loop {
+        let head_path = dir.join(".git").join("HEAD");
+        if let Ok(contents) = fs::read_to_string(&head_path) {
             let line = contents.lines().next().unwrap_or("").trim();
             if let Some(branch) = line.strip_prefix("ref: refs/heads/") {
-                branch.to_string()
-            } else {
-                String::new()
+                return branch.to_string();
             }
+            return String::new();
         }
-        Err(_) => String::new(),
+        if !dir.pop() {
+            return String::new();
+        }
     }
 }
