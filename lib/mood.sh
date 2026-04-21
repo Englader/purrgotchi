@@ -9,7 +9,7 @@ compute_mood() {
     printf -v ctx_int  "%.0f" "$ctx_pct"
     printf -v cost_int "%.0f" "$cost_usd"
 
-    if   [ "$ctx_int" -gt 80 ] 2>/dev/null || [ "$cost_int" -gt 5 ] 2>/dev/null; then result="panic"
+    if   [ "$ctx_int" -gt 80 ]              2>/dev/null; then result="panic"
     elif [ "$ctx_int" -gt 40 ]              2>/dev/null; then result="alert"
     elif [ "$last_fed_delta" -gt 21600 ]    2>/dev/null; then result="sleep"
     elif [ "$last_fed_delta" -gt 3600 ]     2>/dev/null; then result="hungry"

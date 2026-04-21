@@ -33,12 +33,27 @@ progress_bar() {
 human_duration() {
     local _out="$1" ms="${2:-0}"
     local s=$(( ms / 1000 ))
-    local m=$(( s / 60 ))
+    local h=$(( s / 3600 ))
+    local m=$(( (s % 3600) / 60 ))
     local rs=$(( s % 60 ))
-    if [ "$m" -gt 0 ]; then
-        printf -v "$_out" "%dm %ds" "$m" "$rs"
+    if   [ "$h" -gt 0 ]; then printf -v "$_out" "%dh %dm %ds" "$h" "$m" "$rs"
+    elif [ "$m" -gt 0 ]; then printf -v "$_out" "%dm %ds" "$m" "$rs"
+    else                      printf -v "$_out" "%ds" "$rs"
+    fi
+}
+
+# time_until_reset out_var reset_epoch now_epoch — pure bash, no subshells.
+time_until_reset() {
+    local _out="$1" reset_at="${2:-0}" now_ts="${3:-0}"
+    if [ "${reset_at:-0}" -le 0 ] 2>/dev/null || [ "$reset_at" -le "$now_ts" ] 2>/dev/null; then
+        printf -v "$_out" "%s" "---"
     else
-        printf -v "$_out" "%ds" "$rs"
+        local delta=$(( reset_at - now_ts ))
+        if [ "$delta" -lt 3600 ]; then
+            printf -v "$_out" "in %dm" "$(( delta / 60 ))"
+        else
+            printf -v "$_out" "in %dh %dm" "$(( delta / 3600 ))" "$(( (delta % 3600) / 60 ))"
+        fi
     fi
 }
 
@@ -52,13 +67,17 @@ human_elapsed() {
     fi
 }
 
-# short_cwd out_var full_path
+# short_cwd out_var full_path — collapses $HOME to ~, left-ellipsizes at 38 cols.
 short_cwd() {
-    local _out="$1" cwd="$2" home="$HOME"
+    local _out="$1" cwd="$2" home="$HOME" result
     case "$cwd" in
-        "$home")   printf -v "$_out" "~" ;;
-        "$home"/*) printf -v "$_out" "~%s" "${cwd#$home}" ;;
-        "")        printf -v "$_out" "?" ;;
-        *)         printf -v "$_out" "%s" "$cwd" ;;
+        "$home")   result="~" ;;
+        "$home"/*) result="~${cwd#$home}" ;;
+        "")        result="?" ;;
+        *)         result="$cwd" ;;
     esac
+    if [ "${#result}" -gt 25 ]; then
+        result="...${result: -22}"
+    fi
+    printf -v "$_out" "%s" "$result"
 }

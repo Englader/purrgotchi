@@ -86,18 +86,22 @@ echo "[4/5] Updating settings.json with Purrgotchi config..."
 
 STATUSLINE_CMD="bash $REPO_DIR/statusline.sh"
 FEED_CMD="$PYTHON_CMD $REPO_DIR/feed_hook.py"
+TURN_CMD="bash $REPO_DIR/turn_hook.sh"
 
 # Use jq to merge in our keys while preserving any existing config.
-# Replace any existing PostToolUse entry with matcher "*" pointing at feed_hook.py;
-# leave other PostToolUse hooks (if user has them) untouched.
-jq --arg sl "$STATUSLINE_CMD" --arg feed "$FEED_CMD" '
+# Replace our managed hook entries (matcher "*" pointing at feed_hook or
+# turn_hook commands) while leaving unrelated hooks untouched.
+jq --arg sl "$STATUSLINE_CMD" --arg feed "$FEED_CMD" --arg turn "$TURN_CMD" '
     .statusLine = {"type":"command", "command":$sl, "padding":1}
     | .refreshInterval = 1
     | .hooks //= {}
-    | .hooks.PostToolUse //= []
     | .hooks.PostToolUse = (
-        (.hooks.PostToolUse // []) | map(select(.matcher != "*" or (.hooks[0].command // "") | test("feed_hook") | not))
+        (.hooks.PostToolUse // []) | map(select(.matcher != "*" or ((.hooks[0].command // "") | test("feed_hook") | not)))
         + [{"matcher":"*","hooks":[{"type":"command","command":$feed}]}]
+      )
+    | .hooks.UserPromptSubmit = (
+        (.hooks.UserPromptSubmit // []) | map(select(((.hooks[0].command // "") | test("turn_hook") | not)))
+        + [{"hooks":[{"type":"command","command":$turn}]}]
       )
 ' "$SETTINGS" > "${SETTINGS}.new"
 
