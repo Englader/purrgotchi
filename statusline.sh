@@ -180,10 +180,10 @@ short_path=""
 # Widths accommodate: MODEL (27), DIR (29), TIME (17) / CTX-bar (21) /
 # FED+│+MOOD combo (26).
 # 1 leading + W1 + " │ " + W2 + " │ " + W3 = 89 → BOX_WIDTH 90 leaves 1 trailing.
-W1=27
-W2=29
-W3=26
-BOX_WIDTH=90
+W1=28
+W2=30
+W3=28
+BOX_WIDTH=94
 
 close_row() {
     # close_row out_var plain_content ansi_content
@@ -262,19 +262,19 @@ SEP_P=" │ "
 SEP_A=" ${C_PINK}│${C_RESET} "
 
 # H2: MODEL │ DIR │ GIT — columns padded to fixed widths so │ aligns with other rows.
-c1p="MODEL ${model}"
-c1a="${C_DIM}MODEL${C_RESET} ${C_CYAN}${model}${C_RESET}"
+c1p="MODEL: ${model}"
+c1a="${C_DIM}MODEL:${C_RESET} ${C_CYAN}${model}${C_RESET}"
 pad_col c1p c1a "$c1p" "$c1a" "$W1"
 if [ -n "$cwd" ]; then
-    c2p="DIR ${short_path}"
-    c2a="${C_DIM}DIR${C_RESET} ${C_CYAN}${short_path}${C_RESET}"
+    c2p="DIR: ${short_path}"
+    c2a="${C_DIM}DIR:${C_RESET} ${C_CYAN}${short_path}${C_RESET}"
 else
     c2p=""; c2a=""
 fi
 pad_col c2p c2a "$c2p" "$c2a" "$W2"
 if [ -n "$git_branch" ]; then
-    c3p="GIT ${git_branch}"
-    c3a="${C_DIM}GIT${C_RESET} ${C_CYAN}${git_branch}${C_RESET}"
+    c3p="GIT: ${git_branch}"
+    c3a="${C_DIM}GIT:${C_RESET} ${C_CYAN}${git_branch}${C_RESET}"
 else
     c3p=""; c3a=""
 fi
@@ -285,14 +285,14 @@ close_row H2 "$p2" "$a2"
 
 # H3: USAGE: 5h │ 7d │ CTX — "USAGE:" label parallels "RESET:" in H4, and
 # also aligns 5h directly above H4's "RESET: 5h".
-c1p="USAGE: 5h ${r5h_bar} ${rate_int}%"
-c1a="${C_DIM}USAGE:${C_RESET} ${C_DIM}5h${C_RESET} ${C_YELLOW}${r5h_bar}${C_RESET} ${C_BOLD}${rate_int}%${C_RESET}"
+c1p="USAGE: 5h: ${r5h_bar} ${rate_int}%"
+c1a="${C_DIM}USAGE:${C_RESET} ${C_DIM}5h:${C_RESET} ${C_YELLOW}${r5h_bar}${C_RESET} ${C_BOLD}${rate_int}%${C_RESET}"
 pad_col c1p c1a "$c1p" "$c1a" "$W1"
-c2p="7d ${r7d_bar} ${rate_7d_int}%"
-c2a="${C_DIM}7d${C_RESET} ${C_YELLOW}${r7d_bar}${C_RESET} ${C_BOLD}${rate_7d_int}%${C_RESET}"
+c2p="7d: ${r7d_bar} ${rate_7d_int}%"
+c2a="${C_DIM}7d:${C_RESET} ${C_YELLOW}${r7d_bar}${C_RESET} ${C_BOLD}${rate_7d_int}%${C_RESET}"
 pad_col c2p c2a "$c2p" "$c2a" "$W2"
-c3p="CTX ${ctx_bar} ${ctx_int}%"
-c3a="${C_DIM}CTX${C_RESET} ${C_CYAN}${ctx_bar}${C_RESET} ${C_BOLD}${ctx_int}%${C_RESET}"
+c3p="CTX: ${ctx_bar} ${ctx_int}%"
+c3a="${C_DIM}CTX:${C_RESET} ${C_CYAN}${ctx_bar}${C_RESET} ${C_BOLD}${ctx_int}%${C_RESET}"
 pad_col c3p c3a "$c3p" "$c3a" "$W3"
 p3=" ${c1p}${SEP_P}${c2p}${SEP_P}${c3p}"
 a3=" ${c1a}${SEP_A}${c2a}${SEP_A}${c3a}"
@@ -306,8 +306,8 @@ pad_col c1p c1a "$c1p" "$c1a" "$W1"
 c2p="7d ${reset_7d_str}"
 c2a="${C_DIM}7d${C_RESET} ${C_YELLOW}${reset_7d_str}${C_RESET}"
 pad_col c2p c2a "$c2p" "$c2a" "$W2"
-c3p="Cost \$${turn_cost_fmt}"
-c3a="${C_DIM}Cost${C_RESET} ${C_YELLOW}\$${turn_cost_fmt}${C_RESET}"
+c3p="Cost: \$${turn_cost_fmt}"
+c3a="${C_DIM}Cost:${C_RESET} ${C_YELLOW}\$${turn_cost_fmt}${C_RESET}"
 pad_col c3p c3a "$c3p" "$c3a" "$W3"
 p4=" ${c1p}${SEP_P}${c2p}${SEP_P}${c3p}"
 a4=" ${c1a}${SEP_A}${c2a}${SEP_A}${c3a}"
@@ -315,14 +315,14 @@ close_row H4 "$p4" "$a4"
 
 # H5: LINES │ TIME │ Total  (session-total cost sits in col 3 under per-turn Cost).
 # No decorative glyphs (⧖, ◆ caused width-ambiguity bugs that broke alignment).
-c1p="LINES +${lines_added}/-${lines_removed}"
-c1a="${C_DIM}LINES${C_RESET} ${C_GREEN}+${lines_added}${C_RESET}/${C_RED}-${lines_removed}${C_RESET}"
+c1p="LINES: +${lines_added}/-${lines_removed}"
+c1a="${C_DIM}LINES:${C_RESET} ${C_GREEN}+${lines_added}${C_RESET}/${C_RED}-${lines_removed}${C_RESET}"
 pad_col c1p c1a "$c1p" "$c1a" "$W1"
-c2p="TIME ${duration}"
-c2a="${C_DIM}TIME${C_RESET} ${duration}"
+c2p="TIME: ${duration}"
+c2a="${C_DIM}TIME:${C_RESET} ${duration}"
 pad_col c2p c2a "$c2p" "$c2a" "$W2"
-c3p="Total \$${cost_fmt}"
-c3a="${C_DIM}Total${C_RESET} ${C_YELLOW}\$${cost_fmt}${C_RESET}"
+c3p="Total: \$${cost_fmt}"
+c3a="${C_DIM}Total:${C_RESET} ${C_YELLOW}\$${cost_fmt}${C_RESET}"
 pad_col c3p c3a "$c3p" "$c3a" "$W3"
 p5=" ${c1p}${SEP_P}${c2p}${SEP_P}${c3p}"
 a5=" ${c1a}${SEP_A}${c2a}${SEP_A}${c3a}"
@@ -331,16 +331,16 @@ close_row H5 "$p5" "$a5"
 # H6: LV on left edge, │ centered, COINS on right edge (col1);
 #     MOOD on left, │ centered, FED on right (col2);
 #     col3 empty. Two main │ still align with rows above.
-l1p="LV ${level}"
-l1a="${C_DIM}LV${C_RESET} ${C_PINK}${C_BOLD}${level}${C_RESET}"
-r1p="COINS ${coins}"
-r1a="${C_DIM}COINS${C_RESET} ${C_YELLOW}${coins}${C_RESET}"
+l1p="LV: ${level}"
+l1a="${C_DIM}LV:${C_RESET} ${C_PINK}${C_BOLD}${level}${C_RESET}"
+r1p="COINS: ${coins}"
+r1a="${C_DIM}COINS:${C_RESET} ${C_YELLOW}${coins}${C_RESET}"
 anchor_col c1p c1a "$l1p" "$l1a" "$r1p" "$r1a" "$W1"
 
-l2p="MOOD ${mood}"
-l2a="${C_DIM}MOOD${C_RESET} ${C_MAGENTA}${mood}${C_RESET}"
-r2p="FED ${fed_ago}"
-r2a="${C_DIM}FED${C_RESET} ${fed_ago}"
+l2p="MOOD: ${mood}"
+l2a="${C_DIM}MOOD:${C_RESET} ${C_MAGENTA}${mood}${C_RESET}"
+r2p="FED: ${fed_ago}"
+r2a="${C_DIM}FED:${C_RESET} ${fed_ago}"
 anchor_col c2p c2a "$l2p" "$l2a" "$r2p" "$r2a" "$W2"
 
 c3p=""; c3a=""
