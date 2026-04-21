@@ -1,0 +1,27 @@
+# Runtime state — never commit (belongs to the machine, not the project)
+state.json
+*.state.json
+.state.*.tmp
+
+# Debug artifacts
+debug.log
+last-input.json
+*.bak
+*.bak2
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Future Rust artifacts
+/target/
+Cargo.lock
+*.pdb
+*.exe
+
+# Node/misc
+node_modules/
