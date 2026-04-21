@@ -58,7 +58,7 @@ Manual wiring for reference:
 - **Add sprites**: drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild
 - **Add phrases**: edit the per-mood arrays in `rust/src/speech.rs`, rebuild
 - **Tweak colors**: edit the constants at the top of `rust/src/colors.rs`
-- **Debug payloads**: set `PURR_DEBUG=1` to write each render's input JSON to `$PURR_STATE_DIR/last-input.json`
+- **Debug**: pass `--debug` (or set `PURR_DEBUG=1`) to log every invocation and render-timing to `$PURR_STATE_DIR/debug.log`, and dump the raw stdin JSON to `$PURR_STATE_DIR/last-input.json`. Enable by appending `--debug` to the `statusLine.command` in `~/.claude/settings.json` and restarting Claude Code.
 
 ## Cost display
 

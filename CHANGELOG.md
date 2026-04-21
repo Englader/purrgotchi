@@ -12,6 +12,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.2.0] - 2026-04-21
+
+### Added
+
+- **Debug logging module** (`src/debug.rs`). Activated by either `PURR_DEBUG=1` env var OR a `--debug` flag anywhere in argv (so you can enable it via `settings.json` without a shell wrapper). Appends timestamped lines to `~/.claude/purrgotchi/debug.log` — one line per invocation with pid + subcommand, plus a second line after the statusline render with `mood`, `fed_delta`, `ctx`, and `render_us`. Silent on any I/O failure; never breaks the hot path.
+- First use case: diagnosed that `refreshInterval: 1` is NOT firing as a 1-second metronome on Windows — observed render gaps of 0.2s–31.8s during idle. CC's idle tick scheduler isn't behaving as documented. Purrgotchi renders are 1–2ms with an occasional ~346ms Defender-cold outlier.
+
+### Investigation notes
+
+The chunky "FED: 7s ago → 23s ago" behavior is a Claude Code statusline-scheduler quirk, not a Purrgotchi bug. The binary computes `now - last_fed_at` fresh on every invocation (no caching), so the data is always correct — it just only refreshes when CC happens to invoke us, which on Windows is event-driven with long idle gaps.
+
 ## [3.1.1] - 2026-04-21
 
 ### Fixed

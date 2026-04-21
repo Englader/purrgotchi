@@ -1,5 +1,6 @@
 mod colors;
 mod cost;
+mod debug;
 mod hooks;
 mod mood;
 mod paths;
@@ -16,6 +17,8 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
+
+    debug::log(&format!("invoke cmd={cmd}"));
 
     match cmd {
         "statusline" => {

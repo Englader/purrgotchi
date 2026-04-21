@@ -6,6 +6,7 @@ use crate::colors::{
     C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
 };
 use crate::cost::compute_turn_cost;
+use crate::debug;
 use crate::mood::compute_mood;
 use crate::paths;
 use crate::payload::Payload;
@@ -24,10 +25,11 @@ const BOX_WIDTH: usize = 94;
 const SW: usize = 16;
 
 pub fn run() {
+    let t_start = SystemTime::now();
     let mut input = String::new();
     let _ = io::stdin().read_to_string(&mut input);
 
-    if std::env::var("PURR_DEBUG").is_ok() {
+    if debug::enabled() {
         let _ = fs::create_dir_all(paths::state_dir());
         let _ = fs::write(paths::state_dir().join("last-input.json"), &input);
     }
@@ -254,6 +256,16 @@ pub fn run() {
     }
 
     let _ = out.write_all(buf.as_bytes());
+
+    if debug::enabled() {
+        let elapsed_us = SystemTime::now()
+            .duration_since(t_start)
+            .map(|d| d.as_micros())
+            .unwrap_or(0);
+        debug::log(&format!(
+            "render mood={mood} fed_delta={last_fed_delta} ctx={ctx_int} render_us={elapsed_us}"
+        ));
+    }
 }
 
 fn normalize_windows_path(cwd: &str) -> String {
