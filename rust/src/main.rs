@@ -1,3 +1,4 @@
+mod card;
 mod colors;
 mod cost;
 mod debug;
@@ -38,6 +39,10 @@ fn main() {
         "rename" => {
             let name = args.get(2).map(String::as_str).unwrap_or("");
             process::exit(hooks::rename(name));
+        }
+        "card" => {
+            card::run();
+            process::exit(0);
         }
         "hatch" => {
             let force_rarity = args.iter().position(|a| a == "--rarity")
