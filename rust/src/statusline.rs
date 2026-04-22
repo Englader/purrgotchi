@@ -125,9 +125,16 @@ pub fn run() {
     let title_ansi = format!(
         "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
     );
-    let rail_count = BOX_WIDTH.saturating_sub(title_plain.chars().count());
-    let rail = "═".repeat(rail_count);
-    let h1 = format!("{C_PINK}╔{C_RESET}{title_ansi}{C_PINK}{rail}╗{C_RESET}");
+    let (peak_plain, peak_ansi) = peak_label(local_hour());
+    let title_len = title_plain.chars().count();
+    let peak_len = peak_plain.chars().count();
+    let w2_center = 1 + W1 + 3 + W2 / 2;
+    let peak_start = w2_center.saturating_sub(peak_len / 2);
+    let pre_len = peak_start.saturating_sub(title_len).max(1);
+    let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
+    let pre_rail = "═".repeat(pre_len);
+    let post_rail = "═".repeat(post_len);
+    let h1 = format!("{C_PINK}╔{C_RESET}{title_ansi}{C_PINK}{pre_rail}{C_RESET}{peak_ansi}{C_PINK}{post_rail}╗{C_RESET}");
 
     // H2 — MODEL | DIR | GIT
     let (c1p, c1a) = pad_col(
@@ -385,5 +392,31 @@ mod tests {
         assert_eq!(plain.chars().count(), 16);
         let (plain, _) = peak_label(8);
         assert_eq!(plain.chars().count(), 20);
+    }
+
+    #[test]
+    fn test_h1_rail_total_len_peak() {
+        let title_plain = format!("═╡ NETRUNNER // {} ╞", "Thalia");
+        let (peak_plain, _) = peak_label(17);
+        let title_len = title_plain.chars().count();
+        let peak_len = peak_plain.chars().count();
+        let w2_center = 1 + W1 + 3 + W2 / 2;
+        let peak_start = w2_center.saturating_sub(peak_len / 2);
+        let pre_len = peak_start.saturating_sub(title_len).max(1);
+        let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
+        assert_eq!(title_len + pre_len + peak_len + post_len, BOX_WIDTH);
+    }
+
+    #[test]
+    fn test_h1_rail_total_len_off_peak() {
+        let title_plain = format!("═╡ NETRUNNER // {} ╞", "Thalia");
+        let (peak_plain, _) = peak_label(8);
+        let title_len = title_plain.chars().count();
+        let peak_len = peak_plain.chars().count();
+        let w2_center = 1 + W1 + 3 + W2 / 2;
+        let peak_start = w2_center.saturating_sub(peak_len / 2);
+        let pre_len = peak_start.saturating_sub(title_len).max(1);
+        let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
+        assert_eq!(title_len + pre_len + peak_len + post_len, BOX_WIDTH);
     }
 }
