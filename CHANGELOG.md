@@ -12,6 +12,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.2] - 2026-04-22
+
+### Changed
+
+- **`purrgotchi hatch` now prints the state file path** on a successful save (and a visible warning if the write fails), so users can see where the kitten was persisted instead of trusting an invisible `save_atomic` side effect.
+
+### Fixed
+
+- **Housekeeping pass on clippy warnings** surfaced by the Phase 1 end-to-end review. No behavior changes.
+  - `card.rs`: leap-year check uses `u32::is_multiple_of` instead of manual modulus
+  - `cost.rs`: grace-window check uses `RangeInclusive::contains` instead of open-coded `>=/<=` bounds
+  - `statusline.rs`: `peak_period` hour check uses `RangeInclusive::contains`; Win32 `SYSTEMTIME` FFI type gets a narrow `upper_case_acronyms` allow with a comment explaining the FFI-fidelity requirement
+  - `identity.rs`: `all_blurbs_non_empty` test uses iterator `.enumerate()` instead of indexed `for` loops; blanket `#![allow(dead_code)]` removed in favor of per-item allows on the 5 stat-index constants (kept as reserved public API for Phase 2)
+- **`card.rs::run` now documents** why it uses `state::load()` directly rather than `hatch::load_or_hatch()` — `card` is a read-only inspection command and should error if no kitten exists rather than silently auto-hatch.
+
+### Added
+
+- **`all_blurbs_unique` test** in `identity.rs` — walks the full `[16][5][4]` BLURBS table and asserts no two blurbs are byte-identical. Catches future copy-paste regressions in the 320-entry personality table.
+
 ## [3.4.1] - 2026-04-22
 
 ### Changed

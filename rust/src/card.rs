@@ -6,6 +6,10 @@ use crate::state::State;
 const CARD_WIDTH: usize = 42;
 
 pub fn run() {
+    // Deliberately uses `state::load()` rather than `hatch::load_or_hatch()`:
+    // `card` is a read-only inspection command, so a missing state should error
+    // loudly instead of silently auto-hatching (which would feel surprising
+    // from a command whose contract is "show me my cat").
     let s = match crate::state::load() {
         Some(s) => s,
         None => {
@@ -141,7 +145,7 @@ fn format_born(secs: u64) -> String {
 }
 
 fn is_leap(year: u32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 fn get_card_sprite(rarity: &str) -> Vec<&'static str> {

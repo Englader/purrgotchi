@@ -30,7 +30,7 @@ pub fn compute_turn_cost(cost_usd: f64) -> TurnCost {
             let anchor_ts_us = parse_micros(line2);
 
             let age_us = now_us.saturating_sub(anchor_ts_us);
-            if age_us >= 0 && age_us <= GRACE_US {
+            if (0..=GRACE_US).contains(&age_us) {
                 // In grace window — refresh anchor, keep original creation ts.
                 let _ = write_anchor(&anchor_path, cost_usd, line2);
                 cost_usd

@@ -6,15 +6,20 @@
 //!
 //! No I/O, no mutable state — all pure. Consumed by `hatch.rs` and `card.rs`.
 
-// Temporary: consumed by hatch.rs (Task 3), card.rs (Task 5), and statusline.rs (Task 6).
-// Remove this allow once all three modules land.
-#![allow(dead_code)]
-
-// Stat indices
+// Stat indices — public API for downstream code that wants to reference a
+// specific stat by name rather than by numeric index (e.g. a future bond
+// mechanic testing `if peak == identity::AFFECTION`). Currently hatch.rs
+// generates indices numerically and doesn't need these; keeping them exposed
+// avoids a churn-y rename when Phase 2 lands.
+#[allow(dead_code)]
 pub const CURIOSITY: usize = 0;
+#[allow(dead_code)]
 pub const MISCHIEF: usize = 1;
+#[allow(dead_code)]
 pub const LAZINESS: usize = 2;
+#[allow(dead_code)]
 pub const AFFECTION: usize = 3;
+#[allow(dead_code)]
 pub const WISDOM: usize = 4;
 
 pub const STAT_NAMES: [&str; 5] = ["CURIOSITY", "MISCHIEF", "LAZINESS", "AFFECTION", "WISDOM"];
@@ -767,12 +772,35 @@ mod tests {
 
     #[test]
     fn all_blurbs_non_empty() {
-        for b in 0..16 {
-            for p in 0..5 {
-                for d in 0..4 {
-                    assert!(!BLURBS[b][p][d].is_empty(), "blurb [{b}][{p}][{d}] is empty");
+        for (b, breed) in BLURBS.iter().enumerate() {
+            for (p, peak) in breed.iter().enumerate() {
+                for (d, blurb) in peak.iter().enumerate() {
+                    assert!(!blurb.is_empty(), "blurb [{b}][{p}][{d}] is empty");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn all_blurbs_unique() {
+        // Catches copy-paste bugs in the 320-entry table. Collects every blurb
+        // into a Vec, sorts, then scans for adjacent duplicates so the failure
+        // message names both offending index triples.
+        let mut entries: Vec<(usize, usize, usize, &'static str)> = Vec::with_capacity(320);
+        for (b, breed) in BLURBS.iter().enumerate() {
+            for (p, peak) in breed.iter().enumerate() {
+                for (d, blurb) in peak.iter().enumerate() {
+                    entries.push((b, p, d, blurb));
+                }
+            }
+        }
+        entries.sort_by_key(|e| e.3);
+        for w in entries.windows(2) {
+            assert_ne!(
+                w[0].3, w[1].3,
+                "duplicate blurb at [{}][{}][{}] and [{}][{}][{}]",
+                w[0].0, w[0].1, w[0].2, w[1].0, w[1].1, w[1].2
+            );
         }
     }
 

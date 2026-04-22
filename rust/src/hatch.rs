@@ -133,7 +133,10 @@ pub fn run(opts: &HatchOpts) {
     );
     println!("Stats: CUR={} MIS={} LAZ={} AFF={} WIS={}",
         s.stats[0], s.stats[1], s.stats[2], s.stats[3], s.stats[4]);
-    let _ = state::save_atomic(&s);
+    match state::save_atomic(&s) {
+        Ok(()) => println!("Saved to: {}", crate::paths::state_file().display()),
+        Err(e) => eprintln!("warning: could not write state: {e}"),
+    }
 }
 
 #[cfg(test)]

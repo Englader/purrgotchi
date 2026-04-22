@@ -328,6 +328,8 @@ fn read_git_branch(cwd: &str) -> String {
 
 #[cfg(windows)]
 fn local_hour() -> u32 {
+    // Win32 type name — intentional upper-case for FFI fidelity.
+    #[allow(clippy::upper_case_acronyms)]
     #[repr(C)]
     struct SYSTEMTIME {
         year: u16, month: u16, dow: u16, day: u16,
@@ -360,7 +362,7 @@ fn peak_label(hour: u32) -> (String, String) {
 }
 
 fn peak_period(hour: u32) -> (&'static str, &'static str) {
-    if hour >= 14 && hour <= 20 {
+    if (14..=20).contains(&hour) {
         ("PEAK", "2PM-8PM")
     } else {
         ("OFF PEAK", "9PM-3PM")
