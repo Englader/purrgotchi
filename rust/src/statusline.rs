@@ -310,3 +310,31 @@ fn read_git_branch(cwd: &str) -> String {
         }
     }
 }
+
+fn peak_period(hour: u32) -> (&'static str, &'static str) {
+    if hour >= 14 && hour <= 20 {
+        ("PEAK", "2PM-8PM")
+    } else {
+        ("OFF PEAK", "9PM-3PM")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_peak_period_peak_hours() {
+        assert_eq!(peak_period(14), ("PEAK", "2PM-8PM"));
+        assert_eq!(peak_period(17), ("PEAK", "2PM-8PM"));
+        assert_eq!(peak_period(20), ("PEAK", "2PM-8PM"));
+    }
+
+    #[test]
+    fn test_peak_period_off_peak_hours() {
+        assert_eq!(peak_period(0),  ("OFF PEAK", "9PM-3PM"));
+        assert_eq!(peak_period(13), ("OFF PEAK", "9PM-3PM"));
+        assert_eq!(peak_period(21), ("OFF PEAK", "9PM-3PM"));
+        assert_eq!(peak_period(23), ("OFF PEAK", "9PM-3PM"));
+    }
+}
