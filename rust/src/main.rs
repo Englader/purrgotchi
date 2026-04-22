@@ -47,11 +47,19 @@ fn main() {
         "hatch" => {
             let force_rarity = args.iter().position(|a| a == "--rarity")
                 .and_then(|i| args.get(i + 1))
-                .map(|s| s.to_lowercase());
+                .map(|s| s.to_lowercase())
+                .or_else(|| std::env::var("PURR_FORCE_RARITY").ok().map(|s| s.to_lowercase()));
+
             let force_breed = args.iter().position(|a| a == "--breed")
                 .and_then(|i| args.get(i + 1))
-                .map(|s| s.to_string());
-            let force_shiny = args.iter().any(|a| a == "--shiny");
+                .map(|s| s.to_string())
+                .or_else(|| std::env::var("PURR_FORCE_BREED").ok());
+
+            let force_shiny = args.iter().any(|a| a == "--shiny")
+                || std::env::var("PURR_FORCE_SHINY")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
+
             if let Some(r) = &force_rarity {
                 const VALID: [&str; 5] = ["common", "uncommon", "rare", "epic", "legendary"];
                 if !VALID.contains(&r.as_str()) {
@@ -59,6 +67,7 @@ fn main() {
                     process::exit(1);
                 }
             }
+
             let opts = hatch::HatchOpts { force_rarity, force_breed, force_shiny };
             hatch::run(&opts);
             process::exit(0);
