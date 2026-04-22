@@ -28,15 +28,20 @@ pub fn render(s: &State) -> String {
     writeln!(out, "╔{}╗", "═".repeat(CARD_WIDTH)).unwrap();
 
     // Title: BREED // Name // STARS
-    let title = format!("{} // {} // {}", breed_upper, s.name, stars);
-    writeln!(out, "║ {:<width$}║", title, width = inner - 1).unwrap();
+    // inner - 2: account for the 2 leading spaces before content, leaving 40 chars for content
+    let inner_content = inner - 2;
+    let title_raw = format!("{} // {} // {}", breed_upper, s.name, stars);
+    let title: String = title_raw.chars().take(inner_content).collect();
+    writeln!(out, "║  {:<width$}║", title, width = inner_content).unwrap();
 
     // Shiny / born row
     let born = format_born(s.birth_time);
     if s.shiny {
-        writeln!(out, "║ {:<width$}║", format!("[SHINY]   Born: {born}"), width = inner - 1).unwrap();
+        let shiny_row: String = format!("[SHINY]   Born: {born}").chars().take(inner_content).collect();
+        writeln!(out, "║  {:<width$}║", shiny_row, width = inner_content).unwrap();
     } else {
-        writeln!(out, "║ {:<width$}║", format!("Born: {born}"), width = inner - 1).unwrap();
+        let born_row: String = format!("Born: {born}").chars().take(inner_content).collect();
+        writeln!(out, "║  {:<width$}║", born_row, width = inner_content).unwrap();
     }
 
     // Divider
@@ -54,24 +59,35 @@ pub fn render(s: &State) -> String {
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
     // Stats — no peak/dump suffix per spec
-    // Layout: ║  <name:11><bar:12> <val:3>          ║
-    // Fixed content width = 2 + 11 + 12 + 1 + 3 = 29
-    // Padding to inner (42): 42 - 29 = 13 trailing spaces
+    // Layout: ║  <name:11><bar:10>  <val:3>         ║
+    // Fixed content width = 2 + 11 + 10 + 2 + 3 = 28
+    // Padding to inner (42): 42 - 28 = 14 trailing spaces
     for (i, &val) in s.stats.iter().enumerate() {
         let bar = stat_bar(val);
         // Build content string, then pad to inner width
-        let content = format!("  {:<11}{} {:>3}", identity::STAT_NAMES[i], bar, val);
+        let content = format!("  {:<11}{}  {:>3}", identity::STAT_NAMES[i], bar, val);
         writeln!(out, "║{:<width$}║", content, width = inner).unwrap();
     }
 
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
-    // Personality (word-wrapped), each line indented by 1 space
-    // Wrap width = inner - 1 (1 leading space + content + trailing pad to reach ║)
-    let wrap_width = inner - 2; // 1 leading + content fits in inner-1, leave 1 for safety
-    for line in wrap(&s.personality, wrap_width) {
-        writeln!(out, "║ {:<width$}║", line, width = inner - 1).unwrap();
+    // Personality (word-wrapped, quoted), indented by 2 spaces
+    // inner_content = 40. Subtract 2 for opening/closing quote chars → wrap at 38.
+    let pers_wrap_width = inner_content - 2;
+    let wrapped = wrap(&s.personality, pers_wrap_width);
+    let last = wrapped.len().saturating_sub(1);
+    for (i, line) in wrapped.iter().enumerate() {
+        let decorated = if wrapped.len() == 1 {
+            format!("\"{line}\"")
+        } else if i == 0 {
+            format!("\"{line}")
+        } else if i == last {
+            format!("{line}\"")
+        } else {
+            line.clone()
+        };
+        writeln!(out, "║  {:<width$}║", decorated, width = inner_content).unwrap();
     }
 
     // Bottom border
@@ -82,7 +98,7 @@ pub fn render(s: &State) -> String {
 fn stat_bar(val: u8) -> String {
     let filled = (val as usize * 10 + 50) / 100;
     let empty = 10 - filled;
-    format!("[{}{}]", "█".repeat(filled), "░".repeat(empty))
+    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
 }
 
 fn wrap(text: &str, width: usize) -> Vec<String> {
@@ -91,7 +107,7 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     for word in text.split_whitespace() {
         if current.is_empty() {
             current.push_str(word);
-        } else if current.len() + 1 + word.len() <= width {
+        } else if current.chars().count() + 1 + word.chars().count() <= width {
             current.push(' ');
             current.push_str(word);
         } else {
@@ -106,13 +122,26 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
 }
 
 fn format_born(secs: u64) -> String {
-    // Rough YYYY-MM-DD approximation without chrono dependency
-    let days_since_epoch = secs / 86400;
-    let year = 1970 + days_since_epoch / 365;
-    let day_of_year = days_since_epoch % 365;
-    let month = (day_of_year / 30) + 1;
-    let day = (day_of_year % 30) + 1;
-    format!("{year}-{month:02}-{day:02}")
+    let mut days = (secs / 86400) as u32;
+    let mut year = 1970u32;
+    loop {
+        let in_year = if is_leap(year) { 366 } else { 365 };
+        if days < in_year { break; }
+        days -= in_year;
+        year += 1;
+    }
+    let month_days = [31u32, if is_leap(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 0usize;
+    for &md in &month_days {
+        if days < md { break; }
+        days -= md;
+        month += 1;
+    }
+    format!("{year}-{:02}-{:02}", month + 1, days + 1)
+}
+
+fn is_leap(year: u32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 fn get_card_sprite(rarity: &str) -> Vec<&'static str> {
@@ -245,5 +274,15 @@ mod tests {
             assert_eq!(len, expected,
                 "line {i} width {len} != {expected}: {:?}", line);
         }
+    }
+
+    #[test]
+    fn format_born_correct_for_recent_date() {
+        // 2026-04-21 00:00:00 UTC = 1_776_729_600 seconds
+        assert_eq!(format_born(1_776_729_600), "2026-04-21");
+        // 2024-02-29 00:00:00 UTC (leap day) = 1_709_164_800
+        assert_eq!(format_born(1_709_164_800), "2024-02-29");
+        // Epoch
+        assert_eq!(format_born(0), "1970-01-01");
     }
 }
