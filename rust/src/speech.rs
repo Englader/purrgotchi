@@ -45,6 +45,30 @@ const SLEEP: &[&str] = &[
     "dreaming of fish",
 ];
 
+const LEVELUP: &[&str] = &[
+    "mrow! level up!",
+    "+1 purr",
+    "feeling stronger",
+    "*stretches proudly*",
+    "level +1 nya~",
+];
+
+const EVOLVING_YOUNG: &[&str] = &[
+    "not a kitten anymore...",
+    "mrrreow! i've grown!",
+    "look at me now!",
+    "bigger paws!",
+    "young cat arc \u{2726}",
+];
+
+const EVOLVING_ADULT: &[&str] = &[
+    "all grown up",
+    "dignified now, obviously",
+    "an adult cat regards you",
+    "fully realized meow",
+    "adult arc unlocked",
+];
+
 pub fn compute_speech(mood: &str, now_secs: i64) -> &'static str {
     let pool: &[&str] = match mood {
         "calm" => CALM,
@@ -57,4 +81,56 @@ pub fn compute_speech(mood: &str, now_secs: i64) -> &'static str {
     };
     let idx = ((now_secs.max(0) / 30) as usize) % pool.len();
     pool[idx]
+}
+
+pub fn compute_celebration_speech(
+    kind: crate::state::CelebrationKind,
+    now_secs: i64,
+) -> &'static str {
+    use crate::state::CelebrationKind;
+    let pool: &[&str] = match kind {
+        CelebrationKind::LevelUp       => LEVELUP,
+        CelebrationKind::EvolvingYoung => EVOLVING_YOUNG,
+        CelebrationKind::EvolvingAdult => EVOLVING_ADULT,
+        CelebrationKind::None          => return "mrow",
+    };
+    let idx = ((now_secs.max(0) / 30) as usize) % pool.len();
+    pool[idx]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::CelebrationKind;
+
+    #[test]
+    fn levelup_returns_from_levelup_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::LevelUp, 0);
+        assert!(LEVELUP.contains(&phrase));
+    }
+
+    #[test]
+    fn evolving_young_returns_from_young_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::EvolvingYoung, 0);
+        assert!(EVOLVING_YOUNG.contains(&phrase));
+    }
+
+    #[test]
+    fn evolving_adult_returns_from_adult_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::EvolvingAdult, 0);
+        assert!(EVOLVING_ADULT.contains(&phrase));
+    }
+
+    #[test]
+    fn none_returns_fallback_mrow() {
+        assert_eq!(compute_celebration_speech(CelebrationKind::None, 0), "mrow");
+    }
+
+    #[test]
+    fn celebration_speech_rotates_over_time() {
+        // 30s bucket rotation — same bucket gives same phrase
+        let a = compute_celebration_speech(CelebrationKind::LevelUp, 0);
+        let b = compute_celebration_speech(CelebrationKind::LevelUp, 15);
+        assert_eq!(a, b);
+    }
 }
