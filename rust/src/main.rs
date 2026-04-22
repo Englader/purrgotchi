@@ -1,6 +1,7 @@
 mod colors;
 mod cost;
 mod debug;
+mod hatch;
 mod hooks;
 mod identity;
 mod mood;
