@@ -2,6 +2,7 @@ mod colors;
 mod cost;
 mod debug;
 mod hooks;
+mod identity;
 mod mood;
 mod paths;
 mod payload;
