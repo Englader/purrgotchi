@@ -70,7 +70,8 @@ pub fn render(s: &State) -> String {
     // Sprite (6 lines, each padded to fit inside the box)
     // Sprite line max width = inner - 2 (two leading spaces + content + trailing pad)
     let sprite_inner = inner - 2;
-    let sprite = get_card_sprite(&s.rarity);
+    let stage = crate::state::life_stage(s.level);
+    let sprite = crate::sprites::get_sprite_lines(stage, &s.rarity, "calm", 0);
     for line in sprite.iter().take(6) {
         writeln!(out, "║  {:<width$}║", line, width = sprite_inner).unwrap();
     }
@@ -162,51 +163,6 @@ fn format_born(secs: u64) -> String {
 
 fn is_leap(year: u32) -> bool {
     (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
-}
-
-fn get_card_sprite(rarity: &str) -> Vec<&'static str> {
-    match rarity {
-        "legendary" => vec![
-            " /########\\",
-            "(# O    O #)",
-            " #  ---   #",
-            " ##########",
-            " ##      ##",
-            "_##_    _##_",
-        ],
-        "epic" => vec![
-            "/\\        /\\",
-            "(  .    .  )",
-            " \\  ___  /",
-            "  \\_____/",
-            "   |   |",
-            "  _|___|_",
-        ],
-        "rare" => vec![
-            " _/\\  /\\_",
-            "(  o    o  )",
-            " \\ ----- /",
-            "  \\_____/",
-            "  (     )",
-            " __|___|__",
-        ],
-        "uncommon" => vec![
-            "  /\\  /\\",
-            " ( .    . )",
-            "  \\_---_/",
-            "   |   |",
-            "   |   |",
-            "  _|___|_",
-        ],
-        _ => vec![  // common
-            "  /\\_/\\",
-            " ( o . o )",
-            "  \\  v  /",
-            "  /|   |\\",
-            " (_|   |_)",
-            "",
-        ],
-    }
 }
 
 #[cfg(test)]
