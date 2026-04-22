@@ -64,10 +64,6 @@ pub fn load() -> Option<State> {
     parse_state(&bytes)
 }
 
-pub fn load_or_base() -> State {
-    load().unwrap_or_else(|| State::base(now_secs()))
-}
-
 pub fn save_atomic(state: &State) -> io::Result<()> {
     let dir = paths::state_dir();
     fs::create_dir_all(&dir)?;

@@ -53,10 +53,13 @@ pub fn run() {
     };
     let cwd = normalize_windows_path(&cwd_raw);
 
-    let (coins, level, last_fed_at, kitten_name) = match state::load() {
-        Some(s) => (s.coins, s.level, s.last_fed_at, s.name),
-        None => (0, 1, 0, "Purrgotchi".to_string()),
-    };
+    let st = state::load().unwrap_or_else(|| {
+        let fresh = crate::hatch::generate(&crate::hatch::HatchOpts::default());
+        let _ = state::save_atomic(&fresh);
+        fresh
+    });
+    let (coins, level, last_fed_at, kitten_name) =
+        (st.coins, st.level, st.last_fed_at, st.name.clone());
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -8,7 +8,11 @@ pub fn feed() {
 }
 
 fn feed_inner() -> Option<()> {
-    let mut s = state::load_or_base();
+    let mut s = state::load().unwrap_or_else(|| {
+        let fresh = crate::hatch::generate(&crate::hatch::HatchOpts::default());
+        let _ = state::save_atomic(&fresh);
+        fresh
+    });
     s.total_tool_calls = s.total_tool_calls.saturating_add(1);
     s.coins = s.coins.saturating_add(1);
     s.last_fed_at = state::now_secs();
@@ -26,7 +30,11 @@ pub fn rename(new_name: &str) -> i32 {
         eprintln!("rename: name cannot be empty");
         return 1;
     }
-    let mut s = state::load_or_base();
+    let mut s = state::load().unwrap_or_else(|| {
+        let fresh = crate::hatch::generate(&crate::hatch::HatchOpts::default());
+        let _ = state::save_atomic(&fresh);
+        fresh
+    });
     s.name = new_name.to_string();
     match state::save_atomic(&s) {
         Ok(()) => {
