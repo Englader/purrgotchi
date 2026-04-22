@@ -28,3 +28,6 @@ node_modules/
 # Claude Code per-machine settings
 .claude/
 
+# Git worktrees (isolated feature workspaces)
+.worktrees/
+
