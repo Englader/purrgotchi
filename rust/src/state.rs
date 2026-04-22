@@ -53,11 +53,15 @@ pub fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn load() -> Option<State> {
-    let bytes = fs::read(paths::state_file()).ok()?;
-    let s: State = serde_json::from_slice(&bytes).ok()?;
+fn parse_state(bytes: &[u8]) -> Option<State> {
+    let s: State = serde_json::from_slice(bytes).ok()?;
     if s.version != 2 { return None; }
     Some(s)
+}
+
+pub fn load() -> Option<State> {
+    let bytes = fs::read(paths::state_file()).ok()?;
+    parse_state(&bytes)
 }
 
 pub fn load_or_base() -> State {
@@ -109,9 +113,7 @@ mod tests {
             "level": 1,
             "lifetime_cost_usd": 0.1
         }"#;
-        let result: Option<State> = serde_json::from_str(v1_json).ok()
-            .and_then(|s: State| if s.version == 2 { Some(s) } else { None });
-        assert!(result.is_none());
+        assert!(parse_state(v1_json.as_bytes()).is_none());
     }
 
     #[test]
@@ -131,10 +133,7 @@ mod tests {
             "stats": [42, 80, 10, 55, 30],
             "personality": "A streetwise cat."
         }"#;
-        let result: Option<State> = serde_json::from_str(v2_json).ok()
-            .and_then(|s: State| if s.version == 2 { Some(s) } else { None });
-        assert!(result.is_some());
-        let s = result.unwrap();
+        let s = parse_state(v2_json.as_bytes()).expect("v2 JSON should load");
         assert_eq!(s.breed, "Tabby");
         assert_eq!(s.stats[1], 80);
     }
