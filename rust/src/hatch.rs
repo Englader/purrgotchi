@@ -7,6 +7,14 @@ pub struct HatchOpts {
     pub force_shiny: bool,
 }
 
+impl HatchOpts {
+    /// True if any dev-backdoor flag/env was set. Gates the re-hatch protection
+    /// in `run`: unforced hatches refuse to overwrite an existing kitten.
+    pub fn is_forced(&self) -> bool {
+        self.force_rarity.is_some() || self.force_breed.is_some() || self.force_shiny
+    }
+}
+
 /// Generate a complete State using environment-derived seed.
 pub fn generate(opts: &HatchOpts) -> state::State {
     let now = state::now_secs();
@@ -101,7 +109,22 @@ pub fn load_or_hatch() -> state::State {
 }
 
 /// Called by `purrgotchi hatch` CLI command.
+///
+/// A hatched kitten is permanent: an unforced `hatch` with an existing kitten
+/// refuses and exits 1. Dev backdoors (`--rarity`/`--breed`/`--shiny` flags or
+/// `PURR_FORCE_*` env vars) bypass the check.
 pub fn run(opts: &HatchOpts) {
+    if !opts.is_forced()
+        && let Some(existing) = state::load()
+        && !existing.breed.is_empty()
+    {
+        eprintln!(
+            "You already have a {} ({}). Your kitten is permanent.",
+            existing.breed, existing.rarity
+        );
+        eprintln!("Run 'purrgotchi card' to see them.");
+        std::process::exit(1);
+    }
     let s = generate(opts);
     println!("Hatched: {} {} ({}){}",
         if s.shiny { "✦" } else { "" },
@@ -120,6 +143,14 @@ mod tests {
     fn hatch_with_seed(seed_suffix: u64) -> state::State {
         let seed = identity::fnv1a(&format!("testuser:testhost:{seed_suffix}"));
         generate_from_seed(seed, 0, &HatchOpts::default())
+    }
+
+    #[test]
+    fn is_forced_flags() {
+        assert!(!HatchOpts::default().is_forced());
+        assert!(HatchOpts { force_rarity: Some("rare".into()), ..Default::default() }.is_forced());
+        assert!(HatchOpts { force_breed: Some("Tabby".into()), ..Default::default() }.is_forced());
+        assert!(HatchOpts { force_shiny: true, ..Default::default() }.is_forced());
     }
 
     #[test]

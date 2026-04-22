@@ -12,6 +12,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.1] - 2026-04-22
+
+### Changed
+
+- **Hatched kittens are now permanent**. `purrgotchi hatch` refuses to overwrite an existing kitten and exits with code 1 after printing the existing breed and rarity. This reflects the "whatever you get at first hatch is yours for life" design intent. Dev backdoors (`--rarity`, `--breed`, `--shiny` flags or `PURR_FORCE_RARITY/BREED/SHINY` env vars) bypass the check — supplying any one of them still overwrites the cat, since that's the developer re-roll path.
+
 ## [3.4.0] - 2026-04-22
 
 ### Added
