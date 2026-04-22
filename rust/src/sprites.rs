@@ -17,6 +17,58 @@ const HUNGRY_0: &str = sprite!("hungry_0.txt");
 const SLEEP_0: &str = sprite!("sleep_0.txt");
 const SLEEP_1: &str = sprite!("sleep_1.txt");
 
+// Uncommon tier
+const UNCOMMON_CALM_0:   &str = sprite!("uncommon_calm_0.txt");
+const UNCOMMON_CALM_1:   &str = sprite!("uncommon_calm_1.txt");
+const UNCOMMON_HAPPY_0:  &str = sprite!("uncommon_happy_0.txt");
+const UNCOMMON_HAPPY_1:  &str = sprite!("uncommon_happy_1.txt");
+const UNCOMMON_ALERT_0:  &str = sprite!("uncommon_alert_0.txt");
+const UNCOMMON_ALERT_1:  &str = sprite!("uncommon_alert_1.txt");
+const UNCOMMON_PANIC_0:  &str = sprite!("uncommon_panic_0.txt");
+const UNCOMMON_PANIC_1:  &str = sprite!("uncommon_panic_1.txt");
+const UNCOMMON_HUNGRY_0: &str = sprite!("uncommon_hungry_0.txt");
+const UNCOMMON_SLEEP_0:  &str = sprite!("uncommon_sleep_0.txt");
+const UNCOMMON_SLEEP_1:  &str = sprite!("uncommon_sleep_1.txt");
+
+// Rare tier
+const RARE_CALM_0:   &str = sprite!("rare_calm_0.txt");
+const RARE_CALM_1:   &str = sprite!("rare_calm_1.txt");
+const RARE_HAPPY_0:  &str = sprite!("rare_happy_0.txt");
+const RARE_HAPPY_1:  &str = sprite!("rare_happy_1.txt");
+const RARE_ALERT_0:  &str = sprite!("rare_alert_0.txt");
+const RARE_ALERT_1:  &str = sprite!("rare_alert_1.txt");
+const RARE_PANIC_0:  &str = sprite!("rare_panic_0.txt");
+const RARE_PANIC_1:  &str = sprite!("rare_panic_1.txt");
+const RARE_HUNGRY_0: &str = sprite!("rare_hungry_0.txt");
+const RARE_SLEEP_0:  &str = sprite!("rare_sleep_0.txt");
+const RARE_SLEEP_1:  &str = sprite!("rare_sleep_1.txt");
+
+// Epic tier
+const EPIC_CALM_0:   &str = sprite!("epic_calm_0.txt");
+const EPIC_CALM_1:   &str = sprite!("epic_calm_1.txt");
+const EPIC_HAPPY_0:  &str = sprite!("epic_happy_0.txt");
+const EPIC_HAPPY_1:  &str = sprite!("epic_happy_1.txt");
+const EPIC_ALERT_0:  &str = sprite!("epic_alert_0.txt");
+const EPIC_ALERT_1:  &str = sprite!("epic_alert_1.txt");
+const EPIC_PANIC_0:  &str = sprite!("epic_panic_0.txt");
+const EPIC_PANIC_1:  &str = sprite!("epic_panic_1.txt");
+const EPIC_HUNGRY_0: &str = sprite!("epic_hungry_0.txt");
+const EPIC_SLEEP_0:  &str = sprite!("epic_sleep_0.txt");
+const EPIC_SLEEP_1:  &str = sprite!("epic_sleep_1.txt");
+
+// Legendary tier
+const LEGENDARY_CALM_0:   &str = sprite!("legendary_calm_0.txt");
+const LEGENDARY_CALM_1:   &str = sprite!("legendary_calm_1.txt");
+const LEGENDARY_HAPPY_0:  &str = sprite!("legendary_happy_0.txt");
+const LEGENDARY_HAPPY_1:  &str = sprite!("legendary_happy_1.txt");
+const LEGENDARY_ALERT_0:  &str = sprite!("legendary_alert_0.txt");
+const LEGENDARY_ALERT_1:  &str = sprite!("legendary_alert_1.txt");
+const LEGENDARY_PANIC_0:  &str = sprite!("legendary_panic_0.txt");
+const LEGENDARY_PANIC_1:  &str = sprite!("legendary_panic_1.txt");
+const LEGENDARY_HUNGRY_0: &str = sprite!("legendary_hungry_0.txt");
+const LEGENDARY_SLEEP_0:  &str = sprite!("legendary_sleep_0.txt");
+const LEGENDARY_SLEEP_1:  &str = sprite!("legendary_sleep_1.txt");
+
 fn lookup_common(mood: &str, frame: u8) -> Option<&'static str> {
     match (mood, frame) {
         ("calm", 0) => Some(CALM_0),
@@ -34,15 +86,73 @@ fn lookup_common(mood: &str, frame: u8) -> Option<&'static str> {
     }
 }
 
-// Stubs — Task 7 will replace these with real sprite constants per rarity tier.
-#[allow(dead_code)]
-fn lookup_uncommon(_mood: &str, _frame: u8) -> Option<&'static str> { None }
-#[allow(dead_code)]
-fn lookup_rare(_mood: &str, _frame: u8) -> Option<&'static str> { None }
-#[allow(dead_code)]
-fn lookup_epic(_mood: &str, _frame: u8) -> Option<&'static str> { None }
-#[allow(dead_code)]
-fn lookup_legendary(_mood: &str, _frame: u8) -> Option<&'static str> { None }
+fn lookup_uncommon(mood: &str, frame: u8) -> Option<&'static str> {
+    match (mood, frame) {
+        ("calm",   0) => Some(UNCOMMON_CALM_0),
+        ("calm",   1) => Some(UNCOMMON_CALM_1),
+        ("happy",  0) => Some(UNCOMMON_HAPPY_0),
+        ("happy",  1) => Some(UNCOMMON_HAPPY_1),
+        ("alert",  0) => Some(UNCOMMON_ALERT_0),
+        ("alert",  1) => Some(UNCOMMON_ALERT_1),
+        ("panic",  0) => Some(UNCOMMON_PANIC_0),
+        ("panic",  1) => Some(UNCOMMON_PANIC_1),
+        ("hungry", 0) => Some(UNCOMMON_HUNGRY_0),
+        ("sleep",  0) => Some(UNCOMMON_SLEEP_0),
+        ("sleep",  1) => Some(UNCOMMON_SLEEP_1),
+        _ => None,
+    }
+}
+
+fn lookup_rare(mood: &str, frame: u8) -> Option<&'static str> {
+    match (mood, frame) {
+        ("calm",   0) => Some(RARE_CALM_0),
+        ("calm",   1) => Some(RARE_CALM_1),
+        ("happy",  0) => Some(RARE_HAPPY_0),
+        ("happy",  1) => Some(RARE_HAPPY_1),
+        ("alert",  0) => Some(RARE_ALERT_0),
+        ("alert",  1) => Some(RARE_ALERT_1),
+        ("panic",  0) => Some(RARE_PANIC_0),
+        ("panic",  1) => Some(RARE_PANIC_1),
+        ("hungry", 0) => Some(RARE_HUNGRY_0),
+        ("sleep",  0) => Some(RARE_SLEEP_0),
+        ("sleep",  1) => Some(RARE_SLEEP_1),
+        _ => None,
+    }
+}
+
+fn lookup_epic(mood: &str, frame: u8) -> Option<&'static str> {
+    match (mood, frame) {
+        ("calm",   0) => Some(EPIC_CALM_0),
+        ("calm",   1) => Some(EPIC_CALM_1),
+        ("happy",  0) => Some(EPIC_HAPPY_0),
+        ("happy",  1) => Some(EPIC_HAPPY_1),
+        ("alert",  0) => Some(EPIC_ALERT_0),
+        ("alert",  1) => Some(EPIC_ALERT_1),
+        ("panic",  0) => Some(EPIC_PANIC_0),
+        ("panic",  1) => Some(EPIC_PANIC_1),
+        ("hungry", 0) => Some(EPIC_HUNGRY_0),
+        ("sleep",  0) => Some(EPIC_SLEEP_0),
+        ("sleep",  1) => Some(EPIC_SLEEP_1),
+        _ => None,
+    }
+}
+
+fn lookup_legendary(mood: &str, frame: u8) -> Option<&'static str> {
+    match (mood, frame) {
+        ("calm",   0) => Some(LEGENDARY_CALM_0),
+        ("calm",   1) => Some(LEGENDARY_CALM_1),
+        ("happy",  0) => Some(LEGENDARY_HAPPY_0),
+        ("happy",  1) => Some(LEGENDARY_HAPPY_1),
+        ("alert",  0) => Some(LEGENDARY_ALERT_0),
+        ("alert",  1) => Some(LEGENDARY_ALERT_1),
+        ("panic",  0) => Some(LEGENDARY_PANIC_0),
+        ("panic",  1) => Some(LEGENDARY_PANIC_1),
+        ("hungry", 0) => Some(LEGENDARY_HUNGRY_0),
+        ("sleep",  0) => Some(LEGENDARY_SLEEP_0),
+        ("sleep",  1) => Some(LEGENDARY_SLEEP_1),
+        _ => None,
+    }
+}
 
 fn lookup_rarity(rarity: &str, mood: &str, frame: u8) -> Option<&'static str> {
     match rarity {
