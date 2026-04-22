@@ -16,7 +16,6 @@ use crate::render::{
 };
 use crate::speech::compute_speech;
 use crate::sprites::get_sprite_lines;
-use crate::state;
 
 const W1: usize = 28;
 const W2: usize = 30;
@@ -53,11 +52,7 @@ pub fn run() {
     };
     let cwd = normalize_windows_path(&cwd_raw);
 
-    let st = state::load().unwrap_or_else(|| {
-        let fresh = crate::hatch::generate(&crate::hatch::HatchOpts::default());
-        let _ = state::save_atomic(&fresh);
-        fresh
-    });
+    let st = crate::hatch::load_or_hatch();
     let (coins, level, last_fed_at, kitten_name) =
         (st.coins, st.level, st.last_fed_at, st.name.clone());
 

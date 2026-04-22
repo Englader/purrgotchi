@@ -1,7 +1,3 @@
-// Temporary: consumed by main.rs hatch arm (Task 4) and card.rs (Task 5).
-// Remove this allow once those modules land.
-#![allow(dead_code)]
-
 use crate::{identity, state};
 
 #[derive(Default)]
@@ -90,6 +86,18 @@ pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State
         personality,
         ..state::State::base(now)
     }
+}
+
+/// Load existing state, or auto-hatch a fresh kitten and persist it.
+///
+/// Used by statusline and hook entry points so a missing/incompatible
+/// state.json transparently becomes a fresh v2 hatch.
+pub fn load_or_hatch() -> state::State {
+    state::load().unwrap_or_else(|| {
+        let fresh = generate(&HatchOpts::default());
+        let _ = state::save_atomic(&fresh);
+        fresh
+    })
 }
 
 /// Called by `purrgotchi hatch` CLI command.

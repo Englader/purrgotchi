@@ -47,6 +47,13 @@ fn main() {
                 .and_then(|i| args.get(i + 1))
                 .map(|s| s.to_string());
             let force_shiny = args.iter().any(|a| a == "--shiny");
+            if let Some(r) = &force_rarity {
+                const VALID: [&str; 5] = ["common", "uncommon", "rare", "epic", "legendary"];
+                if !VALID.contains(&r.as_str()) {
+                    eprintln!("hatch: unknown rarity '{r}'. Valid: common, uncommon, rare, epic, legendary");
+                    process::exit(1);
+                }
+            }
             let opts = hatch::HatchOpts { force_rarity, force_breed, force_shiny };
             hatch::run(&opts);
             process::exit(0);
