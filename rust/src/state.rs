@@ -62,6 +62,14 @@ impl State {
     }
 }
 
+pub fn life_stage(level: u64) -> &'static str {
+    match level {
+        1..=9 => "kitten",
+        10..=49 => "young",
+        _ => "adult",
+    }
+}
+
 pub fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -148,6 +156,24 @@ mod tests {
         let s = parse_state(v2_json.as_bytes()).expect("v2 JSON should load");
         assert_eq!(s.breed, "Tabby");
         assert_eq!(s.stats[1], 80);
+    }
+
+    #[test]
+    fn life_stage_kitten_boundaries() {
+        assert_eq!(life_stage(1), "kitten");
+        assert_eq!(life_stage(9), "kitten");
+    }
+
+    #[test]
+    fn life_stage_young_boundaries() {
+        assert_eq!(life_stage(10), "young");
+        assert_eq!(life_stage(49), "young");
+    }
+
+    #[test]
+    fn life_stage_adult_boundaries() {
+        assert_eq!(life_stage(50), "adult");
+        assert_eq!(life_stage(9_999), "adult");
     }
 
     #[test]
