@@ -15,8 +15,9 @@ use crate::render::{
     anchor_col, close_row, format_tokens, human_duration, human_elapsed, pad_col,
     pad_sprite, progress_bar, short_cwd, time_until_reset,
 };
-use crate::speech::compute_speech;
-use crate::sprites::get_sprite_lines;
+use crate::speech::{compute_celebration_speech, compute_speech};
+use crate::sprites::{get_celebration_sprite, get_sprite_lines};
+use crate::state::{self, CelebrationKind};
 
 const W1: usize = 28;
 const W2: usize = 30;
@@ -53,9 +54,10 @@ pub fn run() {
     };
     let cwd = normalize_windows_path(&cwd_raw);
 
-    let st = crate::hatch::load_or_hatch();
+    let mut st = crate::hatch::load_or_hatch();
     let (coins, level, last_fed_at, kitten_name, rarity, shiny) =
         (st.coins, st.level, st.last_fed_at, st.name.clone(), st.rarity.clone(), st.shiny);
+    let celebration_kind = st.celebration_kind;
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -73,7 +75,11 @@ pub fn run() {
 
     let reset_5h_str = time_until_reset(payload.rate_limits.five_hour.resets_at, now);
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
-    let speech = compute_speech(mood, now);
+    let speech = if celebration_kind != CelebrationKind::None {
+        compute_celebration_speech(celebration_kind, now)
+    } else {
+        compute_speech(mood, now)
+    };
 
     let git_branch = read_git_branch(&cwd);
 
@@ -105,8 +111,12 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
-    let stage = crate::state::life_stage(level);
-    let sprite_lines = get_sprite_lines(stage, &rarity, mood, frame);
+    let sprite_lines = if celebration_kind != CelebrationKind::None {
+        get_celebration_sprite(celebration_kind, frame)
+    } else {
+        let stage = state::life_stage(level);
+        get_sprite_lines(stage, &rarity, mood, frame)
+    };
     let k_color: String = match mood {
         "panic" => C_RED.to_string(),
         "alert" => C_YELLOW.to_string(),
@@ -278,6 +288,16 @@ pub fn run() {
     }
 
     let _ = out.write_all(buf.as_bytes());
+
+    // Celebration counter: decrement per render, clear kind when done.
+    // Writes state once per active-celebration render (3-6 writes total per event).
+    if st.levelup_renders_remaining > 0 {
+        st.levelup_renders_remaining -= 1;
+        if st.levelup_renders_remaining == 0 {
+            st.celebration_kind = CelebrationKind::None;
+        }
+        let _ = state::save_atomic(&st);
+    }
 
     if debug::enabled() {
         let elapsed_us = SystemTime::now()
