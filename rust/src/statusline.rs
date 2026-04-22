@@ -311,6 +311,39 @@ fn read_git_branch(cwd: &str) -> String {
     }
 }
 
+#[cfg(windows)]
+fn local_hour() -> u32 {
+    #[repr(C)]
+    struct SYSTEMTIME {
+        year: u16, month: u16, dow: u16, day: u16,
+        hour: u16, minute: u16, second: u16, ms: u16,
+    }
+    unsafe extern "system" {
+        fn GetLocalTime(lp: *mut SYSTEMTIME);
+    }
+    let mut st: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    unsafe { GetLocalTime(&mut st); }
+    st.hour as u32
+}
+
+#[cfg(not(windows))]
+fn local_hour() -> u32 {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    ((secs / 3600 + 1) % 24) as u32
+}
+
+fn peak_label(hour: u32) -> (String, String) {
+    let (label, range) = peak_period(hour);
+    let plain = format!("╡ {label} {range} ╞");
+    let ansi = format!(
+        "{C_PINK}╡{C_RESET} {C_CYAN}{label}{C_RESET} {C_YELLOW}{range}{C_RESET} {C_PINK}╞{C_RESET}"
+    );
+    (plain, ansi)
+}
+
 fn peak_period(hour: u32) -> (&'static str, &'static str) {
     if hour >= 14 && hour <= 20 {
         ("PEAK", "2PM-8PM")
@@ -336,5 +369,21 @@ mod tests {
         assert_eq!(peak_period(13), ("OFF PEAK", "9PM-3PM"));
         assert_eq!(peak_period(21), ("OFF PEAK", "9PM-3PM"));
         assert_eq!(peak_period(23), ("OFF PEAK", "9PM-3PM"));
+    }
+
+    #[test]
+    fn test_peak_label_plain_content() {
+        let (plain, _) = peak_label(17);
+        assert_eq!(plain, "╡ PEAK 2PM-8PM ╞");
+        let (plain, _) = peak_label(8);
+        assert_eq!(plain, "╡ OFF PEAK 9PM-3PM ╞");
+    }
+
+    #[test]
+    fn test_peak_label_plain_len() {
+        let (plain, _) = peak_label(17);
+        assert_eq!(plain.chars().count(), 16);
+        let (plain, _) = peak_label(8);
+        assert_eq!(plain.chars().count(), 20);
     }
 }
