@@ -30,7 +30,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Breaking
 
-- **v1 state is wiped on upgrade**. `state.json` with `"version": 1` (or missing version field) is treated as missing; the statusline or feed hook auto-hatches a fresh v2 state on the next run. No partial migration.
+- **v1 state is wiped on upgrade**. `state.json` with `"version": 1` (or missing version field) is treated as missing; the statusline or feed hook auto-hatches a fresh v2 state on the next run. Existing `coins`, `level`, `total_tool_calls`, and `last_fed_at` progress is lost — the new hatch starts at level 1, 0 coins, 0 tool calls. No partial migration.
 
 ## [3.3.0] - 2026-04-21
 
