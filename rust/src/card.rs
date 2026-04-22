@@ -213,6 +213,8 @@ mod tests {
             shiny: true,
             stats: [85, 42, 8, 61, 93],
             personality: "Born from the space between stars, Shadowmere sees what others miss.".to_string(),
+            levelup_renders_remaining: 0,
+            celebration_kind: state::CelebrationKind::None,
         }
     }
 

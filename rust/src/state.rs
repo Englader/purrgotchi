@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths;
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CelebrationKind {
+    #[default]
+    None,
+    LevelUp,
+    EvolvingYoung,
+    EvolvingAdult,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
     pub version: u32,
@@ -24,6 +33,11 @@ pub struct State {
     pub shiny: bool,
     pub stats: [u8; 5],       // [CURIOSITY, MISCHIEF, LAZINESS, AFFECTION, WISDOM]
     pub personality: String,  // blurb with {name} already substituted
+    // celebration overlay (v3.4.3, additive — serde(default) for back-compat)
+    #[serde(default)]
+    pub levelup_renders_remaining: u8,
+    #[serde(default)]
+    pub celebration_kind: CelebrationKind,
 }
 
 impl State {
@@ -42,6 +56,8 @@ impl State {
             shiny: false,
             stats: [0u8; 5],
             personality: String::new(),
+            levelup_renders_remaining: 0,
+            celebration_kind: CelebrationKind::None,
         }
     }
 }
@@ -132,5 +148,29 @@ mod tests {
         let s = parse_state(v2_json.as_bytes()).expect("v2 JSON should load");
         assert_eq!(s.breed, "Tabby");
         assert_eq!(s.stats[1], 80);
+    }
+
+    #[test]
+    fn v2_state_without_celebration_fields_defaults_clean() {
+        // A v3.4.2-shaped state.json has no levelup_renders_remaining or
+        // celebration_kind fields. serde(default) must make them zero/None.
+        let json = r#"{
+            "version": 2,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1,
+            "breed": "Tabby",
+            "rarity": "common",
+            "shiny": false,
+            "stats": [42, 80, 10, 55, 30],
+            "personality": "A streetwise cat."
+        }"#;
+        let s = parse_state(json.as_bytes()).expect("v3.4.2 shape should load");
+        assert_eq!(s.levelup_renders_remaining, 0);
+        assert_eq!(s.celebration_kind, CelebrationKind::None);
     }
 }
