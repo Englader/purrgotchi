@@ -105,7 +105,8 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
-    let sprite_lines = get_sprite_lines(&rarity, mood, frame);
+    let stage = crate::state::life_stage(level);
+    let sprite_lines = get_sprite_lines(stage, &rarity, mood, frame);
     let k_color: String = match mood {
         "panic" => C_RED.to_string(),
         "alert" => C_YELLOW.to_string(),
