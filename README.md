@@ -42,6 +42,33 @@ Manual wiring for reference:
 - **Source** (this repo): Rust crate in `rust/`, sprites in `sprites/` (embedded via `include_str!`) — versioned
 - **State** (`~/.claude/purrgotchi/`): `state.json` (level, coins, feed time) and `turn-start-cost.txt` (per-turn cost anchor) — per-machine, never versioned
 
+## Your Kitten
+
+On first run, `purrgotchi` automatically hatches a kitten deterministically from your machine identity (username + hostname + birth time). The same machine always produces the same kitten unless you explicitly re-hatch.
+
+Run `purrgotchi card` to see the full identity card — breed, rarity, stats, and personality blurb.
+
+### Rarity Tiers
+
+| Rarity | Stars | Distribution |
+|---|---|---|
+| Common | ★☆☆☆☆ | 60% |
+| Uncommon | ★★☆☆☆ | 25% |
+| Rare | ★★★☆☆ | 10% |
+| Epic | ★★★★☆ | 4% |
+| Legendary | ★★★★★ | 1% |
+| + Shiny | ✦ prefix | +1% any tier |
+
+### Dev Backdoors
+
+Force a specific identity at hatch:
+
+```bash
+purrgotchi hatch --rarity legendary --breed "Void Cat" --shiny
+# or via env vars:
+PURR_FORCE_RARITY=epic PURR_FORCE_BREED="Sphinx" purrgotchi hatch
+```
+
 ## Subcommands (v3.0+)
 
 | Command | Purpose |
@@ -50,6 +77,8 @@ Manual wiring for reference:
 | `purrgotchi feed` | `PostToolUse` hook — bumps tool-call count, coins, level; updates `last_fed_at` |
 | `purrgotchi turn` | `UserPromptSubmit` hook — clears the per-turn cost anchor |
 | `purrgotchi rename <name>` | Renames the kitten in `state.json` |
+| `purrgotchi hatch` | Re-rolls the kitten's breed, rarity, and stats |
+| `purrgotchi card` | Prints the full identity card with stats and personality |
 | `purrgotchi --version` | Prints the crate version |
 
 ## Customize

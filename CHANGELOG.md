@@ -12,6 +12,26 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.0] - 2026-04-22
+
+### Added
+
+- **`purrgotchi hatch` command**. Deterministically rolls breed, rarity, and five feline stats from machine identity (username + hostname + birth time) via FNV-1a hash seeding an inline LCG RNG. Same machine → same kitten. Supports `--rarity <tier>`, `--breed "<Name>"`, `--shiny` flags and `PURR_FORCE_RARITY/BREED/SHINY` env vars for scripted testing.
+- **`purrgotchi card` command**. Prints full identity card with box-drawing borders: breed name, rarity stars (+ shiny glyph), birth date, tier-specific ASCII sprite, five stat bars, and personality blurb.
+- **16 cat breeds across 5 rarity tiers**. Common 60% (Tabby, Tuxedo, Calico, Ginger, Grey Shorthair), Uncommon 25% (Siamese, Russian Blue, Bengal), Rare 10% (Maine Coon, Norwegian Forest, Turkish Van), Epic 4% (Sphinx, Scottish Fold), Legendary 1% (Void Cat, Snow Leopard Cat, Chimera). Independent 1% shiny modifier on any tier.
+- **Five feline stats** (CURIOSITY, MISCHIEF, LAZINESS, AFFECTION, WISDOM) with peak/dump/middle distribution. Rarity-based floors (5/15/25/35/50) apply to the middle three stats only — every kitten has a dump-stat vulnerability.
+- **320 personality blurbs**. One unique 1-2 sentence blurb per (breed × peak_stat × dump_slot) combination. Assembled once at hatch, persisted in state.
+- **RARITY column in statusline H6**. The previously empty W3 column now renders `RARITY: ★★★★★` (with `✦` prefix for shiny cats).
+- **Tier-shared sprite sets** for uncommon, rare, epic, and legendary rarities (44 new sprite files). Breed-specific sprites deferred to Phase 2.
+
+### Changed
+
+- **State schema bumped to v2**. New fields: `breed`, `rarity`, `shiny`, `stats: [u8; 5]`, `personality`.
+
+### Breaking
+
+- **v1 state is wiped on upgrade**. `state.json` with `"version": 1` (or missing version field) is treated as missing; the statusline or feed hook auto-hatches a fresh v2 state on the next run. Existing `coins`, `level`, `total_tool_calls`, and `last_fed_at` progress is lost — the new hatch starts at level 1, 0 coins, 0 tool calls. No partial migration.
+
 ## [3.3.0] - 2026-04-21
 
 ### Added
