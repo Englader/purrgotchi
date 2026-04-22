@@ -12,6 +12,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.3] - 2026-04-22
+
+### Added
+
+- **Life-stage sprite evolution**. Kittens now grow through three life stages driven by `level`: `kitten` (levels 1–9), `young cat` (10–49), and `adult cat` (50+). Every rarity tier has its own sprite set for each stage — 165 sprites in total, of which 114 are new for this release. The existing v3.4.2 art becomes the young-cat stage; kittens are smaller and rounder, adult cats are larger and more dignified.
+- **Level-up celebration overlay**. When `level` increments, the statusline overrides sprite and speech with a celebratory `levelup_*` sprite + phrase from the new `LEVELUP` speech pool for the next 3 renders. Stage transitions (level 9→10 and 49→50) use a distinct `evolving_*` sprite and a stage-specific phrase pool (`EVOLVING_YOUNG` / `EVOLVING_ADULT`) for 6 renders — a bigger moment for the bigger milestone.
+- **`Stage: <label>` row on the card**. `purrgotchi card` now shows the life stage alongside breed and rarity.
+
+### Changed
+
+- **Sprite module refactored** to a flat `(stage, rarity, mood, frame)` table with a single lookup function, replacing the 5 per-rarity match functions. Fallback chain still defends against missing cells; ultimate fallback is `young_common_calm_0`.
+- **Existing 55 sprite files renamed** with a `young_` prefix (and `common_` infix for the 11 previously-prefixless common-tier files) — e.g., `calm_0.txt` → `young_common_calm_0.txt`. No art changed; just filenames.
+
+### Backwards compatibility
+
+- **No state schema bump**. The two new fields on `State` (`levelup_renders_remaining`, `celebration_kind`) use `#[serde(default)]`, so v3.4.2 `state.json` files deserialize cleanly with zero-valued defaults. No rehatch, no progress loss.
+
 ## [3.4.2] - 2026-04-22
 
 ### Changed

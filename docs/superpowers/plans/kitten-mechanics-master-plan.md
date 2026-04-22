@@ -107,7 +107,8 @@ _Update as items ship._
   - [x] v3.4.1 — hatched kittens permanent unless dev backdoor supplied
 
 - [ ] Phase 2 — Character depth (v3.4.x)
-  - B/C/D items TBD per iteration
+  - [x] B1 + B2 bundle (v3.4.3) — life-stage sprite evolution + level-up celebration
+  - Remaining B/C/D items TBD per iteration
 
 - [ ] Phase 3 — LLM-powered speech (v3.5.0)
   - [ ] L1-L5 as one bundle

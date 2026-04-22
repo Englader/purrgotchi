@@ -1,9 +1,18 @@
 use crate::identity;
+use crate::state::life_stage;
 use crate::state::State;
 
 // Total number of ═ chars between ╔ and ╗ (and the inner content width).
 // With ║ on each side, total line width = CARD_WIDTH + 2 = 44 chars.
 const CARD_WIDTH: usize = 42;
+
+fn stage_label(level: u64) -> &'static str {
+    match life_stage(level) {
+        "kitten" => "kitten",
+        "young"  => "young cat",
+        _        => "adult cat",
+    }
+}
 
 pub fn run() {
     // Deliberately uses `state::load()` rather than `hatch::load_or_hatch()`:
@@ -48,13 +57,21 @@ pub fn render(s: &State) -> String {
         writeln!(out, "║  {:<width$}║", born_row, width = inner_content).unwrap();
     }
 
+    // Stage row — sits between the identity rows and the sprite divider.
+    let stage_row: String = format!("Stage: {}", stage_label(s.level))
+        .chars()
+        .take(inner_content)
+        .collect();
+    writeln!(out, "║  {:<width$}║", stage_row, width = inner_content).unwrap();
+
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
     // Sprite (6 lines, each padded to fit inside the box)
     // Sprite line max width = inner - 2 (two leading spaces + content + trailing pad)
     let sprite_inner = inner - 2;
-    let sprite = get_card_sprite(&s.rarity);
+    let stage = crate::state::life_stage(s.level);
+    let sprite = crate::sprites::get_sprite_lines(stage, &s.rarity, "calm", 0);
     for line in sprite.iter().take(6) {
         writeln!(out, "║  {:<width$}║", line, width = sprite_inner).unwrap();
     }
@@ -148,51 +165,6 @@ fn is_leap(year: u32) -> bool {
     (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
-fn get_card_sprite(rarity: &str) -> Vec<&'static str> {
-    match rarity {
-        "legendary" => vec![
-            " /########\\",
-            "(# O    O #)",
-            " #  ---   #",
-            " ##########",
-            " ##      ##",
-            "_##_    _##_",
-        ],
-        "epic" => vec![
-            "/\\        /\\",
-            "(  .    .  )",
-            " \\  ___  /",
-            "  \\_____/",
-            "   |   |",
-            "  _|___|_",
-        ],
-        "rare" => vec![
-            " _/\\  /\\_",
-            "(  o    o  )",
-            " \\ ----- /",
-            "  \\_____/",
-            "  (     )",
-            " __|___|__",
-        ],
-        "uncommon" => vec![
-            "  /\\  /\\",
-            " ( .    . )",
-            "  \\_---_/",
-            "   |   |",
-            "   |   |",
-            "  _|___|_",
-        ],
-        _ => vec![  // common
-            "  /\\_/\\",
-            " ( o . o )",
-            "  \\  v  /",
-            "  /|   |\\",
-            " (_|   |_)",
-            "",
-        ],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +185,8 @@ mod tests {
             shiny: true,
             stats: [85, 42, 8, 61, 93],
             personality: "Born from the space between stars, Shadowmere sees what others miss.".to_string(),
+            levelup_renders_remaining: 0,
+            celebration_kind: state::CelebrationKind::None,
         }
     }
 
@@ -278,6 +252,35 @@ mod tests {
             assert_eq!(len, expected,
                 "line {i} width {len} != {expected}: {:?}", line);
         }
+    }
+
+    fn make_state(level: u64) -> State {
+        let mut s = State::base(1000);
+        s.name = "Luna".to_string();
+        s.breed = "Tabby".to_string();
+        s.rarity = "common".to_string();
+        s.level = level;
+        s.stats = [50, 50, 50, 50, 50];
+        s.personality = "A chill cat.".to_string();
+        s
+    }
+
+    #[test]
+    fn card_shows_kitten_stage_at_low_level() {
+        let out = render(&make_state(3));
+        assert!(out.contains("Stage: kitten"), "expected kitten stage in card, got:\n{out}");
+    }
+
+    #[test]
+    fn card_shows_young_cat_stage_at_middle_level() {
+        let out = render(&make_state(25));
+        assert!(out.contains("Stage: young cat"), "expected young cat stage in card, got:\n{out}");
+    }
+
+    #[test]
+    fn card_shows_adult_cat_stage_at_high_level() {
+        let out = render(&make_state(100));
+        assert!(out.contains("Stage: adult cat"), "expected adult cat stage in card, got:\n{out}");
     }
 
     #[test]
