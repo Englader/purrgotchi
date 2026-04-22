@@ -21,12 +21,15 @@ pub fn generate(opts: &HatchOpts) -> state::State {
         .or_else(|_| std::env::var("HOSTNAME"))
         .unwrap_or_else(|_| "host".to_string());
     let seed = identity::fnv1a(&format!("{username}:{hostname}:{now}"));
-    generate_from_seed(seed, opts)
+    generate_from_seed(seed, now, opts)
 }
 
-/// Pure function: deterministic from seed. Used by tests and generate().
-pub fn generate_from_seed(seed: u64, opts: &HatchOpts) -> state::State {
-    let now = state::now_secs();
+/// Pure function: deterministic from `seed`. Used by tests and [`generate`].
+///
+/// **Determinism contract:** The order of `rng.range()` calls below is part of
+/// the public contract. Adding, removing, or reordering calls silently changes
+/// which kitten any given seed produces. Treat this as a breaking change.
+pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State {
     let mut rng = identity::Lcg::new(seed);
 
     // Roll rarity
@@ -38,7 +41,7 @@ pub fn generate_from_seed(seed: u64, opts: &HatchOpts) -> state::State {
             60..=84 => "uncommon",
             85..=94 => "rare",
             95..=98 => "epic",
-            _       => "legendary",
+            _       => "legendary",   // 99 — arms above cover 0..=98, so this is the only remaining value
         }.to_string()
     };
 
@@ -47,7 +50,7 @@ pub fn generate_from_seed(seed: u64, opts: &HatchOpts) -> state::State {
         b.clone()
     } else {
         let breeds = identity::breeds_for_rarity(&rarity);
-        let idx = rng.range(0, (breeds.len() - 1) as u64) as usize;
+        let idx = rng.range(0, (breeds.len() as u64) - 1) as usize;
         breeds[idx].to_string()
     };
 
@@ -58,6 +61,8 @@ pub fn generate_from_seed(seed: u64, opts: &HatchOpts) -> state::State {
     let floor = identity::stat_floor(&rarity) as u64;
     let peak_idx = rng.range(0, 4) as usize;
     let dump_raw = rng.range(0, 3) as usize;
+    // Map the 0..=3 draw onto the 4 non-peak stat slots:
+    // if dump_raw would collide with peak_idx, bump it past.
     let dump_idx = if dump_raw >= peak_idx { dump_raw + 1 } else { dump_raw };
 
     let mut stats = [0u8; 5];
@@ -78,19 +83,12 @@ pub fn generate_from_seed(seed: u64, opts: &HatchOpts) -> state::State {
     let personality = blurb.replace("{name}", "Purrgotchi");
 
     state::State {
-        version: 2,
-        name: "Purrgotchi".to_string(),
-        birth_time: now,
-        last_fed_at: now,
-        total_tool_calls: 0,
-        coins: 0,
-        level: 1,
-        lifetime_cost_usd: 0.0,
         breed,
         rarity,
         shiny,
         stats,
         personality,
+        ..state::State::base(now)
     }
 }
 
@@ -113,7 +111,7 @@ mod tests {
 
     fn hatch_with_seed(seed_suffix: u64) -> state::State {
         let seed = identity::fnv1a(&format!("testuser:testhost:{seed_suffix}"));
-        generate_from_seed(seed, &HatchOpts::default())
+        generate_from_seed(seed, 0, &HatchOpts::default())
     }
 
     #[test]
@@ -174,6 +172,7 @@ mod tests {
             checked += 1;
             if checked >= 5 { break; }
         }
+        assert!(checked > 0, "no legendary found in 200 seeds — check rarity distribution");
     }
 
     #[test]
@@ -184,7 +183,7 @@ mod tests {
             force_shiny: false,
         };
         let seed = identity::fnv1a("u:h:1");
-        let s = generate_from_seed(seed, &opts);
+        let s = generate_from_seed(seed, 0, &opts);
         assert_eq!(s.rarity, "legendary");
     }
 
@@ -196,7 +195,7 @@ mod tests {
             force_shiny: true,
         };
         let seed = identity::fnv1a("u:h:1");
-        let s = generate_from_seed(seed, &opts);
+        let s = generate_from_seed(seed, 0, &opts);
         assert_eq!(s.breed, "Void Cat");
         assert!(s.shiny);
     }
@@ -206,6 +205,8 @@ mod tests {
         for seed in 0..20u64 {
             let s = hatch_with_seed(seed);
             assert!(!s.personality.is_empty());
+            assert!(!s.personality.contains("{name}"),
+                "name substitution failed in blurb: {}", s.personality);
         }
     }
 }
