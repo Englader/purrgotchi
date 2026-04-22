@@ -18,12 +18,18 @@ pub struct State {
     pub coins: u64,
     pub level: u64,
     pub lifetime_cost_usd: f64,
+    // identity (v2)
+    pub breed: String,
+    pub rarity: String,
+    pub shiny: bool,
+    pub stats: [u8; 5],       // [CURIOSITY, MISCHIEF, LAZINESS, AFFECTION, WISDOM]
+    pub personality: String,  // blurb with {name} already substituted
 }
 
 impl State {
-    pub fn fresh(now: u64) -> Self {
+    pub fn base(now: u64) -> Self {
         State {
-            version: 1,
+            version: 2,
             name: "Purrgotchi".to_string(),
             birth_time: now,
             last_fed_at: now,
@@ -31,6 +37,11 @@ impl State {
             coins: 0,
             level: 1,
             lifetime_cost_usd: 0.0,
+            breed: String::new(),
+            rarity: String::new(),
+            shiny: false,
+            stats: [0u8; 5],
+            personality: String::new(),
         }
     }
 }
@@ -44,11 +55,13 @@ pub fn now_secs() -> u64 {
 
 pub fn load() -> Option<State> {
     let bytes = fs::read(paths::state_file()).ok()?;
-    serde_json::from_slice(&bytes).ok()
+    let s: State = serde_json::from_slice(&bytes).ok()?;
+    if s.version != 2 { return None; }
+    Some(s)
 }
 
-pub fn load_or_fresh() -> State {
-    load().unwrap_or_else(|| State::fresh(now_secs()))
+pub fn load_or_base() -> State {
+    load().unwrap_or_else(|| State::base(now_secs()))
 }
 
 pub fn save_atomic(state: &State) -> io::Result<()> {
@@ -78,4 +91,51 @@ fn write_json(path: &Path, state: &State) -> io::Result<()> {
     f.write_all(json.as_bytes())?;
     f.write_all(b"\n")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v1_state_returns_none() {
+        let v1_json = r#"{
+            "version": 1,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1
+        }"#;
+        let result: Option<State> = serde_json::from_str(v1_json).ok()
+            .and_then(|s: State| if s.version == 2 { Some(s) } else { None });
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn v2_state_loads_correctly() {
+        let v2_json = r#"{
+            "version": 2,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1,
+            "breed": "Tabby",
+            "rarity": "common",
+            "shiny": false,
+            "stats": [42, 80, 10, 55, 30],
+            "personality": "A streetwise cat."
+        }"#;
+        let result: Option<State> = serde_json::from_str(v2_json).ok()
+            .and_then(|s: State| if s.version == 2 { Some(s) } else { None });
+        assert!(result.is_some());
+        let s = result.unwrap();
+        assert_eq!(s.breed, "Tabby");
+        assert_eq!(s.stats[1], 80);
+    }
 }
