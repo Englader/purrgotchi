@@ -187,7 +187,7 @@ static SPRITES: &[SpriteRow] = &[
 
 // Celebration sprites — tier-agnostic. Both EvolvingYoung and EvolvingAdult
 // use the same `evolving_*` art; the distinction lives in the speech pool.
-static CELEBRATIONS: &[(CelebrationKind, u8, &'static str)] = &[
+static CELEBRATIONS: &[(CelebrationKind, u8, &str)] = &[
     (CelebrationKind::LevelUp,        0, sprite!("levelup_0.txt")),
     (CelebrationKind::LevelUp,        1, sprite!("levelup_1.txt")),
     (CelebrationKind::EvolvingYoung,  0, sprite!("evolving_0.txt")),
