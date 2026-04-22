@@ -17,7 +17,7 @@ const HUNGRY_0: &str = sprite!("hungry_0.txt");
 const SLEEP_0: &str = sprite!("sleep_0.txt");
 const SLEEP_1: &str = sprite!("sleep_1.txt");
 
-fn lookup(mood: &str, frame: u8) -> Option<&'static str> {
+fn lookup_common(mood: &str, frame: u8) -> Option<&'static str> {
     match (mood, frame) {
         ("calm", 0) => Some(CALM_0),
         ("calm", 1) => Some(CALM_1),
@@ -34,10 +34,31 @@ fn lookup(mood: &str, frame: u8) -> Option<&'static str> {
     }
 }
 
-pub fn get_sprite_lines(mood: &str, frame: u8) -> Vec<String> {
-    let raw = lookup(mood, frame)
-        .or_else(|| lookup(mood, 0))
-        .or_else(|| lookup("calm", 0))
+// Stubs — Task 7 will replace these with real sprite constants per rarity tier.
+#[allow(dead_code)]
+fn lookup_uncommon(_mood: &str, _frame: u8) -> Option<&'static str> { None }
+#[allow(dead_code)]
+fn lookup_rare(_mood: &str, _frame: u8) -> Option<&'static str> { None }
+#[allow(dead_code)]
+fn lookup_epic(_mood: &str, _frame: u8) -> Option<&'static str> { None }
+#[allow(dead_code)]
+fn lookup_legendary(_mood: &str, _frame: u8) -> Option<&'static str> { None }
+
+fn lookup_rarity(rarity: &str, mood: &str, frame: u8) -> Option<&'static str> {
+    match rarity {
+        "uncommon" => lookup_uncommon(mood, frame),
+        "rare" => lookup_rare(mood, frame),
+        "epic" => lookup_epic(mood, frame),
+        "legendary" => lookup_legendary(mood, frame),
+        _ => lookup_common(mood, frame),
+    }
+}
+
+pub fn get_sprite_lines(rarity: &str, mood: &str, frame: u8) -> Vec<String> {
+    let raw = lookup_rarity(rarity, mood, frame)
+        .or_else(|| lookup_rarity(rarity, mood, 0))      // same rarity, frame 0
+        .or_else(|| lookup_common(mood, frame))           // fall back to common tier
+        .or_else(|| lookup_common("calm", 0))             // ultimate fallback
         .unwrap_or("");
 
     let mut lines: Vec<String> = raw

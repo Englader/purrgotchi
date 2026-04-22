@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::colors::{
     C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
 };
+use crate::identity;
 use crate::cost::compute_turn_cost;
 use crate::debug;
 use crate::mood::compute_mood;
@@ -53,8 +54,8 @@ pub fn run() {
     let cwd = normalize_windows_path(&cwd_raw);
 
     let st = crate::hatch::load_or_hatch();
-    let (coins, level, last_fed_at, kitten_name) =
-        (st.coins, st.level, st.last_fed_at, st.name.clone());
+    let (coins, level, last_fed_at, kitten_name, rarity, shiny) =
+        (st.coins, st.level, st.last_fed_at, st.name.clone(), st.rarity.clone(), st.shiny);
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -104,7 +105,7 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
-    let sprite_lines = get_sprite_lines(mood, frame);
+    let sprite_lines = get_sprite_lines(&rarity, mood, frame);
     let k_color: String = match mood {
         "panic" => C_RED.to_string(),
         "alert" => C_YELLOW.to_string(),
@@ -239,7 +240,16 @@ pub fn run() {
         &format!("{C_DIM}FED:{C_RESET} {fed_ago}"),
         W2,
     );
-    let (c3p, c3a) = pad_col("", "", W3);
+    let (c3p, c3a) = if rarity.is_empty() {
+        pad_col("", "", W3)
+    } else {
+        let stars = identity::rarity_stars(&rarity, shiny);
+        pad_col(
+            &format!("RARITY: {stars}"),
+            &format!("{C_DIM}RARITY:{C_RESET} {C_YELLOW}{stars}{C_RESET}"),
+            W3,
+        )
+    };
     let p6 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
     let a6 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
     let h6 = close_row(&p6, &a6, BOX_WIDTH);
