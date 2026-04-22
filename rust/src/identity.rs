@@ -1,3 +1,15 @@
+//! Static identity data and pure lookup functions for Purrgotchi kittens.
+//!
+//! This module contains breed tables, stat constants, rarity-indexed star strings,
+//! a deterministic FNV-1a hash, a deterministic LCG RNG, and the 320-entry BLURBS
+//! lookup table indexed as `[breed_idx][peak_stat][dump_slot]`.
+//!
+//! No I/O, no mutable state — all pure. Consumed by `hatch.rs` and `card.rs`.
+
+// Temporary: consumed by hatch.rs (Task 3), card.rs (Task 5), and statusline.rs (Task 6).
+// Remove this allow once all three modules land.
+#![allow(dead_code)]
+
 // Stat indices
 pub const CURIOSITY: usize = 0;
 pub const MISCHIEF: usize = 1;
@@ -36,18 +48,27 @@ pub fn breeds_for_rarity(rarity: &str) -> &'static [&'static str] {
 }
 
 pub fn breed_global_idx(breed: &str) -> usize {
-    let all: [&str; 16] = [
-        "Tabby", "Tuxedo", "Calico", "Ginger", "Grey Shorthair",
-        "Siamese", "Russian Blue", "Bengal",
-        "Maine Coon", "Norwegian Forest", "Turkish Van",
-        "Sphinx", "Scottish Fold",
-        "Void Cat", "Snow Leopard Cat", "Chimera",
+    let rarities: [&[&str]; 5] = [
+        &BREEDS_COMMON,
+        &BREEDS_UNCOMMON,
+        &BREEDS_RARE,
+        &BREEDS_EPIC,
+        &BREEDS_LEGENDARY,
     ];
-    all.iter().position(|&b| b == breed).unwrap_or(0)
+    let mut offset = 0;
+    for group in rarities {
+        if let Some(pos) = group.iter().position(|&b| b == breed) {
+            return offset + pos;
+        }
+        offset += group.len();
+    }
+    panic!("breed_global_idx called with unknown breed: {breed}")
 }
 
 /// dump_slot returns the 0..=3 index of `dump` among the non-`peak` stats in ascending order.
 pub fn dump_slot(peak: usize, dump: usize) -> usize {
+    debug_assert_ne!(peak, dump, "peak and dump must differ");
+    debug_assert!(peak < 5 && dump < 5, "stat indices must be 0..5");
     let mut slot = 0;
     for i in 0..5 {
         if i == peak { continue; }
@@ -94,6 +115,7 @@ impl Lcg {
     }
     /// Returns value in [lo, hi] inclusive
     pub fn range(&mut self, lo: u64, hi: u64) -> u64 {
+        debug_assert!(hi >= lo, "Lcg::range requires hi >= lo");
         lo + self.next() % (hi - lo + 1)
     }
 }
@@ -769,5 +791,21 @@ mod tests {
         assert_eq!(rarity_stars("common", false), "★☆☆☆☆");
         assert_eq!(rarity_stars("legendary", false), "★★★★★");
         assert_eq!(rarity_stars("legendary", true), "✦★★★★★");
+    }
+
+    #[test]
+    fn breed_global_idx_known_breeds() {
+        assert_eq!(breed_global_idx("Tabby"), 0);
+        assert_eq!(breed_global_idx("Grey Shorthair"), 4);
+        assert_eq!(breed_global_idx("Siamese"), 5);
+        assert_eq!(breed_global_idx("Sphinx"), 11);
+        assert_eq!(breed_global_idx("Void Cat"), 13);
+        assert_eq!(breed_global_idx("Chimera"), 15);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown breed")]
+    fn breed_global_idx_panics_on_unknown() {
+        breed_global_idx("Mystery Cat");
     }
 }
