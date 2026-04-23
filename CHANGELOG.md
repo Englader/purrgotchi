@@ -15,14 +15,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [3.4.4] — 2026-04-23
 
 ### Added
-- Rarity-driven color for the kitten's name and sprite, in both the statusline HUD (H1 rail + sprite column) and the `purrgotchi card` output. Common → cyan, uncommon → green, rare → purple, epic → gold.
+- Rarity-driven color for the kitten's sprite in both the statusline HUD and the `purrgotchi card` output. Common → cyan, uncommon → green, rare → purple, epic → gold.
+- Rarity-driven color for the kitten's name in the `purrgotchi card` title. The statusline HUD name stays pink to stay consistent with the rail's visual frame.
 - Legendary kittens cycle through six rainbow hues, stepping once per second (`now % 6`).
 - Shiny kittens shimmer: the rarity color is prefixed by `C_BOLD` on even seconds and `C_DIM` on odd seconds. Combines with legendary for a shimmering rainbow.
 - New palette constants in `colors.rs`: `C_PURPLE`, `C_GOLD`, `C_BLUE`, plus a `RAINBOW_HUES` array and a `rarity_color(rarity, shiny, now)` helper.
 
 ### Changed
 - Sprite color is now driven by rarity, not mood. Mood continues to be expressed through the speech-bubble text color (previous palette: red/yellow/green/magenta/dim-cyan/cyan).
-- The statusline H1 rail keeps its pink framing; only the kitten's name segment adopts the rarity color. `title_plain` is unchanged, so rail width math is unaffected.
 - The `card_line_widths_consistent` test now strips ANSI escapes before measuring visible width.
 
 ### Backwards compatibility
