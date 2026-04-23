@@ -140,8 +140,9 @@ pub fn run() {
 
     // H1 — top rail.
     let title_plain = format!("═╡ NETRUNNER // {kitten_name} ╞");
+    let name_color = crate::colors::rarity_color(&rarity, shiny, now);
     let title_ansi = format!(
-        "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
+        "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {name_color}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
     );
     let (peak_plain, peak_ansi) = peak_label(local_hour());
     let title_len = title_plain.chars().count();
