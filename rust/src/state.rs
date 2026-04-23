@@ -45,7 +45,7 @@ pub struct State {
     pub last_pet_at: u64,
 }
 
-fn default_bond() -> u8 { 50 }
+fn default_bond() -> u8 { crate::bond::BOND_START }
 
 impl State {
     pub fn base(now: u64) -> Self {
@@ -65,7 +65,7 @@ impl State {
             personality: String::new(),
             levelup_renders_remaining: 0,
             celebration_kind: CelebrationKind::None,
-            bond: 50,
+            bond: crate::bond::BOND_START,
             last_pet_at: 0,
         }
     }
