@@ -112,11 +112,9 @@ pub fn render(s: &State) -> String {
 
     // Bond row (dynamic stat, visually separated from the 5 identity stats above
     // by its own divider block). Value reflects lazy-decay, not raw state.
-    let now: u64 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let effective = crate::bond::effective_bond(s.bond, s.last_pet_at, now);
+    // Cast the i64 `now` computed above for rarity_color — safe because
+    // SystemTime::now().as_secs() is always non-negative and well below i64::MAX.
+    let effective = crate::bond::effective_bond(s.bond, s.last_pet_at, now as u64);
     let bond_bar = stat_bar(effective);
     let pink = crate::colors::C_PINK;
     let reset = crate::colors::C_RESET;
@@ -124,7 +122,10 @@ pub fn render(s: &State) -> String {
         "  {:<11}{pink}\u{2665}{reset} {bond_bar}  {:>3}",
         "BOND", effective,
     );
-    // Plain width (ANSI-stripped): 2 + 11 + 1 + 1 + 10 + 2 + 3 = 30
+    // `bond_content` embeds ANSI color escapes for the pink heart. The `{:<width$}`
+    // pattern used by the identity stat rows above counts escape bytes as visible chars
+    // and would over-pad this line by dozens of characters. Pad manually against the
+    // ANSI-stripped plain width instead: 2 + 11 + 1 + 1 + 10 + 2 + 3 = 30.
     let plain_bond_len = 2 + 11 + 1 + 1 + 10 + 2 + 3;
     let pad = inner.saturating_sub(plain_bond_len);
     let bond_line = format!("{bond_content}{}", " ".repeat(pad));
@@ -411,13 +412,14 @@ mod tests {
 
     #[test]
     fn card_bond_row_reflects_decay() {
-        // Raw bond=80, petted 2 days ago → effective = 80 - 10 = 70.
+        // Raw bond=80, petted exactly 2 days ago → effective = 80 - 10 = 70.
+        // Both now_secs() and SystemTime::now().as_secs() truncate to whole seconds,
+        // so at most a 1-second delta elapses between them — not enough to shift decay
+        // off of 10 (requires 86400s per extra point). Result is deterministically 70.
         let mut s = test_state();
         s.bond = 80;
         s.last_pet_at = crate::state::now_secs() - 2 * 86_400;
         let output = render(&s);
-        // Value could be 70 exactly or 69/71 depending on sub-second timing.
-        let contains_any = ["70", "69", "71"].iter().any(|v| output.contains(v));
-        assert!(contains_any, "card bond value should reflect decay, got:\n{output}");
+        assert!(output.contains("70"), "card bond value should be 70 after 2-day decay, got:\n{output}");
     }
 }
