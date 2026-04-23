@@ -34,18 +34,35 @@ pub fn render(s: &State) -> String {
     let mut out = String::new();
     let inner = CARD_WIDTH; // chars between ║ and ║
 
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let name_color = crate::colors::rarity_color(&s.rarity, s.shiny, now);
+
     let stars = identity::rarity_stars(&s.rarity, s.shiny);
     let breed_upper = s.breed.to_uppercase();
 
     // Top border
     writeln!(out, "╔{}╗", "═".repeat(CARD_WIDTH)).unwrap();
 
-    // Title: BREED // Name // STARS
-    // inner - 2: account for the 2 leading spaces before content, leaving 40 chars for content
+    // Title: BREED // Name // STARS — name is colored by rarity; breed and stars stay plain.
     let inner_content = inner - 2;
     let title_raw = format!("{} // {} // {}", breed_upper, s.name, stars);
     let title: String = title_raw.chars().take(inner_content).collect();
-    writeln!(out, "║  {:<width$}║", title, width = inner_content).unwrap();
+    // Pad plain first (width-correct), then splice color around the name.
+    let padded_plain = format!("{:<width$}", title, width = inner_content);
+    let colored = if padded_plain.contains(&s.name) {
+        padded_plain.replacen(
+            s.name.as_str(),
+            &format!("{name_color}{}{}", s.name, crate::colors::C_RESET),
+            1,
+        )
+    } else {
+        // Name was truncated out of the visible title — no coloring possible.
+        padded_plain
+    };
+    writeln!(out, "║  {colored}║").unwrap();
 
     // Shiny / born row
     let born = format_born(s.birth_time);
@@ -67,13 +84,13 @@ pub fn render(s: &State) -> String {
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
-    // Sprite (6 lines, each padded to fit inside the box)
-    // Sprite line max width = inner - 2 (two leading spaces + content + trailing pad)
+    // Sprite (6 lines, each padded to fit inside the box, then wrapped in rarity color)
     let sprite_inner = inner - 2;
     let stage = crate::state::life_stage(s.level);
     let sprite = crate::sprites::get_sprite_lines(stage, &s.rarity, "calm", 0);
     for line in sprite.iter().take(6) {
-        writeln!(out, "║  {:<width$}║", line, width = sprite_inner).unwrap();
+        let padded = format!("{:<width$}", line, width = sprite_inner);
+        writeln!(out, "║  {name_color}{padded}{}║", crate::colors::C_RESET).unwrap();
     }
 
     // Divider
@@ -244,14 +261,54 @@ mod tests {
     #[test]
     fn card_line_widths_consistent() {
         let output = render(&test_state());
-        // Every line (except the final ╚╝ line which has no newline) should be CARD_WIDTH+2 chars wide
-        // The box chars ║, ╠, ╔ etc. are single Unicode scalar values so .chars().count() gives visual width
         let expected = CARD_WIDTH + 2; // e.g. 44
         for (i, line) in output.lines().enumerate() {
-            let len = line.chars().count();
+            let stripped = strip_ansi(line);
+            let len = stripped.chars().count();
             assert_eq!(len, expected,
-                "line {i} width {len} != {expected}: {:?}", line);
+                "line {i} stripped width {len} != {expected}: {:?}", line);
         }
+    }
+
+    /// Strip CSI (ESC [ ... letter) sequences so char counts reflect visible width.
+    fn strip_ansi(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' && chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // consume until a letter (inclusive) — CSI final byte is 0x40..=0x7E
+                for next in chars.by_ref() {
+                    if next.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn card_title_contains_rarity_color_for_name() {
+        // test_state is legendary shiny → rarity_color will include a RAINBOW hue
+        // and either C_BOLD or C_DIM.
+        let output = render(&test_state());
+        let has_any_hue = crate::colors::RAINBOW_HUES
+            .iter()
+            .any(|h| output.contains(h));
+        assert!(has_any_hue, "expected a rainbow hue in legendary card output:\n{output}");
+    }
+
+    #[test]
+    fn card_title_contains_rarity_color_for_common() {
+        let mut s = test_state();
+        s.rarity = "common".to_string();
+        s.shiny = false;
+        let output = render(&s);
+        assert!(output.contains(crate::colors::C_CYAN),
+            "expected C_CYAN in common card output:\n{output}");
     }
 
     fn make_state(level: u64) -> State {
@@ -291,5 +348,18 @@ mod tests {
         assert_eq!(format_born(1_709_164_800), "2024-02-29");
         // Epoch
         assert_eq!(format_born(0), "1970-01-01");
+    }
+
+    #[test]
+    fn card_sprite_rows_wrapped_in_rarity_color() {
+        let mut s = test_state();
+        s.rarity = "common".to_string();
+        s.shiny = false;
+        let output = render(&s);
+        // Expect at least one line where a plain sprite glyph is preceded by C_CYAN in
+        // the same line. Simpler: confirm C_CYAN occurs more than once in the output
+        // (title + at least one sprite row).
+        let count = output.matches(crate::colors::C_CYAN).count();
+        assert!(count >= 2, "expected C_CYAN in title + sprite rows, saw {count} in:\n{output}");
     }
 }

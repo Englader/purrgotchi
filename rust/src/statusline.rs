@@ -117,7 +117,7 @@ pub fn run() {
         let stage = state::life_stage(level);
         get_sprite_lines(stage, &rarity, mood, frame)
     };
-    let k_color: String = match mood {
+    let speech_color: String = match mood {
         "panic" => C_RED.to_string(),
         "alert" => C_YELLOW.to_string(),
         "happy" => C_GREEN.to_string(),
@@ -126,11 +126,21 @@ pub fn run() {
         _ => C_CYAN.to_string(),
     };
 
+    // Sprite color is rarity-driven outside of celebrations. During a celebration,
+    // the celebration sprite + speech path keeps the mood color for continuity.
+    let sprite_color: String = if celebration_kind != CelebrationKind::None {
+        speech_color.clone()
+    } else {
+        crate::colors::rarity_color(&rarity, shiny, now)
+    };
+
     // --- Build the 7 HUD rows ---
     let sep_p = " │ ";
     let sep_a = format!(" {C_PINK}│{C_RESET} ");
 
-    // H1 — top rail.
+    // H1 — top rail. Name stays pink to match the rail glyphs (rarity color
+    // lives on the sprite; keeping the HUD name pink avoids a color-vibe clash
+    // with the cyan NETRUNNER brand).
     let title_plain = format!("═╡ NETRUNNER // {kitten_name} ╞");
     let title_ansi = format!(
         "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
@@ -278,12 +288,12 @@ pub fn run() {
     for (i, row) in rows.iter().enumerate() {
         if i == 6 {
             buf.push_str(&format!(
-                "{row}   {k_color}\"{speech}\"{C_RESET}\n"
+                "{row}   {speech_color}\"{speech}\"{C_RESET}\n"
             ));
         } else {
             let line = sprite_lines.get(i).map(String::as_str).unwrap_or("");
             let padded = pad_sprite(line, SW);
-            buf.push_str(&format!("{row}   {k_color}{padded}{C_RESET}\n"));
+            buf.push_str(&format!("{row}   {sprite_color}{padded}{C_RESET}\n"));
         }
     }
 
