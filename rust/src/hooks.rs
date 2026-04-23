@@ -72,7 +72,6 @@ pub fn rename(new_name: &str) -> i32 {
     }
 }
 
-#[allow(dead_code)] // TODO(Task 6): remove once main wires this subcommand
 pub fn pet() {
     let mut s = crate::hatch::load_or_hatch();
     let now = state::now_secs();
