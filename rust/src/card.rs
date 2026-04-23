@@ -110,6 +110,29 @@ pub fn render(s: &State) -> String {
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
+    // Bond row (dynamic stat, visually separated from the 5 identity stats above
+    // by its own divider block). Value reflects lazy-decay, not raw state.
+    let now: u64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let effective = crate::bond::effective_bond(s.bond, s.last_pet_at, now);
+    let bond_bar = stat_bar(effective);
+    let pink = crate::colors::C_PINK;
+    let reset = crate::colors::C_RESET;
+    let bond_content = format!(
+        "  {:<11}{pink}\u{2665}{reset} {bond_bar}  {:>3}",
+        "BOND", effective,
+    );
+    // Plain width (ANSI-stripped): 2 + 11 + 1 + 1 + 10 + 2 + 3 = 30
+    let plain_bond_len = 2 + 11 + 1 + 1 + 10 + 2 + 3;
+    let pad = inner.saturating_sub(plain_bond_len);
+    let bond_line = format!("{bond_content}{}", " ".repeat(pad));
+    writeln!(out, "║{bond_line}║").unwrap();
+
+    // Divider
+    writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
+
     // Personality (word-wrapped, quoted), indented by 2 spaces
     // inner_content = 40. Subtract 2 for opening/closing quote chars → wrap at 38.
     let pers_wrap_width = inner_content - 2;
@@ -363,5 +386,38 @@ mod tests {
         // (title + at least one sprite row).
         let count = output.matches(crate::colors::C_CYAN).count();
         assert!(count >= 2, "expected C_CYAN in title + sprite rows, saw {count} in:\n{output}");
+    }
+
+    #[test]
+    fn card_contains_bond_label() {
+        let output = render(&test_state());
+        assert!(output.contains("BOND"), "card missing BOND label:\n{output}");
+    }
+
+    #[test]
+    fn card_shows_bond_value() {
+        let mut s = test_state();
+        s.bond = 73;
+        s.last_pet_at = 0; // never petted → effective == raw
+        let output = render(&s);
+        assert!(output.contains("73"), "card missing bond value 73:\n{output}");
+    }
+
+    #[test]
+    fn card_bond_has_heart_glyph() {
+        let output = render(&test_state());
+        assert!(output.contains('\u{2665}'), "card missing ♥ glyph:\n{output}");
+    }
+
+    #[test]
+    fn card_bond_row_reflects_decay() {
+        // Raw bond=80, petted 2 days ago → effective = 80 - 10 = 70.
+        let mut s = test_state();
+        s.bond = 80;
+        s.last_pet_at = crate::state::now_secs() - 2 * 86_400;
+        let output = render(&s);
+        // Value could be 70 exactly or 69/71 depending on sub-second timing.
+        let contains_any = ["70", "69", "71"].iter().any(|v| output.contains(v));
+        assert!(contains_any, "card bond value should reflect decay, got:\n{output}");
     }
 }
