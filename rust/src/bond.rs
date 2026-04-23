@@ -5,9 +5,7 @@
 use crate::state::State;
 
 pub const BOND_START: u8 = 50;
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub const BOND_PET_BUMP: u8 = 15;
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
 pub const BOND_DECAY_PER_DAY: u32 = 5;
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
@@ -25,14 +23,12 @@ pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     bond.saturating_sub(decay)
 }
 
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 #[derive(Debug, PartialEq)]
 pub enum PetResult {
     Applied { old: u8, new: u8, capped: bool },
     Cooldown { wait_secs: u64 },
 }
 
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub fn try_pet(state: &mut State, now: u64) -> PetResult {
     if state.last_pet_at != 0 {
         let elapsed = now.saturating_sub(state.last_pet_at);
