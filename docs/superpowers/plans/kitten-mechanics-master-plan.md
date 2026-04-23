@@ -108,7 +108,7 @@ _Update as items ship._
 
 - [ ] Phase 2 — Character depth (v3.4.x)
   - [x] B1 + B2 bundle (v3.4.3) — life-stage sprite evolution + level-up celebration
-  - [x] B3 (v3.4.4) — name & sprite color by rarity (rainbow legendary, shimmer shiny)
+  - [x] B3 (v3.4.4) — sprite color by rarity + card name color (rainbow legendary, shimmer shiny; HUD name stays pink for visual consistency)
   - Remaining C/D items TBD per iteration
 
 - [ ] Phase 3 — LLM-powered speech (v3.5.0)
