@@ -10,7 +10,6 @@ pub const BOND_PET_BUMP: u8 = 15;
 #[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
 pub const BOND_DECAY_PER_DAY: u32 = 5;
-#[allow(dead_code)] // TODO(Task 4): remove once mood logic uses this
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
 
 #[allow(dead_code)] // TODO(Task 7/8): remove once card and statusline call this directly

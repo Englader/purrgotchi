@@ -70,7 +70,16 @@ pub fn run() {
         999_999
     };
 
-    let mood = compute_mood(payload.context_window.used_percentage, last_fed_delta);
+    let last_pet_delta: i64 = if st.last_pet_at > 0 {
+        now - st.last_pet_at as i64
+    } else {
+        -1
+    };
+    let mood = compute_mood(
+        payload.context_window.used_percentage,
+        last_fed_delta,
+        last_pet_delta,
+    );
     let frame = ((now / 2) % 2) as u8;
 
     let reset_5h_str = time_until_reset(payload.rate_limits.five_hour.resets_at, now);
