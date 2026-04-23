@@ -2,15 +2,16 @@
 //! wall-clock time. Pure logic — no I/O, no state mutation outside `try_pet`'s
 //! mutable-reference API.
 
-// TODO(Task 3): remove once try_pet and statusline wire up all pub items here.
-#![allow(dead_code)]
-
 pub const BOND_START: u8 = 50;
+#[allow(dead_code)] // TODO(Task 3): remove once try_pet uses this
 pub const BOND_PET_BUMP: u8 = 15;
+#[allow(dead_code)] // TODO(Task 3): remove once try_pet uses this
 pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
 pub const BOND_DECAY_PER_DAY: u32 = 5;
+#[allow(dead_code)] // TODO(Task 4): remove once mood logic uses this
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
 
+#[allow(dead_code)] // TODO(Task 3/7/8): remove once try_pet, card, statusline wire this up
 pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     if last_pet_at == 0 {
         return bond;
