@@ -9,12 +9,11 @@ pub const BOND_START: u8 = 50;
 pub const BOND_PET_BUMP: u8 = 15;
 #[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
 pub const BOND_DECAY_PER_DAY: u32 = 5;
 #[allow(dead_code)] // TODO(Task 4): remove once mood logic uses this
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
 
-#[allow(dead_code)] // TODO(Task 5): remove once pet command wires this up
+#[allow(dead_code)] // TODO(Task 7/8): remove once card and statusline call this directly
 pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     if last_pet_at == 0 {
         return bond;
@@ -143,8 +142,9 @@ mod tests {
         let now = 1 + BOND_PET_COOLDOWN_SEC;
         let r = try_pet(&mut s, now);
         match r {
-            PetResult::Applied { old: _, new, capped: _ } => {
+            PetResult::Applied { old: _, new, capped } => {
                 assert_eq!(new, 100);
+                assert!(!capped, "saturation during pet should not set capped");
             }
             _ => panic!("expected Applied, got {r:?}"),
         }
