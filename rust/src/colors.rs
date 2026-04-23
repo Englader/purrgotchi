@@ -26,7 +26,6 @@ pub const RAINBOW_HUES: [&str; 6] = [
 /// Legendary cycles through `RAINBOW_HUES` by `now % 6`.
 /// When `shiny`, the prefix is preceded by `C_BOLD` (even `now`) or `C_DIM` (odd `now`).
 /// Unknown rarity falls back to `C_CYAN`.
-#[allow(dead_code)]
 pub fn rarity_color(rarity: &str, shiny: bool, now: i64) -> String {
     let base = match rarity {
         "common"    => C_CYAN,
