@@ -204,6 +204,8 @@ mod tests {
             personality: "Born from the space between stars, Shadowmere sees what others miss.".to_string(),
             levelup_renders_remaining: 0,
             celebration_kind: state::CelebrationKind::None,
+            bond: 50,
+            last_pet_at: 0,
         }
     }
 
