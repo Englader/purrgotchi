@@ -10,7 +10,6 @@ pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
 pub const BOND_DECAY_PER_DAY: u32 = 5;
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
 
-#[allow(dead_code)] // TODO(Task 7/8): remove once card and statusline call this directly
 pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     if last_pet_at == 0 {
         return bond;
