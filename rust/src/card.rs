@@ -84,13 +84,13 @@ pub fn render(s: &State) -> String {
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
-    // Sprite (6 lines, each padded to fit inside the box)
-    // Sprite line max width = inner - 2 (two leading spaces + content + trailing pad)
+    // Sprite (6 lines, each padded to fit inside the box, then wrapped in rarity color)
     let sprite_inner = inner - 2;
     let stage = crate::state::life_stage(s.level);
     let sprite = crate::sprites::get_sprite_lines(stage, &s.rarity, "calm", 0);
     for line in sprite.iter().take(6) {
-        writeln!(out, "║  {:<width$}║", line, width = sprite_inner).unwrap();
+        let padded = format!("{:<width$}", line, width = sprite_inner);
+        writeln!(out, "║  {name_color}{padded}{}║", crate::colors::C_RESET).unwrap();
     }
 
     // Divider
@@ -348,5 +348,18 @@ mod tests {
         assert_eq!(format_born(1_709_164_800), "2024-02-29");
         // Epoch
         assert_eq!(format_born(0), "1970-01-01");
+    }
+
+    #[test]
+    fn card_sprite_rows_wrapped_in_rarity_color() {
+        let mut s = test_state();
+        s.rarity = "common".to_string();
+        s.shiny = false;
+        let output = render(&s);
+        // Expect at least one line where a plain sprite glyph is preceded by C_CYAN in
+        // the same line. Simpler: confirm C_CYAN occurs more than once in the output
+        // (title + at least one sprite row).
+        let count = output.matches(crate::colors::C_CYAN).count();
+        assert!(count >= 2, "expected C_CYAN in title + sprite rows, saw {count} in:\n{output}");
     }
 }
