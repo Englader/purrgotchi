@@ -35,6 +35,14 @@ pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     bond.saturating_sub(decay)
 }
 
+/// Returns the most recent of (`last_pet_at`, `last_played_at`, `last_treated_at`).
+/// Zero means "never interacted at all" — used as the decay anchor.
+pub fn last_interaction_at(s: &State) -> u64 {
+    s.last_pet_at
+        .max(s.last_played_at)
+        .max(s.last_treated_at)
+}
+
 #[derive(Debug, PartialEq)]
 pub enum PetResult {
     Applied { old: u8, new: u8, capped: bool },
@@ -50,7 +58,9 @@ pub fn try_pet(state: &mut State, now: u64) -> PetResult {
             };
         }
     }
-    let effective = effective_bond(state.bond, state.last_pet_at, now);
+    // Decay anchors on the most recent interaction of any kind, not just pet.
+    let anchor = last_interaction_at(state);
+    let effective = effective_bond(state.bond, anchor, now);
     let capped = effective == 100;
     let new = effective.saturating_add(BOND_PET_BUMP).min(100);
     state.bond = new;
@@ -195,5 +205,51 @@ mod tests {
         let now = 1000 + BOND_PET_COOLDOWN_SEC;
         let r = try_pet(&mut s, now);
         assert!(matches!(r, PetResult::Applied { .. }));
+    }
+
+    #[test]
+    fn last_interaction_at_returns_max_of_three() {
+        let mut s = State::base(1000);
+        s.last_pet_at = 100;
+        s.last_played_at = 500;
+        s.last_treated_at = 300;
+        assert_eq!(last_interaction_at(&s), 500);
+    }
+
+    #[test]
+    fn last_interaction_at_zero_when_never_interacted() {
+        let s = State::base(1000);
+        assert_eq!(last_interaction_at(&s), 0);
+    }
+
+    #[test]
+    fn last_interaction_at_ignores_zero_sentinels() {
+        let mut s = State::base(1000);
+        s.last_pet_at = 0;
+        s.last_played_at = 200;
+        s.last_treated_at = 0;
+        assert_eq!(last_interaction_at(&s), 200);
+    }
+
+    #[test]
+    fn try_pet_decays_from_last_played_when_pet_never_happened() {
+        // Played yesterday, never petted. Decay should anchor to play, not
+        // to `last_pet_at == 0` (which would wrongly skip decay).
+        let mut s = State::base(1000);
+        s.bond = 80;
+        s.last_pet_at = 0;
+        s.last_played_at = 1;
+        s.last_treated_at = 0;
+        // Now is exactly 1 day after last_played_at, so 5 points decay.
+        let now = 1 + 86_400;
+        let r = try_pet(&mut s, now);
+        match r {
+            PetResult::Applied { old, new, capped: _ } => {
+                // Effective = 80 - 5 decay = 75, then + BOND_PET_BUMP(15) = 90.
+                assert_eq!(old, 75, "should bump from effective anchored on last_played_at");
+                assert_eq!(new, 90);
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
     }
 }

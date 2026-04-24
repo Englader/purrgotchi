@@ -285,7 +285,11 @@ pub fn run() {
         &format!("{C_DIM}FED:{C_RESET} {fed_ago}"),
         W2,
     );
-    let effective_bond = crate::bond::effective_bond(st.bond, st.last_pet_at, now as u64);
+    let effective_bond = crate::bond::effective_bond(
+        st.bond,
+        crate::bond::last_interaction_at(&st),
+        now as u64,
+    );
     let bond_bar = crate::render::progress_bar(effective_bond as f64, 10);
     let (c3p, c3a) = pad_col(
         &format!("BOND: \u{2665} {bond_bar} {effective_bond}"),
