@@ -103,6 +103,54 @@ pub fn try_play(state: &mut State, now: u64) -> PlayResult {
     PlayResult::Applied { old: effective, new, capped, cost: PLAY_COST }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum TreatResult {
+    Applied {
+        old: u8,
+        new: u8,
+        capped: bool,
+        cost: u64,
+        was_hungry: bool,
+    },
+    Cooldown { wait_secs: u64 },
+    InsufficientCoins { need: u64, have: u64 },
+}
+
+pub fn try_treat(state: &mut State, now: u64) -> TreatResult {
+    // Gate 1: cooldown
+    if state.last_treated_at != 0 {
+        let elapsed = now.saturating_sub(state.last_treated_at);
+        if elapsed < TREAT_COOLDOWN_SEC {
+            return TreatResult::Cooldown {
+                wait_secs: TREAT_COOLDOWN_SEC - elapsed,
+            };
+        }
+    }
+    // Gate 2: coins
+    if state.coins < TREAT_COST {
+        return TreatResult::InsufficientCoins {
+            need: TREAT_COST,
+            have: state.coins,
+        };
+    }
+    // Pre-check hunger (must be evaluated BEFORE resetting last_fed_at)
+    let was_hungry = now.saturating_sub(state.last_fed_at) >= TREAT_HUNGER_THRESHOLD_SEC;
+
+    let anchor = last_interaction_at(state);
+    let effective = effective_bond(state.bond, anchor, now);
+    let capped = effective == 100;
+    let new = if was_hungry {
+        effective.saturating_add(TREAT_BOND_BUMP).min(100)
+    } else {
+        effective
+    };
+    state.bond = new;
+    state.last_treated_at = now;
+    state.last_fed_at = now; // hunger reset regardless of was_hungry
+    state.coins -= TREAT_COST;
+    TreatResult::Applied { old: effective, new, capped, cost: TREAT_COST, was_hungry }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,5 +458,144 @@ mod tests {
             _ => panic!("expected Applied, got {r:?}"),
         }
         assert_eq!(s.coins, 50); // 100 - 50 still debited
+    }
+
+    fn mk_state_for_treat(
+        bond: u8,
+        last_treated_at: u64,
+        coins: u64,
+        last_fed_at: u64,
+    ) -> State {
+        let mut s = State::base(1000);
+        s.bond = bond;
+        s.last_treated_at = last_treated_at;
+        s.coins = coins;
+        s.last_fed_at = last_fed_at;
+        s
+    }
+
+    #[test]
+    fn try_treat_hungry_applies_bond_resets_hunger_debits_coins() {
+        // last_fed_at is 2h old (>= TREAT_HUNGER_THRESHOLD_SEC 1h) → was_hungry=true
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, 0, 100, now - 7200);
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::Applied { old, new, capped, cost, was_hungry } => {
+                assert_eq!(old, 50);
+                assert_eq!(new, 55); // +TREAT_BOND_BUMP(5)
+                assert!(!capped);
+                assert_eq!(cost, TREAT_COST);
+                assert!(was_hungry);
+            }
+            _ => panic!("expected Applied hungry, got {r:?}"),
+        }
+        assert_eq!(s.bond, 55);
+        assert_eq!(s.coins, 75); // 100 - TREAT_COST(25)
+        assert_eq!(s.last_treated_at, now);
+        assert_eq!(s.last_fed_at, now); // hunger reset
+    }
+
+    #[test]
+    fn try_treat_not_hungry_skips_bond_still_resets_hunger_and_debits() {
+        // last_fed_at 30min old (< 1h threshold) → was_hungry=false
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, 0, 100, now - 1800);
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::Applied { old, new, capped, cost, was_hungry } => {
+                assert_eq!(old, 50);
+                assert_eq!(new, 50, "bond unchanged when not hungry");
+                assert!(!capped);
+                assert_eq!(cost, TREAT_COST);
+                assert!(!was_hungry);
+            }
+            _ => panic!("expected Applied not-hungry, got {r:?}"),
+        }
+        assert_eq!(s.bond, 50);
+        assert_eq!(s.coins, 75);
+        assert_eq!(s.last_treated_at, now);
+        assert_eq!(s.last_fed_at, now, "hunger reset even when not hungry");
+    }
+
+    #[test]
+    fn try_treat_hunger_threshold_boundary_exactly_1h_is_hungry() {
+        // exactly 3600s old → was_hungry=true (>= threshold)
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, 0, 100, now - TREAT_HUNGER_THRESHOLD_SEC);
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::Applied { was_hungry, .. } => assert!(was_hungry),
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+    }
+
+    #[test]
+    fn try_treat_within_cooldown_rejects() {
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, now - 1800, 100, now - 7200);
+        // 30min since last treat, cooldown is 4h
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::Cooldown { wait_secs } => {
+                assert_eq!(wait_secs, TREAT_COOLDOWN_SEC - 1800);
+            }
+            _ => panic!("expected Cooldown, got {r:?}"),
+        }
+        assert_eq!(s.coins, 100);
+    }
+
+    #[test]
+    fn try_treat_exactly_at_cooldown_boundary_allowed() {
+        // now must be > TREAT_COOLDOWN_SEC (14400) to avoid underflow
+        let now = 20_000;
+        let mut s = mk_state_for_treat(50, now - TREAT_COOLDOWN_SEC, 100, now - 7200);
+        let r = try_treat(&mut s, now);
+        assert!(matches!(r, TreatResult::Applied { .. }));
+    }
+
+    #[test]
+    fn try_treat_insufficient_coins_rejects_state_unchanged() {
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, 0, 20, now - 7200); // have 20, need 25
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::InsufficientCoins { need, have } => {
+                assert_eq!(need, TREAT_COST);
+                assert_eq!(have, 20);
+            }
+            _ => panic!("expected InsufficientCoins, got {r:?}"),
+        }
+        assert_eq!(s.coins, 20);
+        assert_eq!(s.last_treated_at, 0);
+        assert_eq!(s.last_fed_at, now - 7200, "hunger NOT reset on failure");
+    }
+
+    #[test]
+    fn try_treat_cooldown_beats_coin_gate() {
+        let now = 10_000;
+        let mut s = mk_state_for_treat(50, now - 1800, 0, now - 7200);
+        let r = try_treat(&mut s, now);
+        assert!(matches!(r, TreatResult::Cooldown { .. }));
+    }
+
+    #[test]
+    fn try_treat_reports_capped_true_when_effective_was_hundred_hungry_path() {
+        let now = 10_000;
+        let mut s = mk_state_for_treat(100, 0, 100, now - 7200);
+        // Hungry path, bond starts at 100.
+        let r = try_treat(&mut s, now);
+        match r {
+            TreatResult::Applied { old, new, capped, was_hungry, cost } => {
+                assert_eq!(old, 100);
+                assert_eq!(new, 100);
+                assert!(capped);
+                assert!(was_hungry);
+                assert_eq!(cost, TREAT_COST);
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+        assert_eq!(s.coins, 75);
+        assert_eq!(s.last_fed_at, now);
     }
 }
