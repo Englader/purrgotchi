@@ -68,7 +68,7 @@ Inspired by Anthropic's leaked Claude Code `/buddy` feature (April 2026) — we 
 | L2 | Statusline reads cache; falls back to static phrases if cache missing / stale (>10 min) / no API key |
 | L3 | `ANTHROPIC_API_KEY` env var required; without it, static speech only (no crash, no prompt) |
 | L4 | Debug-log LLM call latency + token usage for visibility |
-| L5 | LLM personality blurb at hatch — replaces R4's static-table entry for users with an API key |
+| L5 | LLM personality blurb at hatch — replaces R4's static-table entry for users with an API key. **Known quirk to fix here:** the R4 static blurb substitutes `{name}` at hatch time only, so renaming the kitten later leaves the old placeholder (e.g. the literal template name `Purrgotchi`) baked into `state.personality`. L5 should either re-template on render or re-substitute on rename. |
 
 ---
 
