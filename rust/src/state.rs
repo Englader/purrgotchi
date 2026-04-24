@@ -38,7 +38,14 @@ pub struct State {
     pub levelup_renders_remaining: u8,
     #[serde(default)]
     pub celebration_kind: CelebrationKind,
+    // bond (v3.4.5, additive — serde(default) for back-compat)
+    #[serde(default = "default_bond")]
+    pub bond: u8,
+    #[serde(default)]
+    pub last_pet_at: u64,
 }
+
+fn default_bond() -> u8 { crate::bond::BOND_START }
 
 impl State {
     pub fn base(now: u64) -> Self {
@@ -58,6 +65,8 @@ impl State {
             personality: String::new(),
             levelup_renders_remaining: 0,
             celebration_kind: CelebrationKind::None,
+            bond: crate::bond::BOND_START,
+            last_pet_at: 0,
         }
     }
 }
@@ -198,5 +207,36 @@ mod tests {
         let s = parse_state(json.as_bytes()).expect("v3.4.2 shape should load");
         assert_eq!(s.levelup_renders_remaining, 0);
         assert_eq!(s.celebration_kind, CelebrationKind::None);
+    }
+
+    #[test]
+    fn v3_4_4_state_without_bond_fields_defaults_to_fifty_and_zero() {
+        // A v3.4.4-shaped state.json has no bond or last_pet_at fields.
+        // serde(default) must make bond=50 (BOND_START), last_pet_at=0.
+        let json = r#"{
+            "version": 2,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1,
+            "breed": "Tabby",
+            "rarity": "common",
+            "shiny": false,
+            "stats": [42, 80, 10, 55, 30],
+            "personality": "A streetwise cat."
+        }"#;
+        let s = parse_state(json.as_bytes()).expect("v3.4.4 shape should load");
+        assert_eq!(s.bond, 50);
+        assert_eq!(s.last_pet_at, 0);
+    }
+
+    #[test]
+    fn state_base_initializes_bond_at_fifty() {
+        let s = State::base(12345);
+        assert_eq!(s.bond, 50);
+        assert_eq!(s.last_pet_at, 0);
     }
 }

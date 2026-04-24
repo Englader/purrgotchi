@@ -110,6 +110,30 @@ pub fn render(s: &State) -> String {
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
+    // Bond row (dynamic stat, visually separated from the 5 identity stats above
+    // by its own divider block). Value reflects lazy-decay, not raw state.
+    // Cast the i64 `now` computed above for rarity_color — safe because
+    // SystemTime::now().as_secs() is always non-negative and well below i64::MAX.
+    let effective = crate::bond::effective_bond(s.bond, s.last_pet_at, now as u64);
+    let bond_bar = stat_bar(effective);
+    let pink = crate::colors::C_PINK;
+    let reset = crate::colors::C_RESET;
+    let bond_content = format!(
+        "  {:<11}{pink}\u{2665}{reset} {bond_bar}  {:>3}",
+        "BOND", effective,
+    );
+    // `bond_content` embeds ANSI color escapes for the pink heart. The `{:<width$}`
+    // pattern used by the identity stat rows above counts escape bytes as visible chars
+    // and would over-pad this line by dozens of characters. Pad manually against the
+    // ANSI-stripped plain width instead: 2 + 11 + 1 + 1 + 10 + 2 + 3 = 30.
+    let plain_bond_len = 2 + 11 + 1 + 1 + 10 + 2 + 3;
+    let pad = inner.saturating_sub(plain_bond_len);
+    let bond_line = format!("{bond_content}{}", " ".repeat(pad));
+    writeln!(out, "║{bond_line}║").unwrap();
+
+    // Divider
+    writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
+
     // Personality (word-wrapped, quoted), indented by 2 spaces
     // inner_content = 40. Subtract 2 for opening/closing quote chars → wrap at 38.
     let pers_wrap_width = inner_content - 2;
@@ -204,6 +228,8 @@ mod tests {
             personality: "Born from the space between stars, Shadowmere sees what others miss.".to_string(),
             levelup_renders_remaining: 0,
             celebration_kind: state::CelebrationKind::None,
+            bond: 50,
+            last_pet_at: 0,
         }
     }
 
@@ -361,5 +387,39 @@ mod tests {
         // (title + at least one sprite row).
         let count = output.matches(crate::colors::C_CYAN).count();
         assert!(count >= 2, "expected C_CYAN in title + sprite rows, saw {count} in:\n{output}");
+    }
+
+    #[test]
+    fn card_contains_bond_label() {
+        let output = render(&test_state());
+        assert!(output.contains("BOND"), "card missing BOND label:\n{output}");
+    }
+
+    #[test]
+    fn card_shows_bond_value() {
+        let mut s = test_state();
+        s.bond = 73;
+        s.last_pet_at = 0; // never petted → effective == raw
+        let output = render(&s);
+        assert!(output.contains("73"), "card missing bond value 73:\n{output}");
+    }
+
+    #[test]
+    fn card_bond_has_heart_glyph() {
+        let output = render(&test_state());
+        assert!(output.contains('\u{2665}'), "card missing ♥ glyph:\n{output}");
+    }
+
+    #[test]
+    fn card_bond_row_reflects_decay() {
+        // Raw bond=80, petted exactly 2 days ago → effective = 80 - 10 = 70.
+        // Both now_secs() and SystemTime::now().as_secs() truncate to whole seconds,
+        // so at most a 1-second delta elapses between them — not enough to shift decay
+        // off of 10 (requires 86400s per extra point). Result is deterministically 70.
+        let mut s = test_state();
+        s.bond = 80;
+        s.last_pet_at = crate::state::now_secs() - 2 * 86_400;
+        let output = render(&s);
+        assert!(output.contains("70"), "card bond value should be 70 after 2-day decay, got:\n{output}");
     }
 }

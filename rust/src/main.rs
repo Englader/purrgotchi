@@ -1,3 +1,4 @@
+mod bond;
 mod card;
 mod colors;
 mod cost;
@@ -44,6 +45,10 @@ fn main() {
             card::run();
             process::exit(0);
         }
+        "pet" => {
+            hooks::pet();
+            process::exit(0);
+        }
         "hatch" => {
             let force_rarity = args.iter().position(|a| a == "--rarity")
                 .and_then(|i| args.get(i + 1))
@@ -77,7 +82,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card>");
+            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet>");
             process::exit(2);
         }
     }
