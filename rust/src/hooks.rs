@@ -238,7 +238,13 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
 }
 
 pub fn stats() {
-    let s = crate::hatch::load_or_hatch();
+    let s = match crate::state::load() {
+        Some(s) => s,
+        None => {
+            eprintln!("No kitten hatched yet. Run: purrgotchi hatch");
+            std::process::exit(1);
+        }
+    };
     let now = state::now_secs();
     print!("{}", format_stats_card(&s, now));
 }
@@ -329,7 +335,7 @@ fn timestamp_elapsed(ts: u64, now: u64) -> String {
 }
 
 fn format_born_relative(birth_time: u64, now: u64) -> String {
-    let date = format_born_date(birth_time);
+    let date = crate::render::format_ymd(birth_time);
     let elapsed_days = now.saturating_sub(birth_time) / 86400;
     match elapsed_days {
         0 => format!("{date} (today)"),
@@ -338,29 +344,6 @@ fn format_born_relative(birth_time: u64, now: u64) -> String {
     }
 }
 
-fn format_born_date(secs: u64) -> String {
-    // Same algorithm as card::format_born, inlined to avoid making card::format_born pub.
-    let mut days = (secs / 86400) as u32;
-    let mut year = 1970u32;
-    loop {
-        let in_year = if is_leap(year) { 366 } else { 365 };
-        if days < in_year { break; }
-        days -= in_year;
-        year += 1;
-    }
-    let month_days = [31u32, if is_leap(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut month = 0usize;
-    for &md in &month_days {
-        if days < md { break; }
-        days -= md;
-        month += 1;
-    }
-    format!("{year}-{:02}-{:02}", month + 1, days + 1)
-}
-
-fn is_leap(y: u32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
 
 #[cfg(test)]
 mod tests {

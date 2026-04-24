@@ -158,3 +158,58 @@ pub fn pad_sprite(s: &str, sw: usize) -> String {
     let spaces = " ".repeat(pad);
     format!("{s}{spaces}")
 }
+
+fn is_leap(y: u32) -> bool {
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+}
+
+/// Formats a Unix timestamp as a date string `YYYY-MM-DD` (UTC).
+pub fn format_ymd(secs: u64) -> String {
+    let mut days = (secs / 86400) as u32;
+    let mut year = 1970u32;
+    loop {
+        let in_year = if is_leap(year) { 366 } else { 365 };
+        if days < in_year { break; }
+        days -= in_year;
+        year += 1;
+    }
+    let month_days = [
+        31u32,
+        if is_leap(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut month = 0usize;
+    for &md in &month_days {
+        if days < md { break; }
+        days -= md;
+        month += 1;
+    }
+    format!("{year}-{:02}-{:02}", month + 1, days + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_ymd_epoch_zero() {
+        assert_eq!(format_ymd(0), "1970-01-01");
+    }
+
+    #[test]
+    fn format_ymd_known_date() {
+        // 2024-02-29 00:00:00 UTC (leap day)
+        // 2024-01-01 UTC epoch = 1,704,067,200
+        // + 59 days * 86400 = 5,097,600
+        // = 1,709,164,800
+        assert_eq!(format_ymd(1_709_164_800), "2024-02-29");
+    }
+
+    #[test]
+    fn format_ymd_non_leap_feb_ends_28() {
+        // 2023-03-01 UTC = 1,677,628,800
+        assert_eq!(format_ymd(1_677_628_800), "2023-03-01");
+        // 2023-02-28 UTC = 1,677,542,400
+        assert_eq!(format_ymd(1_677_542_400), "2023-02-28");
+    }
+}
