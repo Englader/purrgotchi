@@ -109,7 +109,8 @@ _Update as items ship._
 - [ ] Phase 2 — Character depth (v3.4.x)
   - [x] B1 + B2 bundle (v3.4.3) — life-stage sprite evolution + level-up celebration
   - [x] B3 (v3.4.4) — sprite color by rarity + card name color (rainbow legendary, shimmer shiny; HUD name stays pink for visual consistency)
-  - Remaining C/D items TBD per iteration
+  - [x] C5 + C1 bundle (v3.4.5) — dynamic `bond` stat (0–100, lazy decay 5/day, starts at 50) + `purrgotchi pet` command (+15, 4h cooldown, post-pet happy-mood window 120s). HUD: BOND bar replaces RARITY in H6 col 3; rarity stars promoted to H1 rail in yellow; PEAK label shifted to col-3 center. Card: new BOND row with own divider between identity stats and personality.
+  - Remaining C/D items TBD per iteration (C2 play, C3 treat, C4 stats, D1–D5 events)
 
 - [ ] Phase 3 — LLM-powered speech (v3.5.0)
   - [ ] L1-L5 as one bundle
