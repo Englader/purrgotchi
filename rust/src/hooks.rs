@@ -237,11 +237,224 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
     }
 }
 
+pub fn stats() {
+    let s = crate::hatch::load_or_hatch();
+    let now = state::now_secs();
+    print!("{}", format_stats_card(&s, now));
+}
+
+fn format_stats_card(s: &crate::state::State, now: u64) -> String {
+    use std::fmt::Write;
+    use crate::identity::{STAT_NAMES, rarity_stars};
+    use crate::bond::{effective_bond, last_interaction_at};
+
+    let mut out = String::new();
+    let stars = rarity_stars(&s.rarity, s.shiny);
+
+    // --- Identity ---
+    writeln!(out, "┌─ {} {}", s.name, "─".repeat(46)).ok();
+    writeln!(out, "  Identity").ok();
+    writeln!(out, "    Name:       {}", s.name).ok();
+    writeln!(out, "    Breed:      {} ({} {})", s.breed, s.rarity, stars).ok();
+    writeln!(out, "    Born:       {}", format_born_relative(s.birth_time, now)).ok();
+    writeln!(
+        out,
+        "    Life stage: {} (level {})",
+        crate::state::life_stage(s.level),
+        s.level,
+    ).ok();
+    writeln!(out).ok();
+
+    // --- Stats ---
+    writeln!(out, "  Stats").ok();
+    let (peak_idx, dump_idx) = peak_dump_indices(&s.stats);
+    for (i, name) in STAT_NAMES.iter().enumerate() {
+        let val = s.stats[i];
+        let bar = nine_cell_bar(val);
+        let annotation = if i == peak_idx {
+            "  \u{2190} peak"
+        } else if i == dump_idx {
+            "  \u{2190} dump"
+        } else {
+            ""
+        };
+        writeln!(out, "    {:<10} {} {}{}", name, bar, val, annotation).ok();
+    }
+    writeln!(out).ok();
+
+    // --- Relationship ---
+    writeln!(out, "  Relationship").ok();
+    let eff = effective_bond(s.bond, last_interaction_at(s), now);
+    writeln!(out, "    Bond:       {} {}", nine_cell_bar(eff), eff).ok();
+    writeln!(out, "    Last pet:   {}", timestamp_elapsed(s.last_pet_at, now)).ok();
+    writeln!(out, "    Last play:  {}", timestamp_elapsed(s.last_played_at, now)).ok();
+    writeln!(out, "    Last treat: {}", timestamp_elapsed(s.last_treated_at, now)).ok();
+    writeln!(out).ok();
+
+    // --- Progress ---
+    writeln!(out, "  Progress").ok();
+    writeln!(out, "    Tool calls: {}", s.total_tool_calls).ok();
+    writeln!(out, "    Coins:      {}", s.coins).ok();
+    writeln!(out, "└{}", "─".repeat(48)).ok();
+
+    out
+}
+
+fn nine_cell_bar(val: u8) -> String {
+    let val = val.min(100) as usize;
+    let filled = (val * 9 + 50) / 100;
+    let filled = filled.min(9);
+    let mut s = String::with_capacity(27);
+    for _ in 0..filled { s.push('\u{2588}'); }
+    for _ in 0..(9 - filled) { s.push('\u{2591}'); }
+    s
+}
+
+fn peak_dump_indices(stats: &[u8; 5]) -> (usize, usize) {
+    let mut peak = 0usize;
+    let mut dump = 0usize;
+    for i in 1..5 {
+        if stats[i] > stats[peak] { peak = i; }
+        if stats[i] < stats[dump] { dump = i; }
+    }
+    (peak, dump)
+}
+
+fn timestamp_elapsed(ts: u64, now: u64) -> String {
+    if ts == 0 {
+        return "never".to_string();
+    }
+    let delta = now.saturating_sub(ts) as i64;
+    crate::render::human_elapsed(delta)
+}
+
+fn format_born_relative(birth_time: u64, now: u64) -> String {
+    let date = format_born_date(birth_time);
+    let elapsed_days = now.saturating_sub(birth_time) / 86400;
+    match elapsed_days {
+        0 => format!("{date} (today)"),
+        1 => format!("{date} (yesterday)"),
+        n => format!("{date} ({n} days ago)"),
+    }
+}
+
+fn format_born_date(secs: u64) -> String {
+    // Same algorithm as card::format_born, inlined to avoid making card::format_born pub.
+    let mut days = (secs / 86400) as u32;
+    let mut year = 1970u32;
+    loop {
+        let in_year = if is_leap(year) { 366 } else { 365 };
+        if days < in_year { break; }
+        days -= in_year;
+        year += 1;
+    }
+    let month_days = [31u32, if is_leap(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 0usize;
+    for &md in &month_days {
+        if days < md { break; }
+        days -= md;
+        month += 1;
+    }
+    format!("{year}-{:02}-{:02}", month + 1, days + 1)
+}
+
+fn is_leap(y: u32) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::bond::PetResult;
-    use crate::state::CelebrationKind;
+    use crate::state::{CelebrationKind, State};
+
+    fn stats_state() -> State {
+        let mut s = State::base(1_000_000);
+        s.name = "Thalia".to_string();
+        s.breed = "Void Cat".to_string();
+        s.rarity = "legendary".to_string();
+        s.shiny = false;
+        // peak=CURIOSITY(0)=80, dump=LAZINESS(2)=15
+        s.stats = [80, 55, 15, 40, 65];
+        s.personality = "test".to_string();
+        s.level = 4;
+        s.total_tool_calls = 217;
+        s.coins = 1340;
+        s.bond = 72;
+        s.last_pet_at = 0;
+        s.last_played_at = 0;
+        s.last_treated_at = 0;
+        s
+    }
+
+    #[test]
+    fn format_stats_card_contains_identity_section() {
+        let s = stats_state();
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(card.contains("Thalia"));
+        assert!(card.contains("Void Cat"));
+        assert!(card.contains("legendary"));
+        assert!(card.contains("kitten"), "level 4 → kitten stage");
+        assert!(card.contains("level 4"));
+    }
+
+    #[test]
+    fn format_stats_card_contains_all_five_stats_with_values() {
+        let s = stats_state();
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(card.contains("CURIOSITY"));
+        assert!(card.contains("MISCHIEF"));
+        assert!(card.contains("LAZINESS"));
+        assert!(card.contains("AFFECTION"));
+        assert!(card.contains("WISDOM"));
+        assert!(card.contains("80"));
+        assert!(card.contains("55"));
+        assert!(card.contains("15"));
+        assert!(card.contains("40"));
+        assert!(card.contains("65"));
+    }
+
+    #[test]
+    fn format_stats_card_marks_peak_and_dump() {
+        let s = stats_state();
+        let card = format_stats_card(&s, 1_000_000);
+        // peak annotation on the row with 80 (CURIOSITY)
+        assert!(card.contains("peak"));
+        assert!(card.contains("dump"));
+    }
+
+    #[test]
+    fn format_stats_card_shows_effective_bond_not_raw() {
+        let mut s = stats_state();
+        s.bond = 80;
+        s.last_pet_at = 1;
+        // Now is 1 day after last_pet_at → 5 decay → effective = 75.
+        let card = format_stats_card(&s, 1 + 86_400);
+        assert!(card.contains("75"), "stats card should show decayed bond 75, not raw 80");
+    }
+
+    #[test]
+    fn format_stats_card_shows_never_for_unset_timestamps() {
+        let s = stats_state(); // all last_*_at are 0
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(card.contains("never"));
+    }
+
+    #[test]
+    fn format_stats_card_shows_progress_section() {
+        let s = stats_state();
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(card.contains("217"));
+        assert!(card.contains("1340"));
+    }
+
+    #[test]
+    fn format_stats_card_does_not_contain_cost_line() {
+        // v3.4.6 spec §2: Cost line deferred to v3.4.7.
+        let s = stats_state();
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(!card.contains("Cost"), "v3.4.6 stats must not show Cost line");
+    }
 
     #[test]
     fn no_change_when_level_same() {
