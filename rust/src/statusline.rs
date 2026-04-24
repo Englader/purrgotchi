@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::colors::{
     C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
 };
-use crate::identity;
+#[allow(unused_imports)]
+use crate::identity; // retained for Task 9 (H1 rarity stars)
 use crate::cost::compute_turn_cost;
 use crate::debug;
 use crate::mood::compute_mood;
@@ -270,16 +271,15 @@ pub fn run() {
         &format!("{C_DIM}FED:{C_RESET} {fed_ago}"),
         W2,
     );
-    let (c3p, c3a) = if rarity.is_empty() {
-        pad_col("", "", W3)
-    } else {
-        let stars = identity::rarity_stars(&rarity, shiny);
-        pad_col(
-            &format!("RARITY: {stars}"),
-            &format!("{C_DIM}RARITY:{C_RESET} {C_YELLOW}{stars}{C_RESET}"),
-            W3,
-        )
-    };
+    let effective_bond = crate::bond::effective_bond(st.bond, st.last_pet_at, now as u64);
+    let bond_bar = crate::render::progress_bar(effective_bond as f64, 10);
+    let (c3p, c3a) = pad_col(
+        &format!("BOND: \u{2665} {bond_bar} {effective_bond}"),
+        &format!(
+            "{C_DIM}BOND:{C_RESET} {C_PINK}\u{2665}{C_RESET} {C_PINK}{bond_bar}{C_RESET} {C_BOLD}{effective_bond}{C_RESET}"
+        ),
+        W3,
+    );
     let p6 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
     let a6 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
     let h6 = close_row(&p6, &a6, BOX_WIDTH);
