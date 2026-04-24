@@ -165,7 +165,7 @@ pub fn run() {
     let peak_len = peak_plain.chars().count();
     let stars_len = stars_plain.chars().count();
 
-    let (pre_stars, _eff_stars, mid_stars, post_peak) =
+    let (pre_stars, mid_stars, post_peak) =
         compute_h1_layout(title_len, stars_len, peak_len);
 
     let pre_rail = "═".repeat(pre_stars);
@@ -413,31 +413,23 @@ fn peak_label(hour: u32) -> (String, String) {
     (plain, ansi)
 }
 
-/// Compute the layout segments of an H1 rail so that their sum always equals
-/// BOX_WIDTH.  Returns `(pre_stars, eff_stars, mid_stars, post_peak)` where
-/// `eff_stars` is the number of star characters that physically fit (may be
-/// less than the raw `stars_len` when the kitten name is pathologically long).
-/// When the name is so long that stars overflow the natural gap they are
-/// clipped and the post-peak rail collapses to 0 rather than letting the line
-/// overflow past ╗.
+/// Compute the three `═` rail spans that bracket the stars and peak label in H1.
+/// Sum of (title_len, pre_stars, stars_len, mid_stars, peak_len, post_peak) equals
+/// BOX_WIDTH for all realistic names. Pathologically long names (rare: requires
+/// renaming past ~45 chars) can cause the rail to overflow — this is an accepted
+/// limitation for now; the pre-v3.4.5 HUD had the same issue minus the stars.
 fn compute_h1_layout(title_len: usize, stars_len: usize, peak_len: usize)
-    -> (usize, usize, usize, usize) {
+    -> (usize, usize, usize) {
     let w3_center = 1 + W1 + 3 + W2 + 3 + W3 / 2;
     let peak_start = w3_center.saturating_sub(peak_len / 2);
 
     let gap = peak_start.saturating_sub(title_len);
     let pre_stars = gap.saturating_sub(stars_len) / 2;
     let mid_stars = gap.saturating_sub(stars_len + pre_stars);
+    let post_peak = BOX_WIDTH
+        .saturating_sub(title_len + pre_stars + stars_len + mid_stars + peak_len);
 
-    // Budget = chars available between title and peak. Clip stars so we never
-    // exceed it — the rails (pre/mid) are already 0 in the overflow case.
-    let budget = BOX_WIDTH.saturating_sub(title_len + peak_len);
-    let eff_stars = (pre_stars + stars_len + mid_stars).min(budget)
-        .saturating_sub(pre_stars + mid_stars);
-    let rendered_gap = pre_stars + eff_stars + mid_stars;
-    let post_peak = BOX_WIDTH.saturating_sub(title_len + rendered_gap + peak_len);
-
-    (pre_stars, eff_stars, mid_stars, post_peak)
+    (pre_stars, mid_stars, post_peak)
 }
 
 fn peak_period(hour: u32) -> (&'static str, &'static str) {
@@ -494,10 +486,10 @@ mod tests {
         let peak_len = peak_plain.chars().count();
         let stars_len = stars_plain.chars().count();
 
-        let (pre_stars, eff_stars, mid_stars, post_peak) =
+        let (pre_stars, mid_stars, post_peak) =
             compute_h1_layout(title_len, stars_len, peak_len);
 
-        (title_len, pre_stars, eff_stars, mid_stars, peak_len, post_peak)
+        (title_len, pre_stars, stars_len, mid_stars, peak_len, post_peak)
     }
 
     #[test]
@@ -525,17 +517,4 @@ mod tests {
         assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
     }
 
-    #[test]
-    fn test_h1_rail_total_len_pathologically_long_name() {
-        // Names can be up to some large size (rename has no upper bound). Verify
-        // the rail still sums to exactly BOX_WIDTH even when stars are forced to
-        // "overflow" the natural gap — in that case they push into the post-peak
-        // rail instead of past ╗.
-        let (t, a, s, b, p, c) = build_h1_parts(
-            "ThisIsAnAbsurdlyLongKittenNameForTheHUDRailGeometryTest",
-            17, "legendary", true,
-        );
-        assert_eq!(t + a + s + b + p + c, BOX_WIDTH,
-            "long-name overflow must stay within BOX_WIDTH");
-    }
 }

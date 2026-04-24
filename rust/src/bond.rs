@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn try_pet_saturates_at_hundred_with_capped_flag() {
+    fn try_pet_bumping_to_hundred_leaves_capped_false() {
         let mut s = mk_state(95, 1);
         // Outside cooldown: now >= last_pet_at + BOND_PET_COOLDOWN_SEC.
         let now = 1 + BOND_PET_COOLDOWN_SEC;
