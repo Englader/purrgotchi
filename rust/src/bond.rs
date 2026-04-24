@@ -68,6 +68,41 @@ pub fn try_pet(state: &mut State, now: u64) -> PetResult {
     PetResult::Applied { old: effective, new, capped }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum PlayResult {
+    Applied { old: u8, new: u8, capped: bool, cost: u64 },
+    Cooldown { wait_secs: u64 },
+    InsufficientCoins { need: u64, have: u64 },
+}
+
+pub fn try_play(state: &mut State, now: u64) -> PlayResult {
+    // Gate 1: cooldown
+    if state.last_played_at != 0 {
+        let elapsed = now.saturating_sub(state.last_played_at);
+        if elapsed < PLAY_COOLDOWN_SEC {
+            return PlayResult::Cooldown {
+                wait_secs: PLAY_COOLDOWN_SEC - elapsed,
+            };
+        }
+    }
+    // Gate 2: coins
+    if state.coins < PLAY_COST {
+        return PlayResult::InsufficientCoins {
+            need: PLAY_COST,
+            have: state.coins,
+        };
+    }
+    // Apply
+    let anchor = last_interaction_at(state);
+    let effective = effective_bond(state.bond, anchor, now);
+    let capped = effective == 100;
+    let new = effective.saturating_add(PLAY_BOND_BUMP).min(100);
+    state.bond = new;
+    state.last_played_at = now;
+    state.coins -= PLAY_COST;
+    PlayResult::Applied { old: effective, new, capped, cost: PLAY_COST }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +286,129 @@ mod tests {
             }
             _ => panic!("expected Applied, got {r:?}"),
         }
+    }
+
+    fn mk_state_coins(bond: u8, last_played_at: u64, coins: u64) -> State {
+        let mut s = State::base(1000);
+        s.bond = bond;
+        s.last_played_at = last_played_at;
+        s.coins = coins;
+        s
+    }
+
+    #[test]
+    fn try_play_first_ever_bumps_bond_and_debits_coins() {
+        let mut s = mk_state_coins(50, 0, 100);
+        let now = 10_000;
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::Applied { old, new, capped, cost } => {
+                assert_eq!(old, 50);
+                assert_eq!(new, 70);
+                assert!(!capped);
+                assert_eq!(cost, PLAY_COST);
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+        assert_eq!(s.bond, 70);
+        assert_eq!(s.coins, 50); // 100 - PLAY_COST(50)
+        assert_eq!(s.last_played_at, now);
+    }
+
+    #[test]
+    fn try_play_within_cooldown_rejects_with_wait_secs() {
+        let mut s = mk_state_coins(50, 1000, 100);
+        let now = 1000 + 3600; // 1h after last play, cooldown is 6h
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::Cooldown { wait_secs } => {
+                assert_eq!(wait_secs, PLAY_COOLDOWN_SEC - 3600);
+            }
+            _ => panic!("expected Cooldown, got {r:?}"),
+        }
+        assert_eq!(s.coins, 100); // state unchanged
+        assert_eq!(s.last_played_at, 1000);
+    }
+
+    #[test]
+    fn try_play_exactly_at_cooldown_boundary_allowed() {
+        let mut s = mk_state_coins(50, 1000, 100);
+        let now = 1000 + PLAY_COOLDOWN_SEC;
+        let r = try_play(&mut s, now);
+        assert!(matches!(r, PlayResult::Applied { .. }));
+    }
+
+    #[test]
+    fn try_play_insufficient_coins_rejects_state_unchanged() {
+        let mut s = mk_state_coins(50, 0, 30); // PLAY_COST=50, have 30
+        let now = 10_000;
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::InsufficientCoins { need, have } => {
+                assert_eq!(need, PLAY_COST);
+                assert_eq!(have, 30);
+            }
+            _ => panic!("expected InsufficientCoins, got {r:?}"),
+        }
+        assert_eq!(s.bond, 50);
+        assert_eq!(s.coins, 30);
+        assert_eq!(s.last_played_at, 0);
+    }
+
+    #[test]
+    fn try_play_cooldown_beats_coin_gate() {
+        // Both gates would block — cooldown is checked first.
+        let mut s = mk_state_coins(50, 1000, 0);
+        let now = 1000 + 3600; // within 6h cooldown
+        let r = try_play(&mut s, now);
+        assert!(matches!(r, PlayResult::Cooldown { .. }));
+    }
+
+    #[test]
+    fn try_play_decay_applied_before_bump() {
+        // Bond 80, last_played_at was 1 day ago → 5 decay → effective 75 → +20 = 95.
+        let mut s = mk_state_coins(80, 1, 100);
+        let now = 1 + 86_400;
+        // Outside 6h play cooldown.
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::Applied { old, new, capped: _, cost: _ } => {
+                assert_eq!(old, 75, "should bump from effective (decayed) not raw");
+                assert_eq!(new, 95);
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+    }
+
+    #[test]
+    fn try_play_bumping_to_hundred_leaves_capped_false() {
+        let mut s = mk_state_coins(85, 1, 100);
+        let now = 1 + PLAY_COOLDOWN_SEC;
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::Applied { old: _, new, capped, cost: _ } => {
+                assert_eq!(new, 100);
+                assert!(!capped, "saturation during play should not set capped");
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+    }
+
+    #[test]
+    fn try_play_reports_capped_true_when_effective_was_already_hundred() {
+        // last_played_at=0 (first-ever play): no decay anchor → effective stays 100.
+        let mut s = mk_state_coins(100, 0, 100);
+        let now = PLAY_COOLDOWN_SEC;
+        let r = try_play(&mut s, now);
+        match r {
+            PlayResult::Applied { old, new, capped, cost } => {
+                assert_eq!(old, 100);
+                assert_eq!(new, 100);
+                assert!(capped, "capped flag must be true when already at max");
+                assert_eq!(cost, PLAY_COST); // still charged
+            }
+            _ => panic!("expected Applied, got {r:?}"),
+        }
+        assert_eq!(s.coins, 50); // 100 - 50 still debited
     }
 }
