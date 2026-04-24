@@ -5,8 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::colors::{
     C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
 };
-#[allow(unused_imports)]
-use crate::identity; // retained for Task 9 (H1 rarity stars)
+use crate::identity;
 use crate::cost::compute_turn_cost;
 use crate::debug;
 use crate::mood::compute_mood;
@@ -148,23 +147,41 @@ pub fn run() {
     let sep_p = " │ ";
     let sep_a = format!(" {C_PINK}│{C_RESET} ");
 
-    // H1 — top rail. Name stays pink to match the rail glyphs (rarity color
-    // lives on the sprite; keeping the HUD name pink avoids a color-vibe clash
-    // with the cyan NETRUNNER brand).
+    // H1 — top rail. Name stays pink (rail glyphs + name match). Rarity stars
+    // ride inline in the rail between the name cap and the PEAK label. PEAK
+    // label is now centered over H6 col 3 (above GIT / CTX / Cost / Total).
     let title_plain = format!("═╡ NETRUNNER // {kitten_name} ╞");
     let title_ansi = format!(
         "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
     );
     let (peak_plain, peak_ansi) = peak_label(local_hour());
+
+    let stars = identity::rarity_stars(&rarity, shiny);
+    let stars_color = crate::colors::rarity_color(&rarity, shiny, now);
+    let stars_plain = format!(" {stars} ");
+    let stars_ansi = format!(" {stars_color}{stars}{C_RESET} ");
+
     let title_len = title_plain.chars().count();
     let peak_len = peak_plain.chars().count();
-    let w2_center = 1 + W1 + 3 + W2 / 2;
-    let peak_start = w2_center.saturating_sub(peak_len / 2);
-    let pre_len = peak_start.saturating_sub(title_len).max(1);
-    let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
-    let pre_rail = "═".repeat(pre_len);
-    let post_rail = "═".repeat(post_len);
-    let h1 = format!("{C_PINK}╔{C_RESET}{title_ansi}{C_PINK}{pre_rail}{C_RESET}{peak_ansi}{C_PINK}{post_rail}╗{C_RESET}");
+    let stars_len = stars_plain.chars().count();
+
+    let w3_center = 1 + W1 + 3 + W2 + 3 + W3 / 2;
+    let peak_start = w3_center.saturating_sub(peak_len / 2);
+
+    let gap = peak_start.saturating_sub(title_len);
+    let pre_stars = gap.saturating_sub(stars_len) / 2;
+    let mid_stars = gap.saturating_sub(stars_len + pre_stars);
+    let post_peak = BOX_WIDTH.saturating_sub(title_len + gap + peak_len);
+
+    let pre_rail = "═".repeat(pre_stars);
+    let mid_rail = "═".repeat(mid_stars);
+    let post_rail = "═".repeat(post_peak);
+    let h1 = format!(
+        "{C_PINK}╔{C_RESET}{title_ansi}\
+         {C_PINK}{pre_rail}{C_RESET}{stars_ansi}\
+         {C_PINK}{mid_rail}{C_RESET}{peak_ansi}\
+         {C_PINK}{post_rail}╗{C_RESET}"
+    );
 
     // H2 — MODEL | DIR | GIT
     let (c1p, c1a) = pad_col(
@@ -444,29 +461,50 @@ mod tests {
         assert_eq!(plain.chars().count(), 20);
     }
 
-    #[test]
-    fn test_h1_rail_total_len_peak() {
-        let title_plain = format!("═╡ NETRUNNER // {} ╞", "Thalia");
-        let (peak_plain, _) = peak_label(17);
+    fn build_h1_parts(name: &str, hour: u32, rarity: &str, shiny: bool)
+        -> (usize, usize, usize, usize, usize, usize) {
+        let title_plain = format!("═╡ NETRUNNER // {} ╞", name);
+        let (peak_plain, _) = peak_label(hour);
+        let stars = crate::identity::rarity_stars(rarity, shiny);
+        let stars_plain = format!(" {stars} ");
+
         let title_len = title_plain.chars().count();
         let peak_len = peak_plain.chars().count();
-        let w2_center = 1 + W1 + 3 + W2 / 2;
-        let peak_start = w2_center.saturating_sub(peak_len / 2);
-        let pre_len = peak_start.saturating_sub(title_len).max(1);
-        let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
-        assert_eq!(title_len + pre_len + peak_len + post_len, BOX_WIDTH);
+        let stars_len = stars_plain.chars().count();
+
+        let w3_center = 1 + W1 + 3 + W2 + 3 + W3 / 2;
+        let peak_start = w3_center.saturating_sub(peak_len / 2);
+
+        let gap = peak_start.saturating_sub(title_len);
+        let pre_stars = gap.saturating_sub(stars_len) / 2;
+        let mid_stars = gap.saturating_sub(stars_len + pre_stars);
+        let post_peak = BOX_WIDTH.saturating_sub(title_len + gap + peak_len);
+
+        (title_len, pre_stars, stars_len, mid_stars, peak_len, post_peak)
     }
 
     #[test]
-    fn test_h1_rail_total_len_off_peak() {
-        let title_plain = format!("═╡ NETRUNNER // {} ╞", "Thalia");
-        let (peak_plain, _) = peak_label(8);
-        let title_len = title_plain.chars().count();
-        let peak_len = peak_plain.chars().count();
-        let w2_center = 1 + W1 + 3 + W2 / 2;
-        let peak_start = w2_center.saturating_sub(peak_len / 2);
-        let pre_len = peak_start.saturating_sub(title_len).max(1);
-        let post_len = BOX_WIDTH.saturating_sub(title_len + pre_len + peak_len);
-        assert_eq!(title_len + pre_len + peak_len + post_len, BOX_WIDTH);
+    fn test_h1_rail_total_len_peak_common_non_shiny() {
+        let (t, a, s, b, p, c) = build_h1_parts("Thalia", 17, "common", false);
+        assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
+    }
+
+    #[test]
+    fn test_h1_rail_total_len_off_peak_common_non_shiny() {
+        let (t, a, s, b, p, c) = build_h1_parts("Thalia", 8, "common", false);
+        assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
+    }
+
+    #[test]
+    fn test_h1_rail_total_len_peak_legendary_shiny() {
+        // shiny adds a ✦ prefix → stars_plain is 1 char longer.
+        let (t, a, s, b, p, c) = build_h1_parts("Thalia", 17, "legendary", true);
+        assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
+    }
+
+    #[test]
+    fn test_h1_rail_total_len_off_peak_legendary_shiny() {
+        let (t, a, s, b, p, c) = build_h1_parts("Thalia", 8, "legendary", true);
+        assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
     }
 }
