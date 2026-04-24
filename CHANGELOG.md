@@ -12,6 +12,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.5] — 2026-04-23
+
+### Added
+- **`bond` stat** (0–100). Grows via `purrgotchi pet` (+15, 4 h cooldown), decays 5/day with inactivity. Starts at 50 on hatch.
+- **`purrgotchi pet` subcommand**. Prints the bond delta (`♥ <name> purrs contentedly. Bond: X → Y (+15)`) or a cooldown-remaining message if within 4 h of last pet.
+- **HUD H6 col 3** now shows `BOND: ♥ {bar} {value}`. Rarity stars moved to the H1 rail (between the kitten name and the PEAK label), colored by rarity.
+- **HUD PEAK/OFF PEAK label** recentered over H6 column 3 (above GIT / CTX / Cost / Total).
+- **Card BOND row** with its own divider between the 5 identity stats and the personality block.
+- **Mood: happy**. A pet within the last 120 s puts the kitten in `happy` mood for the next statusline render (below panic/alert, above the feed-time rules).
+- **State schema**: two additive `#[serde(default)]` fields (`bond`, `last_pet_at`). v3.4.4 state files load with `bond=50`, `last_pet_at=0` — no migration required.
+
 ## [3.4.4] — 2026-04-23
 
 ### Added
