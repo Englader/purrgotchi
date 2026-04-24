@@ -110,7 +110,9 @@ _Update as items ship._
   - [x] B1 + B2 bundle (v3.4.3) — life-stage sprite evolution + level-up celebration
   - [x] B3 (v3.4.4) — sprite color by rarity + card name color (rainbow legendary, shimmer shiny; HUD name stays pink for visual consistency)
   - [x] C5 + C1 bundle (v3.4.5) — dynamic `bond` stat (0–100, lazy decay 5/day, starts at 50) + `purrgotchi pet` command (+15, 4h cooldown, post-pet happy-mood window 120s). HUD: BOND bar replaces RARITY in H6 col 3; rarity stars promoted to H1 rail in yellow; PEAK label shifted to col-3 center. Card: new BOND row with own divider between identity stats and personality.
-  - Remaining C/D items TBD per iteration (C2 play, C3 treat, C4 stats, D1–D5 events)
+  - [ ] C2 + C3 + C4 bundle (v3.4.6) — `purrgotchi play` (50 coins, +20 bond, 6h cooldown, 180s happy window) + `purrgotchi treat` (25 coins, +5 bond, 4h cooldown, 120s happy window; resets hunger; no bond gain if already fed within 1h but coins + cooldown still consumed) + `purrgotchi stats` (curated human view of identity/stats/relationship/progress). Reuses `happy` mood — no new sprites. Additive state fields `last_played_at`, `last_treated_at` with `serde(default)`. See `docs/superpowers/specs/2026-04-24-c2-c3-c4-commands-design.md`.
+  - [ ] **v3.4.7 followup** — wire up `state.lifetime_cost_usd` accumulator via session-watermark delta algorithm in `feed_inner` (parse payload, track watermark, detect session boundaries). Then restore `Cost:` row to `purrgotchi stats` card. The field is currently dead data — stored in state.json but never written. This was discovered during v3.4.6 design and deferred to keep that bundle focused.
+  - Remaining C/D items TBD per iteration (D1–D5 events)
 
 - [ ] Phase 3 — LLM-powered speech (v3.5.0)
   - [ ] L1-L5 as one bundle
