@@ -75,10 +75,22 @@ pub fn run() {
     } else {
         -1
     };
+    let last_played_delta: i64 = if st.last_played_at > 0 {
+        now - st.last_played_at as i64
+    } else {
+        -1
+    };
+    let last_treated_delta: i64 = if st.last_treated_at > 0 {
+        now - st.last_treated_at as i64
+    } else {
+        -1
+    };
     let mood = compute_mood(
         payload.context_window.used_percentage,
         last_fed_delta,
         last_pet_delta,
+        last_played_delta,
+        last_treated_delta,
     );
     let frame = ((now / 2) % 2) as u8;
 
@@ -285,7 +297,11 @@ pub fn run() {
         &format!("{C_DIM}FED:{C_RESET} {fed_ago}"),
         W2,
     );
-    let effective_bond = crate::bond::effective_bond(st.bond, st.last_pet_at, now as u64);
+    let effective_bond = crate::bond::effective_bond(
+        st.bond,
+        crate::bond::last_interaction_at(&st),
+        now as u64,
+    );
     let bond_bar = crate::render::progress_bar(effective_bond as f64, 10);
     let (c3p, c3a) = pad_col(
         &format!("BOND: \u{2665} {bond_bar} {effective_bond}"),

@@ -43,6 +43,11 @@ pub struct State {
     pub bond: u8,
     #[serde(default)]
     pub last_pet_at: u64,
+    // interactions (v3.4.6, additive — serde(default) for back-compat)
+    #[serde(default)]
+    pub last_played_at: u64,
+    #[serde(default)]
+    pub last_treated_at: u64,
 }
 
 fn default_bond() -> u8 { crate::bond::BOND_START }
@@ -67,6 +72,8 @@ impl State {
             celebration_kind: CelebrationKind::None,
             bond: crate::bond::BOND_START,
             last_pet_at: 0,
+            last_played_at: 0,
+            last_treated_at: 0,
         }
     }
 }
@@ -238,5 +245,41 @@ mod tests {
         let s = State::base(12345);
         assert_eq!(s.bond, 50);
         assert_eq!(s.last_pet_at, 0);
+    }
+
+    #[test]
+    fn v3_4_5_state_without_play_treat_fields_defaults_to_zero() {
+        // A v3.4.5-shaped state.json has `bond` and `last_pet_at` but no
+        // `last_played_at` or `last_treated_at`. serde(default) must make
+        // both default to 0 ("never").
+        let json = r#"{
+            "version": 2,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1,
+            "breed": "Tabby",
+            "rarity": "common",
+            "shiny": false,
+            "stats": [42, 80, 10, 55, 30],
+            "personality": "A streetwise cat.",
+            "bond": 72,
+            "last_pet_at": 2000
+        }"#;
+        let s = parse_state(json.as_bytes()).expect("v3.4.5 shape should load");
+        assert_eq!(s.bond, 72);
+        assert_eq!(s.last_pet_at, 2000);
+        assert_eq!(s.last_played_at, 0);
+        assert_eq!(s.last_treated_at, 0);
+    }
+
+    #[test]
+    fn state_base_initializes_play_treat_timestamps_to_zero() {
+        let s = State::base(12345);
+        assert_eq!(s.last_played_at, 0);
+        assert_eq!(s.last_treated_at, 0);
     }
 }

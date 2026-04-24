@@ -12,6 +12,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.6] — 2026-04-24
+
+### Added
+- **`purrgotchi play` subcommand.** Coin-costing interaction (50 coins, +20 bond, 6 h cooldown, 180 s happy-mood window). Three flavor-text variants rotated deterministically: "pounces on the feather wand" / "chases the laser with frantic joy" / "bats the toy around triumphantly".
+- **`purrgotchi treat` subcommand.** Coin-costing hunger reset (25 coins, +5 bond, 4 h cooldown, 120 s happy-mood window). If the kitten was recently fed (< 1 h), coins and cooldown are still consumed and hunger still resets, but the bond gain is skipped and the message flips to a "nibbles it but wasn't hungry" / "sniffs it, eats it anyway" / "accepts politely" variant rotation.
+- **`purrgotchi stats` subcommand.** Curated human-readable view of the full kitten state: Identity (name, breed + rarity stars, born, life stage), Stats (five-stat bars with peak/dump annotations), Relationship (effective bond with decay applied, last pet/play/treat timestamps), Progress (tool calls, coins). Read-only — errors loudly if no kitten has been hatched.
+
+### Changed
+- **Bond decay now anchors on the most recent interaction of any kind** (pet, play, or treat), not just pet. Previously a user who played daily but never petted would still appear "neglected" for decay purposes. Introduced `bond::last_interaction_at(&State)` as the new anchor.
+- **Happy-mood window in `compute_mood`** now OR's three signals (pet, play, treat) against their own window constants. All three converge on the existing `happy` sprite — no new sprite authoring in this release.
+- **Shared `format_cooldown(wait_secs)` helper** extracted — all three command cooldown messages now use the same `Xh YYm` formatting.
+- **Date rendering helpers unified** — `format_ymd(secs)` lives in `render.rs` as a single source of truth, used by both `card` and `stats`.
+
+### Internal
+- Additive state fields `last_played_at` and `last_treated_at` with `#[serde(default)]` — no schema version bump; v3.4.5 state.json files load cleanly.
+- Tuning constants (`PLAY_*`, `TREAT_*`) live alongside the existing `BOND_*` constants in `bond.rs` for one-PR rebalancing.
+- 152 lib tests (+23 since v3.4.5) covering `try_play`, `try_treat`, `compute_mood`, `format_play_message`, `format_treat_message`, `format_stats_card`, and the new date helper.
+
+### Known deferred
+- `lifetime_cost_usd` accumulator is not yet wired to the feed hook; the field stays at 0. The `Cost:` line is deliberately absent from `purrgotchi stats` for v3.4.6. Deferred to v3.4.7 as its own focused patch.
+
 ## [3.4.5] — 2026-04-23
 
 ### Added

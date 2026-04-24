@@ -49,6 +49,18 @@ fn main() {
             hooks::pet();
             process::exit(0);
         }
+        "play" => {
+            hooks::play();
+            process::exit(0);
+        }
+        "treat" => {
+            hooks::treat();
+            process::exit(0);
+        }
+        "stats" => {
+            hooks::stats();
+            process::exit(0);
+        }
         "hatch" => {
             let force_rarity = args.iter().position(|a| a == "--rarity")
                 .and_then(|i| args.get(i + 1))
@@ -82,7 +94,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet>");
+            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet|play|treat|stats>");
             process::exit(2);
         }
     }
