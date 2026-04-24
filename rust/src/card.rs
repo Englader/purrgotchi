@@ -230,6 +230,8 @@ mod tests {
             celebration_kind: state::CelebrationKind::None,
             bond: 50,
             last_pet_at: 0,
+            last_played_at: 0,
+            last_treated_at: 0,
         }
     }
 
