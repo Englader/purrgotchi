@@ -75,10 +75,22 @@ pub fn run() {
     } else {
         -1
     };
+    let last_played_delta: i64 = if st.last_played_at > 0 {
+        now - st.last_played_at as i64
+    } else {
+        -1
+    };
+    let last_treated_delta: i64 = if st.last_treated_at > 0 {
+        now - st.last_treated_at as i64
+    } else {
+        -1
+    };
     let mood = compute_mood(
         payload.context_window.used_percentage,
         last_fed_delta,
         last_pet_delta,
+        last_played_delta,
+        last_treated_delta,
     );
     let frame = ((now / 2) % 2) as u8;
 

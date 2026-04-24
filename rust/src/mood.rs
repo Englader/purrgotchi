@@ -2,13 +2,18 @@ pub fn compute_mood(
     ctx_pct: f64,
     last_fed_delta_sec: i64,
     last_pet_delta_sec: i64,
+    last_played_delta_sec: i64,
+    last_treated_delta_sec: i64,
 ) -> &'static str {
     let ctx_int = ctx_pct.round() as i64;
     if ctx_int > 80 {
         "panic"
     } else if ctx_int > 40 {
         "alert"
-    } else if (0..crate::bond::BOND_HAPPY_MOOD_WINDOW_SEC).contains(&last_pet_delta_sec) {
+    } else if (0..crate::bond::BOND_HAPPY_MOOD_WINDOW_SEC).contains(&last_pet_delta_sec)
+        || (0..crate::bond::PLAY_HAPPY_MOOD_WINDOW_SEC).contains(&last_played_delta_sec)
+        || (0..crate::bond::TREAT_HAPPY_MOOD_WINDOW_SEC).contains(&last_treated_delta_sec)
+    {
         "happy"
     } else if last_fed_delta_sec > 21600 {
         "sleep"
@@ -24,41 +29,56 @@ pub fn compute_mood(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bond::BOND_HAPPY_MOOD_WINDOW_SEC;
+    use crate::bond::{
+        BOND_HAPPY_MOOD_WINDOW_SEC, PLAY_HAPPY_MOOD_WINDOW_SEC, TREAT_HAPPY_MOOD_WINDOW_SEC,
+    };
 
     #[test]
     fn mood_happy_when_recently_petted() {
-        // Within the window, mood is happy regardless of feed time.
-        assert_eq!(compute_mood(5.0, 0, 0), "happy");
-        assert_eq!(compute_mood(5.0, 0, BOND_HAPPY_MOOD_WINDOW_SEC - 1), "happy");
+        assert_eq!(compute_mood(5.0, 0, 0, -1, -1), "happy");
+        assert_eq!(compute_mood(5.0, 0, BOND_HAPPY_MOOD_WINDOW_SEC - 1, -1, -1), "happy");
     }
 
     #[test]
-    fn mood_falls_through_after_pet_window_elapses() {
-        // last_pet_delta >= window → happy does not apply; existing rules win.
-        // At delta=0s fed, this should be happy-by-feed (< 30s), but the new
-        // rule is about pet, not feed. Pass large feed delta to avoid the feed
-        // "happy" rule and land on "calm".
+    fn mood_happy_when_recently_played() {
+        assert_eq!(compute_mood(5.0, 200, -1, 0, -1), "happy");
+        assert_eq!(compute_mood(5.0, 200, -1, PLAY_HAPPY_MOOD_WINDOW_SEC - 1, -1), "happy");
+    }
+
+    #[test]
+    fn mood_happy_when_recently_treated() {
+        assert_eq!(compute_mood(5.0, 200, -1, -1, 0), "happy");
+        assert_eq!(compute_mood(5.0, 200, -1, -1, TREAT_HAPPY_MOOD_WINDOW_SEC - 1), "happy");
+    }
+
+    #[test]
+    fn mood_falls_through_after_all_three_windows_elapse() {
         assert_eq!(
-            compute_mood(5.0, 200, BOND_HAPPY_MOOD_WINDOW_SEC),
+            compute_mood(5.0, 200, BOND_HAPPY_MOOD_WINDOW_SEC, PLAY_HAPPY_MOOD_WINDOW_SEC, TREAT_HAPPY_MOOD_WINDOW_SEC),
             "calm"
         );
     }
 
     #[test]
-    fn mood_negative_last_pet_delta_means_never_petted_no_happy() {
-        // Convention: negative last_pet_delta means "never petted" (caller
-        // passes -1 or similar sentinel). Must NOT trigger happy override.
-        assert_eq!(compute_mood(5.0, 200, -1), "calm");
+    fn mood_negative_deltas_never_trigger_happy() {
+        assert_eq!(compute_mood(5.0, 200, -1, -1, -1), "calm");
     }
 
     #[test]
-    fn mood_panic_beats_happy_even_when_recently_petted() {
-        assert_eq!(compute_mood(95.0, 0, 0), "panic");
+    fn mood_panic_beats_all_three_happy_signals() {
+        assert_eq!(compute_mood(95.0, 0, 0, 0, 0), "panic");
     }
 
     #[test]
-    fn mood_alert_beats_happy_even_when_recently_petted() {
-        assert_eq!(compute_mood(50.0, 0, 0), "alert");
+    fn mood_alert_beats_all_three_happy_signals() {
+        assert_eq!(compute_mood(50.0, 0, 0, 0, 0), "alert");
+    }
+
+    #[test]
+    fn mood_play_window_longer_than_pet_window() {
+        // At delta > PET window but < PLAY window, play triggers happy but pet doesn't.
+        let between = BOND_HAPPY_MOOD_WINDOW_SEC + 10;
+        assert!(between < PLAY_HAPPY_MOOD_WINDOW_SEC);
+        assert_eq!(compute_mood(5.0, 200, between, between, -1), "happy");
     }
 }
