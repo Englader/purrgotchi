@@ -156,10 +156,12 @@ pub fn run() {
     );
     let (peak_plain, peak_ansi) = peak_label(local_hour());
 
+    // Stars stay C_YELLOW to match the HUD's yellow accent palette (bars, %,
+    // costs). Rarity color lives on the sprite column only, so the rail stays
+    // visually consistent across kittens.
     let stars = identity::rarity_stars(&rarity, shiny);
-    let stars_color = crate::colors::rarity_color(&rarity, shiny, now);
     let stars_plain = format!(" {stars} ");
-    let stars_ansi = format!(" {stars_color}{stars}{C_RESET} ");
+    let stars_ansi = format!(" {C_YELLOW}{stars}{C_RESET} ");
 
     let title_len = title_plain.chars().count();
     let peak_len = peak_plain.chars().count();
