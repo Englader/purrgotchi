@@ -181,15 +181,15 @@ fn format_treat_message(
 ) -> String {
     use crate::bond::TreatResult;
     match result {
-        TreatResult::Applied { old, new: _, capped: true, cost, was_hungry: _ } => {
-            let base = treat_hungry_variant(name, last_treated_at);
+        TreatResult::Applied { old, new: _, capped: true, cost, was_hungry } => {
+            let base = treat_flavor_variant(name, last_treated_at, *was_hungry);
             format!(
                 "{base} {C_BOLD}(max, was {old}){C_RESET} · {C_YELLOW}-{cost} coins{C_RESET}"
             )
         }
         TreatResult::Applied { old, new, capped: false, cost, was_hungry: true } => {
             let delta = *new as i32 - *old as i32;
-            let line = treat_hungry_variant(name, last_treated_at);
+            let line = treat_flavor_variant(name, last_treated_at, true);
             format!(
                 "{line} Bond: {C_YELLOW}{old}{C_RESET} \u{2192} \
                  {C_BOLD}{C_YELLOW}{new}{C_RESET} ({C_YELLOW}+{delta}{C_RESET}) · \
@@ -197,7 +197,7 @@ fn format_treat_message(
             )
         }
         TreatResult::Applied { old: _, new, capped: false, cost, was_hungry: false } => {
-            let line = treat_not_hungry_variant(name, last_treated_at);
+            let line = treat_flavor_variant(name, last_treated_at, false);
             format!(
                 "{line} Bond: {C_YELLOW}{new}{C_RESET} (no change) · \
                  {C_YELLOW}-{cost} coins{C_RESET}"
@@ -226,6 +226,14 @@ fn treat_not_hungry_variant(name: &str, last_treated_at: u64) -> String {
         0 => format!("\u{1F41F} {name} nibbles the treat but wasn't really hungry."),
         1 => format!("\u{1F41F} {name} sniffs it, eats it anyway."),
         _ => format!("\u{1F41F} {name} accepts politely but isn't hungry."),
+    }
+}
+
+fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> String {
+    if was_hungry {
+        treat_hungry_variant(name, last_treated_at)
+    } else {
+        treat_not_hungry_variant(name, last_treated_at)
     }
 }
 
@@ -483,5 +491,22 @@ mod tests {
         assert_ne!(m0, m1);
         assert_ne!(m1, m2);
         assert_eq!(m0, m3);
+    }
+
+    #[test]
+    fn format_treat_message_applied_capped_not_hungry_uses_not_hungry_copy() {
+        let msg = format_treat_message(
+            "Thalia",
+            &TreatResult::Applied {
+                old: 100, new: 100, capped: true, cost: TREAT_COST, was_hungry: false,
+            },
+            0,
+        );
+        assert!(msg.contains("max"));
+        assert!(msg.contains("100"));
+        // Must use the not-hungry flavor text, not the hungry copy
+        assert!(!msg.contains("devours"));
+        assert!(!msg.contains("gobbles"));
+        assert!(!msg.contains("enthusiastically"));
     }
 }
