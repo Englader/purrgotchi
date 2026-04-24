@@ -10,6 +10,19 @@ pub const BOND_PET_COOLDOWN_SEC: u64 = 4 * 3600;
 pub const BOND_DECAY_PER_DAY: u32 = 5;
 pub const BOND_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
 
+// v3.4.6 — play tuning
+pub const PLAY_COST: u64 = 50;
+pub const PLAY_BOND_BUMP: u8 = 20;
+pub const PLAY_COOLDOWN_SEC: u64 = 6 * 3600;
+pub const PLAY_HAPPY_MOOD_WINDOW_SEC: i64 = 180;
+
+// v3.4.6 — treat tuning
+pub const TREAT_COST: u64 = 25;
+pub const TREAT_BOND_BUMP: u8 = 5;
+pub const TREAT_COOLDOWN_SEC: u64 = 4 * 3600;
+pub const TREAT_HAPPY_MOOD_WINDOW_SEC: i64 = 120;
+pub const TREAT_HUNGER_THRESHOLD_SEC: u64 = 3600;
+
 pub fn effective_bond(bond: u8, last_pet_at: u64, now: u64) -> u8 {
     if last_pet_at == 0 {
         return bond;
