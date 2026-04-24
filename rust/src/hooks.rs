@@ -5,6 +5,14 @@ use crate::colors::{C_BOLD, C_PINK, C_RESET, C_YELLOW};
 use crate::paths;
 use crate::state::{self, CelebrationKind, life_stage};
 
+/// Format a waiting duration as "Xh YYm" (when hours > 0) or "YYm".
+/// Used by all three command cooldown messages.
+fn format_cooldown(wait_secs: u64) -> String {
+    let h = wait_secs / 3600;
+    let m = (wait_secs % 3600) / 60;
+    if h > 0 { format!("{h}h {m:02}m") } else { format!("{m}m") }
+}
+
 /// Pure helper: given previous and new level, return the celebration to fire.
 /// Returns `None` if the level didn't go up.
 pub fn detect_celebration(prev_level: u64, new_level: u64) -> Option<(CelebrationKind, u8)> {
@@ -99,13 +107,7 @@ fn format_pet_message(name: &str, result: &PetResult) -> String {
             )
         }
         PetResult::Cooldown { wait_secs } => {
-            let h = wait_secs / 3600;
-            let m = (wait_secs % 3600) / 60;
-            let wait = if h > 0 {
-                format!("{h}h {m:02}m")
-            } else {
-                format!("{m}m")
-            };
+            let wait = format_cooldown(*wait_secs);
             format!("{name} is already purring at you. (next pet in {wait})")
         }
     }
@@ -144,9 +146,7 @@ fn format_play_message(
             )
         }
         PlayResult::Cooldown { wait_secs } => {
-            let h = wait_secs / 3600;
-            let m = (wait_secs % 3600) / 60;
-            let wait = if h > 0 { format!("{h}h {m:02}m") } else { format!("{m}m") };
+            let wait = format_cooldown(*wait_secs);
             format!("{name} is still winded from the last play. (next play in {wait})")
         }
         PlayResult::InsufficientCoins { need, have } => {
