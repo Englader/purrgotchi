@@ -12,6 +12,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## [3.4.7] — 2026-04-25
+
+### Added
+- **Lifetime cost accumulator.** `state.lifetime_cost_usd` now grows automatically as Claude Code is used while the kitten is around. The `purrgotchi stats` Progress section gained a `Cost: $X.XX` row showing the running total since hatch (or since v3.4.7 install, whichever is later — baseline starts at $0.00).
+
+### Implementation notes
+- Accumulation lives in `statusline::run`, which is the only entry point that receives `payload.cost.total_cost_usd`.
+- A sidecar file at `<state_dir>/cost-sessions.json` tracks per-`session_id` cumulative cost so parallel Claude Code windows accumulate independently.
+- Sidecar is written before state.json so a state-write failure can be retried without double-counting.
+- Stale sidecar entries (>30 days) are GC'd lazily on each render.
+
 ## [3.4.6] — 2026-04-24
 
 ### Added
