@@ -50,6 +50,13 @@ pub fn save_at(path: &Path, sessions: &CostSessions) -> io::Result<()> {
     Ok(())
 }
 
+/// Pure: drop entries whose `last_seen_ts` is older than `now - max_age_secs`.
+/// Saturating subtraction keeps the boundary safe when `now < max_age_secs`.
+pub fn gc_old_entries(sessions: &mut CostSessions, now: u64, max_age_secs: u64) {
+    let cutoff = now.saturating_sub(max_age_secs);
+    sessions.retain(|_, entry| entry.last_seen_ts >= cutoff);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +127,39 @@ mod tests {
     fn credit_for_brand_new_session_is_full_cur() {
         // Caller passes prev = 0.0 when the session_id is unknown.
         assert!((compute_credit(0.0, 0.42) - 0.42).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gc_drops_entries_older_than_max_age() {
+        let now = 10_000_000;
+        let max_age = 30 * 86_400; // 30 days in seconds
+        let mut m: CostSessions = std::collections::HashMap::new();
+        m.insert("fresh".into(),  SessionEntry { last_cost: 1.0, last_seen_ts: now });
+        m.insert("recent".into(), SessionEntry { last_cost: 2.0, last_seen_ts: now - max_age + 60 });
+        m.insert("stale".into(),  SessionEntry { last_cost: 3.0, last_seen_ts: now - max_age - 1 });
+        m.insert("ancient".into(),SessionEntry { last_cost: 4.0, last_seen_ts: 100 });
+        gc_old_entries(&mut m, now, max_age);
+        assert!(m.contains_key("fresh"));
+        assert!(m.contains_key("recent"));
+        assert!(!m.contains_key("stale"));
+        assert!(!m.contains_key("ancient"));
+    }
+
+    #[test]
+    fn gc_keeps_entry_at_exactly_max_age_boundary() {
+        // Boundary: last_seen_ts == now - max_age is kept (>= now - max_age).
+        let now = 10_000_000;
+        let max_age = 100;
+        let mut m: CostSessions = std::collections::HashMap::new();
+        m.insert("edge".into(), SessionEntry { last_cost: 1.0, last_seen_ts: now - max_age });
+        gc_old_entries(&mut m, now, max_age);
+        assert!(m.contains_key("edge"));
+    }
+
+    #[test]
+    fn gc_handles_empty_map() {
+        let mut m: CostSessions = std::collections::HashMap::new();
+        gc_old_entries(&mut m, 10_000_000, 30 * 86_400);
+        assert!(m.is_empty());
     }
 }
