@@ -22,3 +22,7 @@ pub fn state_file() -> PathBuf {
 pub fn turn_anchor_file() -> PathBuf {
     state_dir().join("turn-start-cost.txt")
 }
+
+pub fn cost_sessions_file() -> PathBuf {
+    state_dir().join("cost-sessions.json")
+}

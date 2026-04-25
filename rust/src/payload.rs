@@ -3,6 +3,8 @@ use serde::Deserialize;
 #[derive(Deserialize, Default)]
 pub struct Payload {
     #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
     pub model: ModelField,
     #[serde(default)]
     pub workspace: WorkspaceField,
@@ -74,4 +76,24 @@ pub struct CostField {
     pub total_lines_removed: i64,
     #[serde(default)]
     pub total_duration_ms: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_id_deserializes_from_json() {
+        let json = r#"{"session_id":"2de8ac34-3a21-4816-9b82-824f39c5bb99","cost":{"total_cost_usd":59.32}}"#;
+        let p: Payload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.session_id, "2de8ac34-3a21-4816-9b82-824f39c5bb99");
+        assert!((p.cost.total_cost_usd - 59.32).abs() < 1e-9);
+    }
+
+    #[test]
+    fn session_id_defaults_to_empty_when_missing() {
+        let json = r#"{"cost":{"total_cost_usd":1.0}}"#;
+        let p: Payload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.session_id, "");
+    }
 }

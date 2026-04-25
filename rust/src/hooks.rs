@@ -301,6 +301,7 @@ fn format_stats_card(s: &crate::state::State, now: u64) -> String {
     writeln!(out, "  Progress").ok();
     writeln!(out, "    Tool calls: {}", s.total_tool_calls).ok();
     writeln!(out, "    Coins:      {}", s.coins).ok();
+    writeln!(out, "    Cost:       ${:.2}", s.lifetime_cost_usd).ok();
     writeln!(out, "└{}", "─".repeat(48)).ok();
 
     out
@@ -432,11 +433,20 @@ mod tests {
     }
 
     #[test]
-    fn format_stats_card_does_not_contain_cost_line() {
-        // v3.4.6 spec §2: Cost line deferred to v3.4.7.
-        let s = stats_state();
+    fn format_stats_card_shows_cost_row_with_two_decimals() {
+        let mut s = stats_state();
+        s.lifetime_cost_usd = 59.32436785;
         let card = format_stats_card(&s, 1_000_000);
-        assert!(!card.contains("Cost"), "v3.4.6 stats must not show Cost line");
+        assert!(card.contains("Cost:"), "stats card must show Cost: row");
+        assert!(card.contains("$59.32"), "cost must be formatted as $X.XX (two decimals): {card}");
+    }
+
+    #[test]
+    fn format_stats_card_cost_row_uses_dollar_zero_for_zero_lifetime() {
+        let mut s = stats_state();
+        s.lifetime_cost_usd = 0.0;
+        let card = format_stats_card(&s, 1_000_000);
+        assert!(card.contains("$0.00"));
     }
 
     #[test]
