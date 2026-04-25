@@ -41,6 +41,13 @@ pub fn run() {
         serde_json::from_str(&input).unwrap_or_default()
     };
 
+    // v3.4.7 — credit any new cost on this render to the kitten's lifetime tally.
+    // Runs BEFORE load_or_hatch so the in-memory `st` below picks up our save.
+    crate::cost_acc::accumulate_from_payload(
+        &payload.session_id,
+        payload.cost.total_cost_usd,
+    );
+
     let model = if payload.model.display_name.is_empty() {
         "Claude".to_string()
     } else {
