@@ -21,6 +21,12 @@ pub struct SessionEntry {
 
 pub type CostSessions = HashMap<String, SessionEntry>;
 
+/// Pure: how much new cost to credit, given the previous and current cumulative
+/// values for one session. Clamps negatives to zero so we never debit.
+pub fn compute_credit(prev: f64, cur: f64) -> f64 {
+    (cur - prev).max(0.0)
+}
+
 /// Load sidecar from `path`. Missing file or corrupt JSON yields an empty map.
 pub fn load_at(path: &Path) -> CostSessions {
     let bytes = match fs::read(path) {
@@ -92,5 +98,27 @@ mod tests {
         assert!((e.last_cost - 4.2).abs() < 1e-9);
         assert_eq!(e.last_seen_ts, 99);
         let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn credit_is_cur_minus_prev_when_growing() {
+        assert!((compute_credit(1.0, 1.5) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn credit_is_zero_when_cur_equals_prev() {
+        assert_eq!(compute_credit(1.5, 1.5), 0.0);
+    }
+
+    #[test]
+    fn credit_clamps_to_zero_when_cur_drops() {
+        // Guards against any payload weirdness where cur briefly drops below prev.
+        assert_eq!(compute_credit(2.0, 1.0), 0.0);
+    }
+
+    #[test]
+    fn credit_for_brand_new_session_is_full_cur() {
+        // Caller passes prev = 0.0 when the session_id is unknown.
+        assert!((compute_credit(0.0, 0.42) - 0.42).abs() < 1e-9);
     }
 }
