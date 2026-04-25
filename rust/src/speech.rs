@@ -93,6 +93,8 @@ pub fn compute_celebration_speech(
         CelebrationKind::EvolvingYoung => EVOLVING_YOUNG,
         CelebrationKind::EvolvingAdult => EVOLVING_ADULT,
         CelebrationKind::None          => return "mrow",
+        // D-group variants (v3.4.8) — speech pools land in T4; fall back to levelup pool.
+        _ => LEVELUP,
     };
     let idx = ((now_secs.max(0) / 30) as usize) % pool.len();
     pool[idx]

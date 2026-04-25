@@ -210,6 +210,9 @@ mod tests {
             last_pet_at: 0,
             last_played_at: 0,
             last_treated_at: 0,
+            streak_count: 0,
+            last_milestone_celebrated: 0,
+            last_turn_at: 0,
         }
     }
 

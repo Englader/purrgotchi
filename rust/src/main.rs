@@ -4,6 +4,7 @@ mod colors;
 mod cost;
 mod cost_acc;
 mod debug;
+mod events;
 mod hatch;
 mod hooks;
 mod identity;
