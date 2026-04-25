@@ -57,6 +57,67 @@ pub fn gc_old_entries(sessions: &mut CostSessions, now: u64, max_age_secs: u64) 
     sessions.retain(|_, entry| entry.last_seen_ts >= cutoff);
 }
 
+const MAX_AGE_SECS: u64 = 30 * 86_400;
+
+/// Pure orchestrator: skip on empty id; otherwise compute credit, update state,
+/// upsert sidecar entry, GC stale entries. Returns the credit applied.
+pub fn apply(
+    sessions: &mut CostSessions,
+    state: &mut crate::state::State,
+    session_id: &str,
+    cur: f64,
+    now: u64,
+    max_age_secs: u64,
+) -> f64 {
+    if session_id.is_empty() {
+        return 0.0;
+    }
+    let prev = sessions.get(session_id).map(|e| e.last_cost).unwrap_or(0.0);
+    let credit = compute_credit(prev, cur);
+    state.lifetime_cost_usd += credit;
+    sessions.insert(
+        session_id.to_string(),
+        SessionEntry { last_cost: cur, last_seen_ts: now },
+    );
+    gc_old_entries(sessions, now, max_age_secs);
+    credit
+}
+
+/// I/O entry point: the only function `statusline::run` should call.
+///
+/// Order of operations:
+/// 1. Bail immediately on empty `session_id`.
+/// 2. Load sidecar (best-effort — corrupt/missing yields empty map).
+/// 3. Apply pure update (advances sidecar map, increments in-memory state).
+/// 4. **Save sidecar first.** If this fails, we abort and the next render
+///    retries the same delta — no double-count.
+/// 5. **Then save state.** If this fails, we lose at most one render's delta
+///    — never duplicate. See spec §2 write-order rationale.
+pub fn accumulate_from_payload(session_id: &str, cur: f64) {
+    if session_id.is_empty() {
+        return;
+    }
+    let now = crate::state::now_secs();
+    let path = crate::paths::cost_sessions_file();
+    let mut sessions = load_at(&path);
+
+    let mut state = match crate::state::load() {
+        Some(s) => s,
+        None => return, // not yet hatched — nothing to accumulate against
+    };
+
+    let credit = apply(&mut sessions, &mut state, session_id, cur, now, MAX_AGE_SECS);
+
+    // Sidecar first.
+    if save_at(&path, &sessions).is_err() {
+        return;
+    }
+    // Only credit the lifetime field on disk if we actually moved the needle.
+    if credit > 0.0 {
+        let _ = crate::state::save_atomic(&state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +222,82 @@ mod tests {
         let mut m: CostSessions = std::collections::HashMap::new();
         gc_old_entries(&mut m, 10_000_000, 30 * 86_400);
         assert!(m.is_empty());
+    }
+
+    fn fresh_state() -> crate::state::State {
+        // Minimal state for testing — only lifetime_cost_usd matters here.
+        let mut s = crate::state::State::base(0);
+        s.lifetime_cost_usd = 0.0;
+        s
+    }
+
+    #[test]
+    fn apply_credits_full_cur_for_brand_new_session_id() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        let mut state = fresh_state();
+        let credit = apply(&mut sessions, &mut state, "sess-A", 1.50, 1_000, 30 * 86_400);
+        assert!((credit - 1.50).abs() < 1e-9);
+        assert!((state.lifetime_cost_usd - 1.50).abs() < 1e-9);
+        let e = sessions.get("sess-A").unwrap();
+        assert!((e.last_cost - 1.50).abs() < 1e-9);
+        assert_eq!(e.last_seen_ts, 1_000);
+    }
+
+    #[test]
+    fn apply_credits_only_delta_within_same_session() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        let mut state = fresh_state();
+        apply(&mut sessions, &mut state, "sess-A", 1.50, 1_000, 30 * 86_400);
+        let credit2 = apply(&mut sessions, &mut state, "sess-A", 2.10, 1_010, 30 * 86_400);
+        assert!((credit2 - 0.60).abs() < 1e-9);
+        assert!((state.lifetime_cost_usd - 2.10).abs() < 1e-9);
+    }
+
+    #[test]
+    fn apply_clamps_when_cur_drops_below_prev() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        let mut state = fresh_state();
+        apply(&mut sessions, &mut state, "sess-A", 5.00, 1_000, 30 * 86_400);
+        let credit = apply(&mut sessions, &mut state, "sess-A", 4.00, 1_010, 30 * 86_400);
+        assert_eq!(credit, 0.0);
+        assert!((state.lifetime_cost_usd - 5.00).abs() < 1e-9);
+        // Sidecar still advances to the new (lower) cur so we don't re-credit.
+        let e = sessions.get("sess-A").unwrap();
+        assert!((e.last_cost - 4.00).abs() < 1e-9);
+    }
+
+    #[test]
+    fn apply_handles_parallel_sessions_independently() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        let mut state = fresh_state();
+        apply(&mut sessions, &mut state, "sess-A", 1.00, 1_000, 30 * 86_400);
+        apply(&mut sessions, &mut state, "sess-B", 0.00, 1_001, 30 * 86_400);
+        apply(&mut sessions, &mut state, "sess-A", 1.50, 1_002, 30 * 86_400);
+        apply(&mut sessions, &mut state, "sess-B", 0.25, 1_003, 30 * 86_400);
+        // Total: 1.00 (A first) + 0.00 (B first) + 0.50 (A) + 0.25 (B) = 1.75
+        assert!((state.lifetime_cost_usd - 1.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn apply_skips_when_session_id_empty() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        let mut state = fresh_state();
+        let credit = apply(&mut sessions, &mut state, "", 9.99, 1_000, 30 * 86_400);
+        assert_eq!(credit, 0.0);
+        assert_eq!(state.lifetime_cost_usd, 0.0);
+        assert!(sessions.is_empty(), "no phantom \"\" entry should be created");
+    }
+
+    #[test]
+    fn apply_runs_gc_on_each_call() {
+        let mut sessions: CostSessions = std::collections::HashMap::new();
+        sessions.insert(
+            "stale".to_string(),
+            SessionEntry { last_cost: 7.0, last_seen_ts: 0 },
+        );
+        let mut state = fresh_state();
+        apply(&mut sessions, &mut state, "fresh", 1.0, 30 * 86_400 + 100, 30 * 86_400);
+        assert!(!sessions.contains_key("stale"));
+        assert!(sessions.contains_key("fresh"));
     }
 }
