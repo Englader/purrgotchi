@@ -41,20 +41,56 @@ pub fn feed() {
 
 fn feed_inner() -> Option<()> {
     let mut s = crate::hatch::load_or_hatch();
-    s.total_tool_calls = s.total_tool_calls.saturating_add(1);
-    s.coins = s.coins.saturating_add(1);
+    let drop_seed = state::now_secs() ^ s.total_tool_calls;
+    apply_feed_dispatch(&mut s, drop_seed);
     s.last_fed_at = state::now_secs();
-
-    let prev_level = s.level;
-    s.level = 1 + s.total_tool_calls / 50;
-    if let Some((kind, renders)) = detect_celebration(prev_level, s.level) {
-        // Overwrite any in-progress celebration — the newer event wins.
-        s.celebration_kind = kind;
-        s.levelup_renders_remaining = renders;
-    }
-
     state::save_atomic(&s).ok()?;
     Some(())
+}
+
+fn apply_feed_dispatch(
+    state: &mut crate::state::State,
+    drop_seed: u64,
+) {
+    let prev_total = state.total_tool_calls;
+    state.total_tool_calls = state.total_tool_calls.saturating_add(1);
+    state.coins = state.coins.saturating_add(1);
+    let prev_level = state.level;
+    state.level = 1 + state.total_tool_calls / 50;
+
+    state.streak_count = state.streak_count.saturating_add(1);
+
+    let mut detected: Option<(crate::state::CelebrationKind, u8)> = None;
+
+    if let Some((kind, watermark)) = crate::events::detect_milestone(
+        prev_total, state.total_tool_calls, state.last_milestone_celebrated,
+    ) {
+        state.last_milestone_celebrated = watermark;
+        detected = Some((kind, crate::events::MILESTONE_RENDERS));
+    } else if let Some((kind, renders)) = detect_celebration(prev_level, state.level) {
+        detected = Some((kind, renders));
+    } else if crate::events::detect_streak(state.streak_count) {
+        detected = Some((
+            crate::state::CelebrationKind::Streak,
+            crate::events::STREAK_RENDERS,
+        ));
+    } else if crate::events::roll_random_drop_with_seed(drop_seed) {
+        detected = Some((
+            crate::state::CelebrationKind::RandomDrop,
+            crate::events::RANDOM_DROP_RENDERS,
+        ));
+    }
+
+    // Drop coins are applied unconditionally — even if a higher-priority
+    // celebration eclipses the drop's speech bubble, the wallet still gets +10.
+    if crate::events::roll_random_drop_with_seed(drop_seed) {
+        state.coins = state.coins.saturating_add(crate::events::RANDOM_DROP_REWARD);
+    }
+
+    if let Some((kind, renders)) = detected {
+        state.celebration_kind = kind;
+        state.levelup_renders_remaining = renders;
+    }
 }
 
 pub fn turn() {
@@ -714,5 +750,74 @@ mod tests {
         assert!(!msg.contains("devours"));
         assert!(!msg.contains("gobbles"));
         assert!(!msg.contains("enthusiastically"));
+    }
+
+    use crate::events;
+
+    #[test]
+    fn dispatch_milestone_centurion_at_100th_call() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.last_milestone_celebrated = 0;
+        super::apply_feed_dispatch(&mut s, /* drop_seed */ 999_999_999);
+        assert_eq!(s.total_tool_calls, 100);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::MilestoneCenturion);
+        assert_eq!(s.last_milestone_celebrated, 100);
+        assert_eq!(s.levelup_renders_remaining, events::MILESTONE_RENDERS);
+    }
+
+    #[test]
+    fn dispatch_streak_at_5th_in_turn() {
+        let mut s = crate::state::State::base(0);
+        s.streak_count = 4;
+        super::apply_feed_dispatch(&mut s, /* drop_seed */ 999_999_999);
+        assert_eq!(s.streak_count, 5);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::Streak);
+        assert_eq!(s.levelup_renders_remaining, events::STREAK_RENDERS);
+    }
+
+    #[test]
+    fn dispatch_milestone_beats_streak_when_both_fire() {
+        // 100th call AND 5th in a turn → milestone wins.
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.streak_count = 4;
+        s.last_milestone_celebrated = 0;
+        super::apply_feed_dispatch(&mut s, /* drop_seed */ 999_999_999);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::MilestoneCenturion);
+        // Streak counter still advanced; only the celebration choice changed.
+        assert_eq!(s.streak_count, 5);
+    }
+
+    #[test]
+    fn dispatch_random_drop_applies_coins_even_when_eclipsed() {
+        // Find a seed that produces a drop hit, force a milestone in same call,
+        // verify coins are added anyway.
+        let drop_seed = (0..1000u64)
+            .find(|s| events::roll_random_drop_with_seed(*s))
+            .expect("at least one seed in 0..1000 should produce a drop");
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.last_milestone_celebrated = 0;
+        let coins_before = s.coins;
+        super::apply_feed_dispatch(&mut s, drop_seed);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::MilestoneCenturion);
+        // Coins: +1 for the call itself plus +10 for the eclipsed drop.
+        assert_eq!(s.coins, coins_before + 1 + events::RANDOM_DROP_REWARD);
+    }
+
+    #[test]
+    fn dispatch_no_celebration_in_idle_call() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 50;
+        // Set level to match the current total_tool_calls so no level-up fires.
+        // level = 1 + 50/50 = 2; after +1 calls: 1 + 51/50 = 2 → no change.
+        s.level = 2;
+        s.streak_count = 1;
+        s.last_milestone_celebrated = 0;
+        super::apply_feed_dispatch(&mut s, /* drop_seed */ 999_999_999);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::None);
+        assert_eq!(s.levelup_renders_remaining, 0);
+        assert_eq!(s.streak_count, 2);
     }
 }
