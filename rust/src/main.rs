@@ -8,6 +8,7 @@ mod events;
 mod hatch;
 mod hooks;
 mod identity;
+mod llm;
 mod mood;
 mod paths;
 mod payload;
