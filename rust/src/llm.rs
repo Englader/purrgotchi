@@ -66,9 +66,44 @@ pub fn parse_haiku_response(body: &str) -> Result<(String, u32, u32), LlmError> 
     Ok((text, input, output))
 }
 
-#[allow(dead_code)] // wire call lands in T2b
-pub fn call_haiku(_req: HaikuRequest) -> Result<HaikuResponse, LlmError> {
-    Err(LlmError::Network("not yet implemented".into()))
+pub fn call_haiku(req: HaikuRequest) -> Result<HaikuResponse, LlmError> {
+    let key = api_key().ok_or(LlmError::MissingKey)?;
+    let body = serde_json::json!({
+        "model": HAIKU_MODEL,
+        "max_tokens": req.max_tokens,
+        "system": req.system,
+        "messages": [{"role": "user", "content": req.user}]
+    });
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+        .timeout_read(Duration::from_secs(READ_TIMEOUT_SECS))
+        .build();
+
+    let t0 = std::time::Instant::now();
+    let resp = agent.post(ANTHROPIC_API_URL)
+        .set("x-api-key", &key)
+        .set("anthropic-version", ANTHROPIC_VERSION)
+        .set("content-type", "application/json")
+        .send_json(body);
+    let latency_ms = t0.elapsed().as_millis() as u64;
+
+    match resp {
+        Ok(r) => {
+            let body = r.into_string().map_err(|e| LlmError::Network(e.to_string()))?;
+            let (text, input_tokens, output_tokens) = parse_haiku_response(&body)?;
+            Ok(HaikuResponse { text, input_tokens, output_tokens, latency_ms })
+        }
+        Err(ureq::Error::Status(code, _)) => Err(LlmError::Http(code)),
+        Err(ureq::Error::Transport(t)) => {
+            // ureq surfaces both timeouts and network failures here.
+            let s = t.to_string();
+            if s.contains("timed out") || s.contains("timeout") {
+                Err(LlmError::Timeout)
+            } else {
+                Err(LlmError::Network(s))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -128,8 +163,21 @@ mod tests {
         }
         assert!(api_key().is_none());
     }
-}
 
-// Silence the unused `Duration` import until T2b lands the wire call.
-#[allow(dead_code)]
-fn _hold_imports(_: Duration) {}
+    #[test]
+    #[ignore] // run with: LLM_INTEGRATION=1 cargo test -- --ignored llm_integration
+    fn llm_integration_call_haiku_round_trip() {
+        if env::var("LLM_INTEGRATION").is_err() {
+            return;
+        }
+        let resp = call_haiku(HaikuRequest {
+            system: "You are a one-word answerer.".into(),
+            user: "Reply with exactly the word: meow".into(),
+            max_tokens: 10,
+        }).expect("integration call should succeed");
+        assert!(!resp.text.is_empty(), "got empty text");
+        assert!(resp.input_tokens > 0);
+        assert!(resp.output_tokens > 0);
+        assert!(resp.latency_ms > 0);
+    }
+}
