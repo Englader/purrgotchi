@@ -12,6 +12,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.4.8 — D-group events bundle
+
+Five event-driven kitten reactions:
+
+- **D1 Streak** — fires when Claude makes 5 tool calls within a single turn (no `UserPromptSubmit` between). One-shot speech for 3 renders.
+- **D2 Milestones** — Centurion (100), Veteran (500), Master (1000), Legendary (every kilo-multiple ≥ 2000). Six-render celebration with milestone-themed speech.
+- **D3 Birthday** — day-long ambient mode on the anniversary of `birth_time` (Feb 29 kittens celebrate Feb 28 in non-leap years). Reuses levelup sprite; dedicated birthday speech pool.
+- **D4 Daily greeting** — fires on the first `turn()` after a 6+ hour gap. First turn after hatch is suppressed (no welcome-back on day-zero).
+- **D5 Random drop** — 0.5% chance per tool call, +10 coins. Coins applied unconditionally even when speech is eclipsed by a higher-priority celebration.
+
+Priority order (highest wins on simultaneous detection): milestone > levelup/evolving > streak > random drop. Birthday ambient mode is overridden by any active celebration.
+
+Three additive state fields with `serde(default)` (no schema-version bump): `streak_count`, `last_milestone_celebrated`, `last_turn_at`. All seven new `CelebrationKind` variants reuse the existing levelup sprite — no new sprite files.
+
+See `docs/superpowers/specs/2026-04-25-d-group-events-design.md` and `docs/superpowers/plans/2026-04-25-v3.4.8-d-group-events.md`.
+
 ## [3.4.7] — 2026-04-25
 
 ### Added

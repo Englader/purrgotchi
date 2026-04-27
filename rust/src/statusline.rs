@@ -103,8 +103,12 @@ pub fn run() {
 
     let reset_5h_str = time_until_reset(payload.rate_limits.five_hour.resets_at, now);
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
+    let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
+
     let speech = if celebration_kind != CelebrationKind::None {
         compute_celebration_speech(celebration_kind, now)
+    } else if is_birthday {
+        crate::speech::compute_birthday_speech(now)
     } else {
         compute_speech(mood, now)
     };
@@ -141,22 +145,31 @@ pub fn run() {
 
     let sprite_lines = if celebration_kind != CelebrationKind::None {
         get_celebration_sprite(celebration_kind, frame)
+    } else if is_birthday {
+        // Birthday day-long mode reuses the levelup celebration sprite; no new art.
+        get_celebration_sprite(CelebrationKind::LevelUp, frame)
     } else {
         let stage = state::life_stage(level);
         get_sprite_lines(stage, &rarity, mood, frame)
     };
-    let speech_color: String = match mood {
-        "panic" => C_RED.to_string(),
-        "alert" => C_YELLOW.to_string(),
-        "happy" => C_GREEN.to_string(),
-        "sleep" => C_MAGENTA.to_string(),
-        "hungry" => format!("{C_DIM}{C_CYAN}"),
-        _ => C_CYAN.to_string(),
+    let speech_color: String = if celebration_kind != CelebrationKind::None || is_birthday {
+        // Celebration and birthday speech: pink for warmth/specialness, matching
+        // the existing rail/HUD pink accent.
+        C_PINK.to_string()
+    } else {
+        match mood {
+            "panic" => C_RED.to_string(),
+            "alert" => C_YELLOW.to_string(),
+            "happy" => C_GREEN.to_string(),
+            "sleep" => C_MAGENTA.to_string(),
+            "hungry" => format!("{C_DIM}{C_CYAN}"),
+            _ => C_CYAN.to_string(),
+        }
     };
 
     // Sprite color is rarity-driven outside of celebrations. During a celebration,
     // the celebration sprite + speech path keeps the mood color for continuity.
-    let sprite_color: String = if celebration_kind != CelebrationKind::None {
+    let sprite_color: String = if celebration_kind != CelebrationKind::None || is_birthday {
         speech_color.clone()
     } else {
         crate::colors::rarity_color(&rarity, shiny, now)

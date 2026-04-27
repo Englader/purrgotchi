@@ -188,12 +188,27 @@ static SPRITES: &[SpriteRow] = &[
 // Celebration sprites — tier-agnostic. Both EvolvingYoung and EvolvingAdult
 // use the same `evolving_*` art; the distinction lives in the speech pool.
 static CELEBRATIONS: &[(CelebrationKind, u8, &str)] = &[
-    (CelebrationKind::LevelUp,        0, sprite!("levelup_0.txt")),
-    (CelebrationKind::LevelUp,        1, sprite!("levelup_1.txt")),
-    (CelebrationKind::EvolvingYoung,  0, sprite!("evolving_0.txt")),
-    (CelebrationKind::EvolvingYoung,  1, sprite!("evolving_1.txt")),
-    (CelebrationKind::EvolvingAdult,  0, sprite!("evolving_0.txt")),
-    (CelebrationKind::EvolvingAdult,  1, sprite!("evolving_1.txt")),
+    (CelebrationKind::LevelUp,            0, sprite!("levelup_0.txt")),
+    (CelebrationKind::LevelUp,            1, sprite!("levelup_1.txt")),
+    (CelebrationKind::EvolvingYoung,      0, sprite!("evolving_0.txt")),
+    (CelebrationKind::EvolvingYoung,      1, sprite!("evolving_1.txt")),
+    (CelebrationKind::EvolvingAdult,      0, sprite!("evolving_0.txt")),
+    (CelebrationKind::EvolvingAdult,      1, sprite!("evolving_1.txt")),
+    // D-group: all reuse levelup art (no new sprite files — see spec §5)
+    (CelebrationKind::Streak,             0, sprite!("levelup_0.txt")),
+    (CelebrationKind::Streak,             1, sprite!("levelup_1.txt")),
+    (CelebrationKind::MilestoneCenturion, 0, sprite!("levelup_0.txt")),
+    (CelebrationKind::MilestoneCenturion, 1, sprite!("levelup_1.txt")),
+    (CelebrationKind::MilestoneVeteran,   0, sprite!("levelup_0.txt")),
+    (CelebrationKind::MilestoneVeteran,   1, sprite!("levelup_1.txt")),
+    (CelebrationKind::MilestoneMaster,    0, sprite!("levelup_0.txt")),
+    (CelebrationKind::MilestoneMaster,    1, sprite!("levelup_1.txt")),
+    (CelebrationKind::MilestoneLegendary, 0, sprite!("levelup_0.txt")),
+    (CelebrationKind::MilestoneLegendary, 1, sprite!("levelup_1.txt")),
+    (CelebrationKind::Greeting,           0, sprite!("levelup_0.txt")),
+    (CelebrationKind::Greeting,           1, sprite!("levelup_1.txt")),
+    (CelebrationKind::RandomDrop,         0, sprite!("levelup_0.txt")),
+    (CelebrationKind::RandomDrop,         1, sprite!("levelup_1.txt")),
 ];
 
 fn lookup_sprite(stage: &str, rarity: &str, mood: &str, frame: u8) -> Option<&'static str> {
@@ -249,7 +264,7 @@ mod tests {
     #[test]
     fn table_has_expected_count() {
         assert_eq!(SPRITES.len(), 165);
-        assert_eq!(CELEBRATIONS.len(), 6);
+        assert_eq!(CELEBRATIONS.len(), 20);
     }
 
     #[test]
@@ -294,5 +309,18 @@ mod tests {
         // CelebrationKind::None returns a non-panicking 6-line result.
         let lines = get_celebration_sprite(CelebrationKind::None, 0);
         assert_eq!(lines.len(), 6);
+    }
+
+    #[test]
+    fn d_group_celebrations_resolve_to_levelup_art() {
+        let lines = get_celebration_sprite(CelebrationKind::MilestoneCenturion, 0);
+        assert!(!lines.is_empty());
+        assert!(lines.iter().any(|l| !l.is_empty()),
+            "MilestoneCenturion frame 0 must resolve to non-empty art");
+
+        let lines = get_celebration_sprite(CelebrationKind::Greeting, 1);
+        assert!(!lines.is_empty());
+        assert!(lines.iter().any(|l| !l.is_empty()),
+            "Greeting frame 1 must resolve to non-empty art");
     }
 }

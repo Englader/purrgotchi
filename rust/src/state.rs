@@ -15,6 +15,14 @@ pub enum CelebrationKind {
     LevelUp,
     EvolvingYoung,
     EvolvingAdult,
+    // D-group (v3.4.8)
+    Streak,
+    MilestoneCenturion,
+    MilestoneVeteran,
+    MilestoneMaster,
+    MilestoneLegendary,
+    Greeting,
+    RandomDrop,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,6 +56,13 @@ pub struct State {
     pub last_played_at: u64,
     #[serde(default)]
     pub last_treated_at: u64,
+    // D-group events (v3.4.8, additive — serde(default) for back-compat)
+    #[serde(default)]
+    pub streak_count: u8,
+    #[serde(default)]
+    pub last_milestone_celebrated: u64,
+    #[serde(default)]
+    pub last_turn_at: u64,
 }
 
 fn default_bond() -> u8 { crate::bond::BOND_START }
@@ -74,6 +89,9 @@ impl State {
             last_pet_at: 0,
             last_played_at: 0,
             last_treated_at: 0,
+            streak_count: 0,
+            last_milestone_celebrated: 0,
+            last_turn_at: 0,
         }
     }
 }
@@ -281,5 +299,40 @@ mod tests {
         let s = State::base(12345);
         assert_eq!(s.last_played_at, 0);
         assert_eq!(s.last_treated_at, 0);
+    }
+
+    #[test]
+    fn v3_4_7_state_without_d_group_fields_defaults_to_zero() {
+        let json = r#"{
+            "version": 2,
+            "name": "Thalia",
+            "birth_time": 1000,
+            "last_fed_at": 1000,
+            "total_tool_calls": 5,
+            "coins": 5,
+            "level": 1,
+            "lifetime_cost_usd": 0.1,
+            "breed": "Tabby",
+            "rarity": "common",
+            "shiny": false,
+            "stats": [42, 80, 10, 55, 30],
+            "personality": "A streetwise cat.",
+            "bond": 72,
+            "last_pet_at": 2000,
+            "last_played_at": 0,
+            "last_treated_at": 0
+        }"#;
+        let s = parse_state(json.as_bytes()).expect("v3.4.7 shape should load");
+        assert_eq!(s.streak_count, 0);
+        assert_eq!(s.last_milestone_celebrated, 0);
+        assert_eq!(s.last_turn_at, 0);
+    }
+
+    #[test]
+    fn state_base_initializes_d_group_fields_to_zero() {
+        let s = State::base(12345);
+        assert_eq!(s.streak_count, 0);
+        assert_eq!(s.last_milestone_celebrated, 0);
+        assert_eq!(s.last_turn_at, 0);
     }
 }
