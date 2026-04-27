@@ -12,6 +12,8 @@ mod llm;
 mod mood;
 mod paths;
 mod payload;
+mod quip_cache;
+mod react;
 mod render;
 mod speech;
 mod sprites;
