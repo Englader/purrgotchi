@@ -13,6 +13,15 @@ fn format_cooldown(wait_secs: u64) -> String {
     if h > 0 { format!("{h}h {m:02}m") } else { format!("{m}m") }
 }
 
+const REACT_DICE_DENOM: u64 = 5;
+
+/// Pure dice — given a seed, returns true if the LLM react should fire this turn.
+/// Reuses the existing LCG primitive for distribution.
+pub fn should_fire_react(seed: u64) -> bool {
+    let mut rng = crate::identity::Lcg::new(seed);
+    rng.next() % REACT_DICE_DENOM == 0
+}
+
 /// Pure helper: given previous and new level, return the celebration to fire.
 /// Returns `None` if the level didn't go up.
 pub fn detect_celebration(prev_level: u64, new_level: u64) -> Option<(CelebrationKind, u8)> {
@@ -94,15 +103,43 @@ fn apply_feed_dispatch(
 }
 
 pub fn turn() {
-    let _ = turn_inner();
+    use std::io::Read;
+    let mut input = String::new();
+    let _ = std::io::stdin().read_to_string(&mut input);
+    let payload: crate::payload::Payload = if input.trim().is_empty() {
+        crate::payload::Payload::default()
+    } else {
+        serde_json::from_str(&input).unwrap_or_default()
+    };
+    let _ = turn_inner(&payload);
     let _ = fs::remove_file(paths::turn_anchor_file());
+    maybe_spawn_react(&payload);
 }
 
-fn turn_inner() -> Option<()> {
+fn turn_inner(_payload: &crate::payload::Payload) -> Option<()> {
     let mut s = crate::hatch::load_or_hatch();
     let now = state::now_secs();
     apply_turn_dispatch(&mut s, now);
     state::save_atomic(&s).ok()
+}
+
+fn maybe_spawn_react(payload: &crate::payload::Payload) {
+    if crate::llm::api_key().is_none() {
+        return;
+    }
+    if payload.transcript_path.is_empty() {
+        return;
+    }
+    let seed = state::now_secs() ^ fnv1a_session(&payload.session_id);
+    if !should_fire_react(seed) {
+        return;
+    }
+    crate::spawn::detached_self(&["react", &payload.transcript_path]);
+}
+
+fn fnv1a_session(s: &str) -> u64 {
+    // Reuses the FNV-1a primitive from identity to avoid pulling in a new dep.
+    crate::identity::fnv1a(s)
 }
 
 fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) {
@@ -860,6 +897,18 @@ mod tests {
         assert_eq!(s.celebration_kind, crate::state::CelebrationKind::MilestoneCenturion);
         // Coins: +1 for the call itself plus +10 for the eclipsed drop.
         assert_eq!(s.coins, coins_before + 1 + events::RANDOM_DROP_REWARD);
+    }
+
+    #[test]
+    fn react_dice_is_deterministic_for_same_seed() {
+        assert_eq!(super::should_fire_react(42), super::should_fire_react(42));
+    }
+
+    #[test]
+    fn react_dice_distribution_is_one_in_five_ish() {
+        // Exact-match would be flaky; assert the rate is between 12% and 28% over 5000 trials.
+        let hits: usize = (0..5000u64).filter(|s| super::should_fire_react(*s)).count();
+        assert!((600..=1400).contains(&hits), "expected ~1000 hits/5000 (1-in-5), got {hits}");
     }
 
     #[test]
