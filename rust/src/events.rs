@@ -51,6 +51,56 @@ pub fn detect_streak(streak_count: u8) -> bool {
     streak_count == STREAK_TRIGGER
 }
 
+/// Convert a Unix timestamp to (year, month, day) in UTC. We use UTC for
+/// birthday matching so the celebration period is consistent regardless of
+/// the user's timezone or DST transitions on their birth date — the kitten's
+/// "day" is the calendar day in the timezone the box was hatched in, which
+/// for this purpose is approximated by UTC. Day-long ambient mode tolerates
+/// the ~few-hour offset.
+///
+/// Algorithm: Howard Hinnant's days_from_civil inverse, restricted to the
+/// 1970..2100 range we actually care about.
+pub fn secs_to_ymd(secs: u64) -> (i32, u8, u8) {
+    let days = (secs / 86_400) as i64;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u8;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m, d)
+}
+
+fn is_leap_year(y: i32) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+/// Returns true iff `now` falls on the kitten's birthday anniversary.
+///
+/// Rules:
+/// - Same year as birth_time → false (hatch day itself isn't a birthday).
+/// - month/day match → true.
+/// - Special case: kittens born Feb 29 celebrate Feb 28 in non-leap years.
+pub fn is_birthday(birth_time: u64, now: u64) -> bool {
+    let (by, bm, bd) = secs_to_ymd(birth_time);
+    let (ny, nm, nd) = secs_to_ymd(now);
+    if ny == by {
+        return false;
+    }
+    if bm == nm && bd == nd {
+        return true;
+    }
+    // Feb 29 birthday in a non-leap year → celebrate Feb 28.
+    if bm == 2 && bd == 29 && nm == 2 && nd == 28 && !is_leap_year(ny) {
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -127,6 +177,75 @@ mod tests {
         // current +1 invariant, but if it ever happens watermark gating prevents
         // firing two milestones in one call. Centurion wins because it's checked first.)
         assert_eq!(super::detect_milestone(50, 1500, 0), Some((CelebrationKind::MilestoneCenturion, 100)));
+    }
+
+    #[test]
+    fn is_birthday_false_on_birth_day_itself() {
+        // Same year as birth → not a birthday yet.
+        let birth = ymd_to_secs(2026, 4, 25);
+        let now = birth + 7200;  // 2 hours later, same day
+        assert!(!super::is_birthday(birth, now));
+    }
+
+    #[test]
+    fn is_birthday_true_one_year_later_same_md() {
+        let birth = ymd_to_secs(2026, 4, 25);
+        let now = ymd_to_secs(2027, 4, 25);
+        assert!(super::is_birthday(birth, now));
+    }
+
+    #[test]
+    fn is_birthday_false_different_month_day() {
+        let birth = ymd_to_secs(2026, 4, 25);
+        let now = ymd_to_secs(2027, 4, 26);
+        assert!(!super::is_birthday(birth, now));
+
+        let now = ymd_to_secs(2027, 5, 25);
+        assert!(!super::is_birthday(birth, now));
+    }
+
+    #[test]
+    fn is_birthday_feb29_kitten_celebrates_feb28_in_non_leap_year() {
+        let birth = ymd_to_secs(2024, 2, 29);  // 2024 is a leap year
+        // 2025 is not a leap year — Feb 29 doesn't exist; celebrate Feb 28.
+        let now = ymd_to_secs(2025, 2, 28);
+        assert!(super::is_birthday(birth, now));
+        // Feb 27 should not match.
+        let now = ymd_to_secs(2025, 2, 27);
+        assert!(!super::is_birthday(birth, now));
+    }
+
+    #[test]
+    fn is_birthday_feb29_kitten_celebrates_feb29_in_leap_year() {
+        let birth = ymd_to_secs(2024, 2, 29);
+        let now = ymd_to_secs(2028, 2, 29);  // 2028 is a leap year
+        assert!(super::is_birthday(birth, now));
+    }
+
+    #[test]
+    fn is_birthday_non_feb29_kitten_unaffected_by_leap_year_logic() {
+        let birth = ymd_to_secs(2026, 3, 15);
+        let now = ymd_to_secs(2027, 3, 15);
+        assert!(super::is_birthday(birth, now));
+        let now = ymd_to_secs(2027, 2, 28);
+        assert!(!super::is_birthday(birth, now));
+    }
+
+    // Test helper: convert a UTC date (year, month, day) to a Unix timestamp
+    // at noon UTC. Avoids midnight-edge timezone confusion in tests by
+    // landing solidly in the middle of the day.
+    fn ymd_to_secs(year: i32, month: u8, day: u8) -> u64 {
+        // Hardcoded Julian-day arithmetic for the test range we care about
+        // (1970..2100). Using the standard formula:
+        let m = month as i32;
+        let y = year;
+        let (y, m) = if m <= 2 { (y - 1, m + 12) } else { (y, m) };
+        let era = y.div_euclid(400);
+        let yoe = (y - era * 400) as u32;
+        let doy = (153 * (m - 3) as u32 + 2) / 5 + day as u32 - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        let days_since_epoch = era as i64 * 146_097 + doe as i64 - 719_468;
+        (days_since_epoch * 86_400 + 12 * 3600) as u64  // noon UTC
     }
 }
 
