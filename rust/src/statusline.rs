@@ -105,13 +105,14 @@ pub fn run() {
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
     let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
 
-    let speech = if celebration_kind != CelebrationKind::None {
-        compute_celebration_speech(celebration_kind, now)
-    } else if is_birthday {
-        crate::speech::compute_birthday_speech(now)
-    } else {
-        compute_speech(mood, now)
-    };
+    let quip = crate::quip_cache::consume();
+    let (speech_source, speech) = select_speech_source(
+        celebration_kind,
+        is_birthday,
+        quip,
+        mood,
+        now,
+    );
 
     let git_branch = read_git_branch(&cwd);
 
@@ -152,9 +153,12 @@ pub fn run() {
         let stage = state::life_stage(level);
         get_sprite_lines(stage, &rarity, mood, frame)
     };
-    let speech_color: String = if celebration_kind != CelebrationKind::None || is_birthday {
-        // Celebration and birthday speech: pink for warmth/specialness, matching
-        // the existing rail/HUD pink accent.
+    let speech_color: String = if matches!(
+        speech_source,
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
+    ) {
+        // Celebration, birthday, and LLM-quip speech: pink for warmth/specialness,
+        // matching the existing rail/HUD pink accent.
         C_PINK.to_string()
     } else {
         match mood {
@@ -167,9 +171,13 @@ pub fn run() {
         }
     };
 
-    // Sprite color is rarity-driven outside of celebrations. During a celebration,
-    // the celebration sprite + speech path keeps the mood color for continuity.
-    let sprite_color: String = if celebration_kind != CelebrationKind::None || is_birthday {
+    // Sprite color is rarity-driven outside of celebrations / overlays. During
+    // celebration, birthday, or quip overlay, the sprite mirrors the speech color
+    // for continuity.
+    let sprite_color: String = if matches!(
+        speech_source,
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
+    ) {
         speech_color.clone()
     } else {
         crate::colors::rarity_color(&rarity, shiny, now)
@@ -478,6 +486,33 @@ fn peak_period(hour: u32) -> (&'static str, &'static str) {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SpeechSource {
+    Celebration,
+    Birthday,
+    Quip,
+    Mood,
+}
+
+pub(crate) fn select_speech_source(
+    celebration_kind: crate::state::CelebrationKind,
+    is_birthday: bool,
+    quip: Option<String>,
+    mood: &str,
+    now: i64,
+) -> (SpeechSource, String) {
+    if celebration_kind != crate::state::CelebrationKind::None {
+        return (SpeechSource::Celebration, compute_celebration_speech(celebration_kind, now).to_string());
+    }
+    if is_birthday {
+        return (SpeechSource::Birthday, crate::speech::compute_birthday_speech(now).to_string());
+    }
+    if let Some(q) = quip {
+        return (SpeechSource::Quip, q);
+    }
+    (SpeechSource::Mood, compute_speech(mood, now).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,4 +590,52 @@ mod tests {
         assert_eq!(t + a + s + b + p + c, BOX_WIDTH);
     }
 
+    #[test]
+    fn select_speech_celebration_beats_quip() {
+        let got = super::select_speech_source(
+            crate::state::CelebrationKind::LevelUp,
+            /* is_birthday */ false,
+            /* quip */ Some("ignored".into()),
+            "calm",
+            0,
+        );
+        assert_eq!(got.0, super::SpeechSource::Celebration);
+    }
+
+    #[test]
+    fn select_speech_birthday_beats_quip() {
+        let got = super::select_speech_source(
+            crate::state::CelebrationKind::None,
+            /* is_birthday */ true,
+            Some("ignored".into()),
+            "calm",
+            0,
+        );
+        assert_eq!(got.0, super::SpeechSource::Birthday);
+    }
+
+    #[test]
+    fn select_speech_quip_beats_mood() {
+        let got = super::select_speech_source(
+            crate::state::CelebrationKind::None,
+            false,
+            Some("the cat watches".into()),
+            "calm",
+            0,
+        );
+        assert_eq!(got.0, super::SpeechSource::Quip);
+        assert_eq!(got.1, "the cat watches");
+    }
+
+    #[test]
+    fn select_speech_falls_back_to_mood_when_no_quip() {
+        let got = super::select_speech_source(
+            crate::state::CelebrationKind::None,
+            false,
+            None,
+            "calm",
+            0,
+        );
+        assert_eq!(got.0, super::SpeechSource::Mood);
+    }
 }
