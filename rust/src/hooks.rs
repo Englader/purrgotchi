@@ -94,7 +94,25 @@ fn apply_feed_dispatch(
 }
 
 pub fn turn() {
+    let _ = turn_inner();
     let _ = fs::remove_file(paths::turn_anchor_file());
+}
+
+fn turn_inner() -> Option<()> {
+    let mut s = crate::hatch::load_or_hatch();
+    let now = state::now_secs();
+    apply_turn_dispatch(&mut s, now);
+    state::save_atomic(&s).ok()
+}
+
+fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) {
+    let prev_last_turn = state.last_turn_at;
+    state.streak_count = 0;
+    if crate::events::should_greet(prev_last_turn, now) {
+        state.celebration_kind = crate::state::CelebrationKind::Greeting;
+        state.levelup_renders_remaining = crate::events::GREETING_RENDERS;
+    }
+    state.last_turn_at = now;
 }
 
 pub fn rename(new_name: &str) -> i32 {
@@ -753,6 +771,44 @@ mod tests {
     }
 
     use crate::events;
+
+    #[test]
+    fn turn_resets_streak_counter() {
+        let mut s = crate::state::State::base(0);
+        s.streak_count = 3;
+        super::apply_turn_dispatch(&mut s, 1_000_000);
+        assert_eq!(s.streak_count, 0);
+    }
+
+    #[test]
+    fn turn_does_not_greet_on_first_invocation_after_hatch() {
+        let mut s = crate::state::State::base(0);
+        s.last_turn_at = 0;
+        super::apply_turn_dispatch(&mut s, 1_000_000);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::None);
+        assert_eq!(s.last_turn_at, 1_000_000);
+    }
+
+    #[test]
+    fn turn_greets_after_six_hour_gap() {
+        let mut s = crate::state::State::base(0);
+        s.last_turn_at = 1_000_000;
+        let now = 1_000_000 + 7 * 3600;  // 7h gap
+        super::apply_turn_dispatch(&mut s, now);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::Greeting);
+        assert_eq!(s.levelup_renders_remaining, events::GREETING_RENDERS);
+        assert_eq!(s.last_turn_at, now);
+    }
+
+    #[test]
+    fn turn_does_not_greet_within_six_hours() {
+        let mut s = crate::state::State::base(0);
+        s.last_turn_at = 1_000_000;
+        let now = 1_000_000 + 3 * 3600;
+        super::apply_turn_dispatch(&mut s, now);
+        assert_eq!(s.celebration_kind, crate::state::CelebrationKind::None);
+        assert_eq!(s.last_turn_at, now);  // still updated even when no greeting
+    }
 
     #[test]
     fn dispatch_milestone_centurion_at_100th_call() {
