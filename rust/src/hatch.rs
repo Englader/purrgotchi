@@ -80,11 +80,12 @@ pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State
         };
     }
 
-    // Look up personality blurb
+    // Look up personality blurb. Stored with literal `{name}` — render sites
+    // (`card.rs`, future stats personality row) substitute at render time so
+    // renames flow through automatically.
     let breed_idx = identity::breed_global_idx(&breed);
     let ds = identity::dump_slot(peak_idx, dump_idx);
-    let blurb = identity::BLURBS[breed_idx][peak_idx][ds];
-    let personality = blurb.replace("{name}", "Purrgotchi");
+    let personality = identity::BLURBS[breed_idx][peak_idx][ds].to_string();
 
     state::State {
         breed,
@@ -125,7 +126,7 @@ pub fn run(opts: &HatchOpts) {
         eprintln!("Run 'purrgotchi card' to see them.");
         std::process::exit(1);
     }
-    let s = generate(opts);
+    let mut s = generate(opts);
     println!("Hatched: {} {} ({}){}",
         if s.shiny { "✦" } else { "" },
         s.breed, s.rarity,
@@ -133,10 +134,108 @@ pub fn run(opts: &HatchOpts) {
     );
     println!("Stats: CUR={} MIS={} LAZ={} AFF={} WIS={}",
         s.stats[0], s.stats[1], s.stats[2], s.stats[3], s.stats[4]);
+    if let Some(llm_blurb) = maybe_llm_blurb(&s) {
+        s.personality = llm_blurb;
+    }
     match state::save_atomic(&s) {
         Ok(()) => println!("Saved to: {}", crate::paths::state_file().display()),
         Err(e) => eprintln!("warning: could not write state: {e}"),
     }
+}
+
+const HATCH_MAX_TOKENS: u32 = 80;
+const HATCH_BLURB_HARD_CAP_CHARS: usize = 200;
+
+/// Try to generate an LLM personality blurb at hatch. Returns `None` on any
+/// failure or when the API key is missing. Caller falls back to whatever
+/// `generate_from_seed` already stored.
+fn maybe_llm_blurb(s: &state::State) -> Option<String> {
+    if crate::llm::api_key().is_none() {
+        return None;
+    }
+    if std::env::var("PURR_FORCE_STATIC_BLURB").is_ok() {
+        return None;
+    }
+    let peak_idx = s.stats.iter().enumerate()
+        .max_by_key(|&(_, &v)| v).map(|(i, _)| i)?;
+    let dump_idx = s.stats.iter().enumerate()
+        .min_by_key(|&(_, &v)| v).map(|(i, _)| i)?;
+    let peak = identity::STAT_NAMES[peak_idx];
+    let dump = identity::STAT_NAMES[dump_idx];
+
+    let system = "You write 1-2 sentence personality blurbs for cats in a desktop pet game.\n\
+The voice is dry, observational, character-rich — like a fortune cookie\n\
+written by someone who knows this cat well.\n\n\
+Output rules:\n\
+- 1 to 2 sentences, max 200 characters total.\n\
+- Use the literal token {name} wherever the cat's name appears. Do not\n\
+  substitute a name. If the blurb doesn't naturally need the name, you may\n\
+  omit it entirely — but then no other name either.\n\
+- No emoji. No quotation marks. No preamble.".to_string();
+    let user = format!(
+        "Cat: {} {}\nPeak stat: {peak}\nDump stat: {dump}\n\nWrite the blurb.",
+        s.rarity, s.breed,
+    );
+    let req = crate::llm::HaikuRequest { system, user, max_tokens: HATCH_MAX_TOKENS };
+
+    eprintln!("✨ summoning personality…");
+    match crate::llm::call_haiku(req) {
+        Ok(resp) => {
+            crate::debug::log(&format!(
+                "[llm] hatch ok latency_ms={} in_tok={} out_tok={}",
+                resp.latency_ms, resp.input_tokens, resp.output_tokens,
+            ));
+            let cleaned = clean_hatch_blurb(&resp.text);
+            if validate_blurb(&cleaned) {
+                Some(cleaned)
+            } else {
+                crate::debug::log("[llm] hatch reject reason=validation_failed");
+                None
+            }
+        }
+        Err(e) => {
+            crate::debug::log(&format!("[llm] hatch fail err={e:?}"));
+            None
+        }
+    }
+}
+
+fn clean_hatch_blurb(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let stripped = if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    let single = stripped.replace(['\n', '\r'], " ");
+    single.chars().take(HATCH_BLURB_HARD_CAP_CHARS).collect()
+}
+
+/// Validate: the blurb either uses `{name}` literal OR contains no
+/// capitalized words at all. Without the placeholder we can't tell a
+/// proper noun from a sentence-start capital, so we require the LLM to
+/// have written the blurb in all-lowercase prose if it elected to omit
+/// `{name}`. This is conservative but cheap and avoids the rename bug.
+fn validate_blurb(b: &str) -> bool {
+    if b.is_empty() {
+        return false;
+    }
+    if b.contains("{name}") {
+        return true;
+    }
+    // No placeholder — reject if any word starts with an uppercase letter.
+    for word in b.split_whitespace() {
+        let w = word.trim_matches(|c: char| !c.is_alphanumeric());
+        if w.is_empty() {
+            continue;
+        }
+        if w.chars().next().is_some_and(|c| c.is_uppercase()) {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -243,12 +342,49 @@ mod tests {
     }
 
     #[test]
-    fn personality_non_empty() {
+    fn personality_non_empty_and_uses_placeholder() {
+        // After v3.5.0: personality is stored with the literal `{name}` placeholder
+        // and substituted at render time. This test asserts both that the static
+        // table path produced something non-empty and that it used the placeholder
+        // (the static blurbs all reference {name}).
         for seed in 0..20u64 {
             let s = hatch_with_seed(seed);
             assert!(!s.personality.is_empty());
-            assert!(!s.personality.contains("{name}"),
-                "name substitution failed in blurb: {}", s.personality);
+            assert!(s.personality.contains("{name}"),
+                "static blurb should retain {{name}} placeholder for render-time substitution: {}", s.personality);
         }
+    }
+
+    #[test]
+    fn validate_blurb_accepts_with_placeholder() {
+        assert!(super::validate_blurb("{name} watches the keys with quiet curiosity."));
+    }
+
+    #[test]
+    fn validate_blurb_accepts_without_proper_nouns() {
+        assert!(super::validate_blurb("a cat of few words and many opinions."));
+    }
+
+    #[test]
+    fn validate_blurb_rejects_proper_noun_without_placeholder() {
+        assert!(!super::validate_blurb("Mittens watches the keys."));
+    }
+
+    #[test]
+    fn validate_blurb_rejects_empty() {
+        assert!(!super::validate_blurb(""));
+    }
+
+    #[test]
+    fn clean_hatch_blurb_strips_quotes_and_newlines() {
+        let raw = "\"This is\nthe blurb.\"";
+        assert_eq!(super::clean_hatch_blurb(raw), "This is the blurb.");
+    }
+
+    #[test]
+    fn clean_hatch_blurb_caps_at_200_chars() {
+        let raw = "a".repeat(500);
+        let got = super::clean_hatch_blurb(&raw);
+        assert_eq!(got.chars().count(), 200);
     }
 }
