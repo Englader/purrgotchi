@@ -5,6 +5,8 @@ pub struct Payload {
     #[serde(default)]
     pub session_id: String,
     #[serde(default)]
+    pub transcript_path: String,
+    #[serde(default)]
     pub model: ModelField,
     #[serde(default)]
     pub workspace: WorkspaceField,
@@ -95,5 +97,19 @@ mod tests {
         let json = r#"{"cost":{"total_cost_usd":1.0}}"#;
         let p: Payload = serde_json::from_str(json).unwrap();
         assert_eq!(p.session_id, "");
+    }
+
+    #[test]
+    fn transcript_path_deserializes_from_json() {
+        let json = r#"{"session_id":"abc","transcript_path":"C:/path/to/transcript.jsonl"}"#;
+        let p: Payload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.transcript_path, "C:/path/to/transcript.jsonl");
+    }
+
+    #[test]
+    fn transcript_path_defaults_to_empty_when_missing() {
+        let json = r#"{"session_id":"abc"}"#;
+        let p: Payload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.transcript_path, "");
     }
 }
