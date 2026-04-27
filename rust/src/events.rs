@@ -79,6 +79,20 @@ fn is_leap_year(y: i32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
+/// Returns true iff a daily-greeting one-shot should fire for this turn.
+///
+/// - Returns false if `last_turn_at == 0` (fresh hatch — first turn just
+///   initializes the watermark, no welcome-back on a kitten that's never been
+///   away).
+/// - Returns false if `now < last_turn_at` (defensive against clock skew).
+/// - Otherwise, returns true iff `now - last_turn_at >= GREETING_GAP_SECS`.
+pub fn should_greet(last_turn_at: u64, now: u64) -> bool {
+    if last_turn_at == 0 || now < last_turn_at {
+        return false;
+    }
+    now.saturating_sub(last_turn_at) >= GREETING_GAP_SECS
+}
+
 /// Returns true iff `now` falls on the kitten's birthday anniversary.
 ///
 /// Rules:
@@ -229,6 +243,40 @@ mod tests {
         assert!(super::is_birthday(birth, now));
         let now = ymd_to_secs(2027, 2, 28);
         assert!(!super::is_birthday(birth, now));
+    }
+
+    // T5: should_greet tests
+    #[test]
+    fn should_greet_false_on_first_turn_after_hatch() {
+        // last_turn_at == 0 means "never seen a turn before". Initialize only.
+        assert!(!super::should_greet(0, 1_000_000));
+    }
+
+    #[test]
+    fn should_greet_false_for_short_gap() {
+        let last = 1_000_000;
+        let now = last + 5 * 3600 + 59 * 60;  // 5h 59m — under threshold
+        assert!(!super::should_greet(last, now));
+    }
+
+    #[test]
+    fn should_greet_true_at_exactly_six_hours() {
+        let last = 1_000_000;
+        let now = last + 6 * 3600;
+        assert!(super::should_greet(last, now));
+    }
+
+    #[test]
+    fn should_greet_true_for_long_gap() {
+        let last = 1_000_000;
+        let now = last + 86_400;  // 24h
+        assert!(super::should_greet(last, now));
+    }
+
+    #[test]
+    fn should_greet_false_when_now_is_before_last_turn_at() {
+        // Defensive: clock skew or state restore — never panic, never greet on regression.
+        assert!(!super::should_greet(2_000_000, 1_000_000));
     }
 
     // Test helper: convert a UTC date (year, month, day) to a Unix timestamp
