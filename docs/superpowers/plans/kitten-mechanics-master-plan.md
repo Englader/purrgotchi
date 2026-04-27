@@ -106,7 +106,7 @@ _Update as items ship._
   - [x] Tag v3.4.0 + push
   - [x] v3.4.1 — hatched kittens permanent unless dev backdoor supplied
 
-- [ ] Phase 2 — Character depth (v3.4.x)
+- [x] Phase 2 — Character depth (v3.4.x — complete through v3.4.8)
   - [x] B1 + B2 bundle (v3.4.3) — life-stage sprite evolution + level-up celebration
   - [x] B3 (v3.4.4) — sprite color by rarity + card name color (rainbow legendary, shimmer shiny; HUD name stays pink for visual consistency)
   - [x] C5 + C1 bundle (v3.4.5) — dynamic `bond` stat (0–100, lazy decay 5/day, starts at 50) + `purrgotchi pet` command (+15, 4h cooldown, post-pet happy-mood window 120s). HUD: BOND bar replaces RARITY in H6 col 3; rarity stars promoted to H1 rail in yellow; PEAK label shifted to col-3 center. Card: new BOND row with own divider between identity stats and personality.
