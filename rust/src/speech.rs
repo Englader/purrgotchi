@@ -69,6 +69,70 @@ const EVOLVING_ADULT: &[&str] = &[
     "adult arc unlocked",
 ];
 
+const STREAK: &[&str] = &[
+    "5 in a row! purr-fect!",
+    "combo unlocked",
+    "tool chain go brrr",
+    "*tail flick* nice run",
+    "we're cooking",
+];
+
+const MILESTONE_CENTURION: &[&str] = &[
+    "100 calls! centurion!",
+    "hundo paws up",
+    "first century!",
+    "100 and counting...",
+    "*ceremonial purr*",
+];
+
+const MILESTONE_VETERAN: &[&str] = &[
+    "500! veteran of the keys",
+    "half a kilo of tools",
+    "battle-hardened mrow",
+    "we go way back now",
+    "*decorated tail swish*",
+];
+
+const MILESTONE_MASTER: &[&str] = &[
+    "kilocall ascended!",
+    "1000 tools! master cat!",
+    "thousand-tool club",
+    "we built that",
+    "*standing ovation meow*",
+];
+
+const MILESTONE_LEGENDARY: &[&str] = &[
+    "deep in the work",
+    "long-haul partner",
+    "purr-gathered wisdom",
+    "another kilo down",
+    "still here, still cooking",
+];
+
+const BIRTHDAY: &[&str] = &[
+    "happy purr-thday!",
+    "🎂 paw-ty time",
+    "year older, year wiser",
+    "*birthday meow*",
+    "another lap around the sun",
+];
+
+const GREETING: &[&str] = &[
+    "welcome back!",
+    "you came back!",
+    "missed you",
+    "*stretches awake*",
+    "mrow! about time",
+];
+
+const RANDOM_DROP: &[&str] = &[
+    "found a coin!",
+    "what's this? +10!",
+    "treasure!",
+    "lucky paw moment",
+    "*pounces on shiny*",
+];
+
 pub fn compute_speech(mood: &str, now_secs: i64) -> &'static str {
     let pool: &[&str] = match mood {
         "calm" => CALM,
@@ -89,15 +153,25 @@ pub fn compute_celebration_speech(
 ) -> &'static str {
     use crate::state::CelebrationKind;
     let pool: &[&str] = match kind {
-        CelebrationKind::LevelUp       => LEVELUP,
-        CelebrationKind::EvolvingYoung => EVOLVING_YOUNG,
-        CelebrationKind::EvolvingAdult => EVOLVING_ADULT,
-        CelebrationKind::None          => return "mrow",
-        // D-group variants (v3.4.8) — speech pools land in T4; fall back to levelup pool.
-        _ => LEVELUP,
+        CelebrationKind::LevelUp             => LEVELUP,
+        CelebrationKind::EvolvingYoung       => EVOLVING_YOUNG,
+        CelebrationKind::EvolvingAdult       => EVOLVING_ADULT,
+        CelebrationKind::Streak              => STREAK,
+        CelebrationKind::MilestoneCenturion  => MILESTONE_CENTURION,
+        CelebrationKind::MilestoneVeteran    => MILESTONE_VETERAN,
+        CelebrationKind::MilestoneMaster     => MILESTONE_MASTER,
+        CelebrationKind::MilestoneLegendary  => MILESTONE_LEGENDARY,
+        CelebrationKind::Greeting            => GREETING,
+        CelebrationKind::RandomDrop          => RANDOM_DROP,
+        CelebrationKind::None                => return "mrow",
     };
     let idx = ((now_secs.max(0) / 30) as usize) % pool.len();
     pool[idx]
+}
+
+pub fn compute_birthday_speech(now_secs: i64) -> &'static str {
+    let idx = ((now_secs.max(0) / 30) as usize) % BIRTHDAY.len();
+    BIRTHDAY[idx]
 }
 
 #[cfg(test)]
@@ -134,5 +208,61 @@ mod tests {
         let a = compute_celebration_speech(CelebrationKind::LevelUp, 0);
         let b = compute_celebration_speech(CelebrationKind::LevelUp, 15);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn streak_speech_returns_from_streak_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::Streak, 0);
+        assert!(STREAK.contains(&phrase));
+    }
+
+    #[test]
+    fn milestone_centurion_speech_returns_from_centurion_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::MilestoneCenturion, 0);
+        assert!(MILESTONE_CENTURION.contains(&phrase));
+    }
+
+    #[test]
+    fn milestone_legendary_speech_returns_from_legendary_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::MilestoneLegendary, 0);
+        assert!(MILESTONE_LEGENDARY.contains(&phrase));
+    }
+
+    #[test]
+    fn greeting_speech_returns_from_greeting_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::Greeting, 0);
+        assert!(GREETING.contains(&phrase));
+    }
+
+    #[test]
+    fn random_drop_speech_returns_from_drop_pool() {
+        let phrase = compute_celebration_speech(CelebrationKind::RandomDrop, 0);
+        assert!(RANDOM_DROP.contains(&phrase));
+    }
+
+    #[test]
+    fn birthday_speech_returns_from_birthday_pool() {
+        let phrase = compute_birthday_speech(0);
+        assert!(BIRTHDAY.contains(&phrase));
+    }
+
+    #[test]
+    fn birthday_speech_rotates_over_time() {
+        // 30s bucket rotation, same as compute_speech / compute_celebration_speech.
+        let a = compute_birthday_speech(0);
+        let b = compute_birthday_speech(15);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn all_d_group_pools_have_five_phrases() {
+        assert_eq!(STREAK.len(), 5);
+        assert_eq!(MILESTONE_CENTURION.len(), 5);
+        assert_eq!(MILESTONE_VETERAN.len(), 5);
+        assert_eq!(MILESTONE_MASTER.len(), 5);
+        assert_eq!(MILESTONE_LEGENDARY.len(), 5);
+        assert_eq!(BIRTHDAY.len(), 5);
+        assert_eq!(GREETING.len(), 5);
+        assert_eq!(RANDOM_DROP.len(), 5);
     }
 }
