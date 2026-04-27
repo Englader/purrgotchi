@@ -115,6 +115,16 @@ pub fn is_birthday(birth_time: u64, now: u64) -> bool {
     false
 }
 
+/// Single-step LCG roll. Returns true iff the seed produces a "hit" within
+/// the configured permille probability (`RANDOM_DROP_PROB_PERMILLE` / 1000).
+///
+/// Reuses the LCG primitive from `identity::Lcg` (already used at hatch),
+/// keeping the dependency surface unchanged.
+pub fn roll_random_drop_with_seed(seed: u64) -> bool {
+    let mut rng = crate::identity::Lcg::new(seed);
+    (rng.next() % 1000) < RANDOM_DROP_PROB_PERMILLE
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -277,6 +287,41 @@ mod tests {
     fn should_greet_false_when_now_is_before_last_turn_at() {
         // Defensive: clock skew or state restore — never panic, never greet on regression.
         assert!(!super::should_greet(2_000_000, 1_000_000));
+    }
+
+    // T6: roll_random_drop_with_seed tests
+    #[test]
+    fn random_drop_distribution_is_approximately_correct() {
+        // Roll 10_000 deterministic seeds and count hits. Expected hit rate is
+        // 0.5%, so ~50 hits out of 10_000. Allow a wide margin (15..=85) to keep
+        // the test stable across LCG implementations while still catching e.g.
+        // off-by-1000 bugs (5% would give ~500, 0.05% would give ~5).
+        let hits: usize = (0..10_000u64)
+            .filter(|i| super::roll_random_drop_with_seed(*i))
+            .count();
+        assert!(
+            (15..=85).contains(&hits),
+            "expected ~50 hits per 10k seeds, got {hits}",
+        );
+    }
+
+    #[test]
+    fn random_drop_is_deterministic_for_same_seed() {
+        let a = super::roll_random_drop_with_seed(42);
+        let b = super::roll_random_drop_with_seed(42);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn random_drop_is_not_constant_across_seeds() {
+        // Smoke check: at least one of the first 1000 seeds hits, at least one misses.
+        let mut hit = false;
+        let mut miss = false;
+        for s in 0..1000u64 {
+            if super::roll_random_drop_with_seed(s) { hit = true; } else { miss = true; }
+            if hit && miss { return; }
+        }
+        panic!("roll_random_drop_with_seed appears constant across 1000 seeds");
     }
 
     // Test helper: convert a UTC date (year, month, day) to a Unix timestamp
