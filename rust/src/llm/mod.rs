@@ -151,15 +151,13 @@ mod tests {
     #[test]
     fn display_http_includes_status_and_body() {
         let s = format!("{}", LlmProviderError::Http(429, "rate limit exceeded".into()));
-        assert!(s.contains("429"), "got: {s}");
-        assert!(s.contains("rate limit exceeded"), "got: {s}");
+        assert_eq!(s, "HTTP 429: rate limit exceeded");
     }
 
     #[test]
     fn display_network_includes_message() {
         let s = format!("{}", LlmProviderError::Network("dns lookup failed".into()));
-        assert!(s.contains("dns lookup failed"), "got: {s}");
-        assert!(s.to_lowercase().contains("network"), "got: {s}");
+        assert_eq!(s, "network: dns lookup failed");
     }
 
     #[test]
@@ -171,8 +169,7 @@ mod tests {
     #[test]
     fn display_malformed_includes_message() {
         let s = format!("{}", LlmProviderError::MalformedResponse("missing parts".into()));
-        assert!(s.contains("missing parts"), "got: {s}");
-        assert!(s.to_lowercase().contains("malformed"), "got: {s}");
+        assert_eq!(s, "malformed response: missing parts");
     }
 
 }
