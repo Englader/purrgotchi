@@ -12,6 +12,7 @@
 
 pub mod anthropic;
 pub mod gemini;
+pub mod openai;
 
 pub use anthropic::api_key;
 
