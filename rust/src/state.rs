@@ -40,7 +40,7 @@ pub struct State {
     pub rarity: String,
     pub shiny: bool,
     pub stats: [u8; 5],       // [CURIOSITY, MISCHIEF, LAZINESS, AFFECTION, WISDOM]
-    pub personality: String,  // blurb with {name} already substituted
+    pub personality: String,  // blurb with literal `{name}` placeholder; substituted at render
     // celebration overlay (v3.4.3, additive — serde(default) for back-compat)
     #[serde(default)]
     pub levelup_renders_remaining: u8,

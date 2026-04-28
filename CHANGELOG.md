@@ -12,6 +12,24 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.5.0 — 2026-04-27 — LLM-powered in-character speech (Phase 3)
+
+The kitten gets an occasional voice. Five items (L1-L5) ship as one bundle.
+
+- **L1 Per-turn LLM reaction.** On `UserPromptSubmit`, the kitten rolls a 1-in-5 die. On hit, a detached `purrgotchi react` worker reads the recent transcript tail (last user prompt + last assistant message + last 5 tool calls), calls Claude Haiku 4.5 with the kitten's identity (name, breed, rarity, peak/dump stats, personality) baked into the system prompt, and writes a one-line quip to a cache file at `~/.claude/purrgotchi/llm-quip.json`.
+- **L2 Statusline overlay.** The statusline displays the quip in a pink speech bubble for 6 renders, then reverts to static mood speech. Falls back silently to static when the cache is missing, stale (>5 min), or the API key is absent.
+- **L3 API-key gate.** All LLM paths gate on `ANTHROPIC_API_KEY`. Absent → static behaviour; no errors, no prompts.
+- **L4 Debug logging.** Every LLM call records latency, input/output token counts, and model in `~/.claude/purrgotchi/debug.log` when `PURR_DEBUG=1` is set.
+- **L5 LLM personality blurb at hatch.** When the API key is present, `purrgotchi hatch` calls Haiku synchronously with a "✨ summoning personality…" indicator. All blurbs (LLM and static) now store the literal `{name}` placeholder and substitute at render — fixes the long-standing rename bug where renaming a kitten left the old name baked into the card. Existing kittens with pre-substituted personality strings are not retroactively migrated (substitution is a no-op for them).
+
+Speech-bubble priority: Celebration > Birthday > LLM-quip > Mood.
+
+Architecture: detached cross-platform spawn for the L1 worker (Windows uses `DETACHED_PROCESS | CREATE_NO_WINDOW`, Unix gets default Stdio::null'd spawn); cache file separated from `state.json` to avoid races with the synchronous `feed`/`pet`/`play`/`treat` writers. New dep: `ureq` (blocking HTTP, rustls TLS).
+
+Cost: ~$0.014–$0.056/day at typical usage (10–40 react calls + occasional hatch). Tracked separately from `lifetime_cost_usd`.
+
+See `docs/superpowers/specs/2026-04-27-phase-3-llm-speech-design.md` and `docs/superpowers/plans/2026-04-27-v3.5.0-llm-speech.md`.
+
 ## v3.4.8 — D-group events bundle
 
 Five event-driven kitten reactions:

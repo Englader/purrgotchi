@@ -115,8 +115,11 @@ _Update as items ship._
   - [x] **v3.4.8** — D-group events bundle (D1 streak, D2 milestones, D3 birthday day-long mode, D4 daily greeting, D5 random drops). Three additive state fields (`streak_count`, `last_milestone_celebrated`, `last_turn_at`); seven new `CelebrationKind` variants all reusing levelup sprite art. Priority: milestone > levelup > streak > drop; drop coins applied unconditionally. Birthday is render-time mode (Feb 29 kittens celebrate Feb 28 in non-leap years). See `docs/superpowers/specs/2026-04-25-d-group-events-design.md`.
   - All D-group items shipped. Next: Phase 3 LLM-powered speech (L1-L5).
 
-- [ ] Phase 3 — LLM-powered speech (v3.5.0)
-  - [ ] L1-L5 as one bundle
+- [x] Phase 3 — LLM-powered speech (v3.5.0)
+  - [x] L1-L5 bundle — async per-turn LLM react worker (1-in-5 dice, Haiku
+    quips, 6-render pink overlay), sync LLM personality blurb at hatch with
+    `{name}` placeholder fix. All paths gate on `ANTHROPIC_API_KEY`; static
+    fallback on every failure.
 
 ---
 

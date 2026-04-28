@@ -8,12 +8,17 @@ mod events;
 mod hatch;
 mod hooks;
 mod identity;
+mod llm;
 mod mood;
 mod paths;
 mod payload;
+mod quip_cache;
+mod react;
 mod render;
+mod spawn;
 mod speech;
 mod sprites;
+
 mod state;
 mod statusline;
 
@@ -63,6 +68,11 @@ fn main() {
             hooks::stats();
             process::exit(0);
         }
+        "react" => {
+            let transcript_path = args.get(2).map(String::as_str).unwrap_or("");
+            react::run(transcript_path);
+            process::exit(0);
+        }
         "hatch" => {
             let force_rarity = args.iter().position(|a| a == "--rarity")
                 .and_then(|i| args.get(i + 1))
@@ -96,7 +106,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet|play|treat|stats>");
+            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet|play|treat|stats|react>");
             process::exit(2);
         }
     }

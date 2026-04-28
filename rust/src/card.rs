@@ -134,10 +134,13 @@ pub fn render(s: &State) -> String {
     // Divider
     writeln!(out, "╠{}╣", "═".repeat(CARD_WIDTH)).unwrap();
 
-    // Personality (word-wrapped, quoted), indented by 2 spaces
-    // inner_content = 40. Subtract 2 for opening/closing quote chars → wrap at 38.
+    // Personality (word-wrapped, quoted), indented by 2 spaces.
+    // Render-time {name} substitution: stored blurbs use the literal placeholder
+    // so renames flow through automatically. No-op for old kittens whose stored
+    // personality has the name already inlined.
     let pers_wrap_width = inner_content - 2;
-    let wrapped = wrap(&s.personality, pers_wrap_width);
+    let rendered_personality = s.personality.replace("{name}", &s.name);
+    let wrapped = wrap(&rendered_personality, pers_wrap_width);
     let last = wrapped.len().saturating_sub(1);
     for (i, line) in wrapped.iter().enumerate() {
         let decorated = if wrapped.len() == 1 {
@@ -404,5 +407,31 @@ mod tests {
         s.last_pet_at = crate::state::now_secs() - 2 * 86_400;
         let output = render(&s);
         assert!(output.contains("70"), "card bond value should be 70 after 2-day decay, got:\n{output}");
+    }
+
+    #[test]
+    fn card_substitutes_name_placeholder_in_personality() {
+        let mut s = test_state();
+        s.name = "Whiskers".into();
+        // Keep the personality short enough to render on a single wrapped line
+        // (wrap width = 38) so the substring assertion below sees the substituted
+        // name contiguously with the surrounding text.
+        s.personality = "{name} stares.".into();
+        let output = render(&s);
+        assert!(output.contains("Whiskers stares."),
+            "expected name substitution in personality, got:\n{output}");
+        assert!(!output.contains("{name}"),
+            "card should not show the literal `{{name}}` placeholder");
+    }
+
+    #[test]
+    fn card_personality_without_placeholder_renders_unchanged() {
+        // Old kittens stored personality with the name pre-substituted. The render-time
+        // .replace must be a no-op for them.
+        let mut s = test_state();
+        s.name = "Whiskers".into();
+        s.personality = "An old, dignified cat.".into();
+        let output = render(&s);
+        assert!(output.contains("An old, dignified cat."));
     }
 }

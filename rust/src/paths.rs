@@ -26,3 +26,7 @@ pub fn turn_anchor_file() -> PathBuf {
 pub fn cost_sessions_file() -> PathBuf {
     state_dir().join("cost-sessions.json")
 }
+
+pub fn quip_cache_file() -> PathBuf {
+    state_dir().join("llm-quip.json")
+}
