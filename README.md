@@ -117,7 +117,7 @@ After hatching with no provider configured, you'll see a one-line stderr hint re
 
 ## Your kitten
 
-On first run, Purrgotchi automatically hatches a kitten deterministically from your machine identity (`username:hostname:birth_time` seed). The same machine always produces the same kitten unless you explicitly re-hatch with the dev backdoor flags.
+On first run, Purrgotchi automatically hatches a kitten deterministically from your machine identity (`username:hostname:birth_time` seed). Kittens are permanent — the same machine always produces the same kitten.
 
 ```bash
 purrgotchi card     # full identity card — breed, rarity stars, stats, personality, bond
@@ -149,18 +149,6 @@ Five feline traits — **Curiosity, Mischief, Laziness, Affection, Wisdom** — 
 
 A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, treat); decays slowly when neglected (5/day, anchored to the most recent interaction). Visible as a bar on the card and the HUD.
 
-### Dev backdoors
-
-Force a specific identity at hatch:
-
-```bash
-purrgotchi hatch --rarity legendary --breed "Void Cat" --shiny
-# or via env vars:
-PURR_FORCE_RARITY=epic PURR_FORCE_BREED="Sphinx" purrgotchi hatch
-```
-
-Without any force flag, an unforced `hatch` on an existing kitten is rejected — kittens are permanent.
-
 ---
 
 ## Subcommands
@@ -177,7 +165,6 @@ Without any force flag, an unforced `hatch` on an existing kitten is rejected �
 | `purrgotchi play` | 50 coins, +20 bond, 6h cooldown, 180s happy mood window |
 | `purrgotchi treat` | 25 coins, +5 bond, 4h cooldown, 120s happy; resets hunger |
 | `purrgotchi rename <name>` | Renames the kitten in `state.json` (personality re-templates at render time) |
-| `purrgotchi hatch [flags]` | Re-hatch (rejected unless dev backdoor flags supplied) |
 | `purrgotchi --version` | Prints the crate version |
 
 ### Events and celebrations
