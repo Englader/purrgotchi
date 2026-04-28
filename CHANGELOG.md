@@ -12,6 +12,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.6.1 — 2026-04-28 — Gemini thinking-budget fix
+
+Hotfix for v3.6.0. The default Gemini model (`gemini-2.5-flash`) ships with extended thinking enabled, which silently consumed our entire `max_tokens` budget (50 for react quips, 80 for hatch blurbs) before any visible output was produced. The API returned a candidate with `finishReason: MAX_TOKENS` and no `parts` field; our parser then rejected the response as `MalformedResponse` and the call site fell back to static. Net effect on v3.6.0: Gemini 2.5 looked broken even though the wire calls succeeded.
+
+### Fixed
+
+- `llm::gemini::build_body` now sets `generationConfig.thinkingConfig.thinkingBudget = 0` on every request. Disables extended thinking; safe across the entire Gemini 2.x family (older models silently ignore the field). Tested live against `gemini-2.5-flash` returning clean text responses with normal token usage.
+- New regression test `parse_max_tokens_finish_reason_without_parts_is_error` locks in the v3.6.0 failure shape so any future regression here is caught at test time.
+- New unit test `build_body_disables_thinking` asserts `thinkingBudget=0` is present in every outgoing request body.
+
 ## v3.6.0 — 2026-04-28 — Provider-agnostic LLM (Phase 4)
 
 The LLM layer is no longer Anthropic-only. v3.6.0 ships a pluggable provider abstraction with three impls: Anthropic, Gemini, and OpenAI. A `.env` file is auto-loaded from the current directory so users no longer need to `export` keys per shell.
