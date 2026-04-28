@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use crate::llm::LlmProviderError;
 
-pub(super) const CONNECT_TIMEOUT_SECS: u64 = 10;
-pub(super) const READ_TIMEOUT_SECS: u64 = 10;
+const CONNECT_TIMEOUT_SECS: u64 = 10;
+const READ_TIMEOUT_SECS: u64 = 10;
 const ERROR_BODY_MAX_CHARS: usize = 500;
 
 /// Standard ureq agent for any LLM provider call. Identical across all
