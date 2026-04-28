@@ -2,20 +2,43 @@
 
 A cyberpunk-themed Claude Code statusline with a persistent tamagotchi kitten companion.
 
-Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and stat row — alongside a pixel-art cat whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earning coins per tool call, levelling up, and speaking mood-contextual dialogue that rotates every 30s.
+Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and a stat row — alongside a pixel-art cat whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earns coins per tool call, levels up, evolves through life stages, builds bond through interaction, celebrates milestones, and (optionally) speaks LLM-generated mood-contextual dialogue that reacts to what you just did.
+
+---
+
+## Requirements
+
+- **Rust toolchain** (any recent stable; tested on 1.78+) — `rustup install stable`.
+- **Claude Code** ([anthropic.com/claude-code](https://www.anthropic.com/claude-code)) — Purrgotchi runs as its statusline + hooks.
+- **`jq`** (installer dependency) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux.
+- **Bash** to run `install.sh`. On Windows, use Git Bash, MSYS2, or WSL.
+- **(Optional) An LLM provider API key** — Anthropic, Gemini, or OpenAI — to enable AI-generated personality blurbs and in-character react quips. Without one, Purrgotchi falls back to a curated static phrase pool with no errors.
+
+Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS builds compile cleanly via `cargo build --release` but are not yet exercised in production.
+
+---
 
 ## Install
 
-Build the binary, then run the installer:
-
 ```bash
+git clone https://github.com/Englader/purrgotchi.git
+cd purrgotchi
 cd rust && cargo build --release && cd ..
 bash install.sh
 ```
 
-`install.sh` wires all three entry points (statusline + `PostToolUse` feed hook + `UserPromptSubmit` turn hook) to `rust/target/release/purrgotchi.exe`. Restart Claude Code after install.
+`install.sh` is idempotent — safe to re-run after upgrades. It:
 
-Manual wiring for reference:
+1. Verifies prerequisites (`jq`, the compiled binary).
+2. Backs up `~/.claude/settings.json` with a timestamped suffix.
+3. Creates the state directory at `~/.claude/purrgotchi/`.
+4. Merges the statusline + `PostToolUse` (feed) + `UserPromptSubmit` (turn) hooks into `settings.json`, all pointing at `rust/target/release/purrgotchi.exe`.
+
+**Restart Claude Code after install** so the new settings take effect.
+
+### Manual wiring (reference)
+
+If you'd rather edit `~/.claude/settings.json` by hand:
 
 ```json
 {
@@ -37,18 +60,71 @@ Manual wiring for reference:
 }
 ```
 
-## Source vs state
+### Optional: a CLI wrapper
 
-- **Source** (this repo): Rust crate in `rust/`, sprites in `sprites/` (embedded via `include_str!`) — versioned
-- **State** (`~/.claude/purrgotchi/`): `state.json` (level, coins, feed time) and `turn-start-cost.txt` (per-turn cost anchor) — per-machine, never versioned
+For quick interactive commands (`purrgotchi pet`, `purrgotchi card`, etc.), add a small wrapper to your `PATH`. On Windows / Git Bash:
 
-## Your Kitten
+```bash
+mkdir -p ~/.local/bin
+cat > ~/.local/bin/purr <<'EOF'
+#!/usr/bin/env bash
+exec "$HOME/path/to/purrgotchi/rust/target/release/purrgotchi.exe" "$@"
+EOF
+chmod +x ~/.local/bin/purr
+```
 
-On first run, `purrgotchi` automatically hatches a kitten deterministically from your machine identity (username + hostname + birth time). The same machine always produces the same kitten unless you explicitly re-hatch.
+Now `purr card`, `purr stats`, `purr pet`, etc. work from any directory.
 
-Run `purrgotchi card` to see the full identity card — breed, rarity, stats, and personality blurb.
+---
 
-### Rarity Tiers
+## Optional: enable AI personality and react quips
+
+Without an API key, Purrgotchi works fine with a curated static phrase pool. To unlock:
+
+- A unique LLM-generated personality blurb at hatch (matched to your kitten's breed, rarity, and stat profile).
+- A 1-in-5 chance per turn that your kitten reacts in-character to whatever you just did in Claude Code (~1s latency, ~10 output tokens).
+
+Copy the example env file and uncomment **one** provider block:
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env — uncomment one block:
+
+# --- Anthropic ---
+# PURR_LLM_PROVIDER=anthropic
+# ANTHROPIC_API_KEY=sk-ant-api03-...
+# PURR_LLM_MODEL=claude-haiku-4-5
+
+# --- Gemini ---
+# PURR_LLM_PROVIDER=gemini
+# GEMINI_API_KEY=...
+# PURR_LLM_MODEL=gemini-2.5-flash
+
+# --- OpenAI ---
+# PURR_LLM_PROVIDER=openai
+# OPENAI_API_KEY=sk-...
+# PURR_LLM_MODEL=gpt-4o-mini
+```
+
+`.env` is loaded automatically from the cwd when Purrgotchi runs. Process-level environment variables (e.g. shell-exported) win over `.env` values. `PURR_LLM_PROVIDER` is **required**; `PURR_LLM_MODEL` is optional and defaults to the cheapest fast model for each provider. Daily LLM cost runs roughly **$0.01–$0.06** at typical Claude Code usage rates.
+
+After hatching with no provider configured, you'll see a one-line stderr hint reminding you these env vars exist. Configure later via `purrgotchi rename`-style on-disk edits — no restart of the kitten needed.
+
+---
+
+## Your kitten
+
+On first run, Purrgotchi automatically hatches a kitten deterministically from your machine identity (`username:hostname:birth_time` seed). The same machine always produces the same kitten unless you explicitly re-hatch with the dev backdoor flags.
+
+```bash
+purrgotchi card     # full identity card — breed, rarity stars, stats, personality, bond
+purrgotchi stats    # human-readable view of identity, mechanics, progress, lifetime cost
+```
+
+### Rarity tiers
 
 | Rarity | Stars | Distribution |
 |---|---|---|
@@ -57,9 +133,23 @@ Run `purrgotchi card` to see the full identity card — breed, rarity, stats, an
 | Rare | ★★★☆☆ | 10% |
 | Epic | ★★★★☆ | 4% |
 | Legendary | ★★★★★ | 1% |
-| + Shiny | ✦ prefix | +1% any tier |
+| Shiny | ✦ prefix | +1% on top of any tier |
 
-### Dev Backdoors
+Sprite color follows rarity: cyan → green → purple → gold → cycling rainbow (legendary) → animated shimmer (shiny).
+
+### Life stages
+
+Kittens evolve as they level up: **kitten → young cat → adult**. Each stage has its own sprite set and its own celebration animation when crossing the threshold.
+
+### Stats
+
+Five feline traits — **Curiosity, Mischief, Laziness, Affection, Wisdom** — generated with peak/dump distribution. Higher rarity raises the floor on the middle three.
+
+### Bond
+
+A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, treat); decays slowly when neglected (5/day, anchored to the most recent interaction). Visible as a bar on the card and the HUD.
+
+### Dev backdoors
 
 Force a specific identity at hatch:
 
@@ -69,33 +159,73 @@ purrgotchi hatch --rarity legendary --breed "Void Cat" --shiny
 PURR_FORCE_RARITY=epic PURR_FORCE_BREED="Sphinx" purrgotchi hatch
 ```
 
-## Subcommands (v3.0+)
+Without any force flag, an unforced `hatch` on an existing kitten is rejected — kittens are permanent.
+
+---
+
+## Subcommands
 
 | Command | Purpose |
 |---|---|
-| `purrgotchi statusline` | Renders the HUD (reads CC payload on stdin) |
+| `purrgotchi statusline` | Renders the HUD (reads Claude Code's payload on stdin) |
 | `purrgotchi feed` | `PostToolUse` hook — bumps tool-call count, coins, level; updates `last_fed_at` |
-| `purrgotchi turn` | `UserPromptSubmit` hook — clears the per-turn cost anchor |
-| `purrgotchi rename <name>` | Renames the kitten in `state.json` |
-| `purrgotchi hatch` | Re-rolls the kitten's breed, rarity, and stats |
-| `purrgotchi card` | Prints the full identity card with stats and personality |
+| `purrgotchi turn` | `UserPromptSubmit` hook — clears per-turn cost anchor; rolls 1-in-5 dice for `react` |
+| `purrgotchi react <transcript>` | Detached LLM worker (spawned by `turn`) — generates an in-character quip |
+| `purrgotchi card` | Full identity card with stats, personality, bond |
+| `purrgotchi stats` | Human-readable view of identity, mechanics, lifetime cost |
+| `purrgotchi pet` | +15 bond, 4h cooldown, 120s happy mood window |
+| `purrgotchi play` | 50 coins, +20 bond, 6h cooldown, 180s happy mood window |
+| `purrgotchi treat` | 25 coins, +5 bond, 4h cooldown, 120s happy; resets hunger |
+| `purrgotchi rename <name>` | Renames the kitten in `state.json` (personality re-templates at render time) |
+| `purrgotchi hatch [flags]` | Re-hatch (rejected unless dev backdoor flags supplied) |
 | `purrgotchi --version` | Prints the crate version |
+
+### Events and celebrations
+
+- **Tool-call streaks** — a "5 in a row!" one-shot speech overlay.
+- **Milestones** — 100 / 500 / 1000 lifetime tool calls each get a unique celebration.
+- **Birthday** — on the anniversary of your kitten's hatch, a special sprite + speech for the day.
+- **Daily greeting** — first prompt of each day triggers a "welcome back".
+- **Random drops** — low-probability "+10 coins" surprises.
+
+Priority order for HUD overlays: **celebration > birthday > LLM quip > mood**.
+
+---
+
+## Source vs state
+
+- **Source** (this repo): Rust crate in `rust/`, sprites in `sprites/` (embedded via `include_str!`), specs/plans in `docs/superpowers/` — versioned in git.
+- **State** (`~/.claude/purrgotchi/`): `state.json` (level, coins, bond, feed time, ...), `cost-sessions.json` (per-session cost sidecar with 30-day GC), `llm-quip.json` (transient quip cache, 6-render TTL), `turn-start-cost.txt` — per-machine, **never** versioned.
+
+---
 
 ## Customize
 
-- **Rename the kitten**: `rust/target/release/purrgotchi.exe rename "NewName"`
-- **Add sprites**: drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild
-- **Add phrases**: edit the per-mood arrays in `rust/src/speech.rs`, rebuild
-- **Tweak colors**: edit the constants at the top of `rust/src/colors.rs`
-- **Debug**: pass `--debug` (or set `PURR_DEBUG=1`) to log every invocation and render-timing to `$PURR_STATE_DIR/debug.log`, and dump the raw stdin JSON to `$PURR_STATE_DIR/last-input.json`. Enable by appending `--debug` to the `statusLine.command` in `~/.claude/settings.json` and restarting Claude Code.
+- **Rename the kitten:** `purrgotchi rename "NewName"`.
+- **Add sprites:** drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild.
+- **Add static phrases:** edit the per-mood arrays in `rust/src/speech.rs`, rebuild.
+- **Tweak colors:** edit the constants at the top of `rust/src/colors.rs`.
+- **Debug logging:** set `PURR_DEBUG=1` (or pass `--debug`) to write timestamped lines to `~/.claude/purrgotchi/debug.log` — covers LLM call latency, token counts, react worker outcomes, watchdog events, and statusline render timing. Enable system-wide by appending `--debug` to the `statusLine.command` in `~/.claude/settings.json` and restarting Claude Code.
+
+---
 
 ## Cost display
 
-- **Cost**: spend since your last prompt submit (anchor cleared by the `turn` hook)
-- **Total**: session cumulative from `.cost.total_cost_usd`
+- **Cost** — spend since your last prompt submit (anchor cleared by the `turn` hook).
+- **Total** — session cumulative from `.cost.total_cost_usd`.
+- **Lifetime** — accumulated across every session ever (visible in `purrgotchi stats`).
 
-A 500ms anchor grace window (microsecond-precision via `SystemTime::now()`) absorbs Claude Code's async token-finalization of the prior turn so its trailing cents don't leak into the new turn.
+A 500ms anchor grace window (microsecond-precision via `SystemTime::now()`) absorbs Claude Code's async token-finalization of the prior turn so trailing cents don't leak into the new turn.
 
-## Platform
+Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI calls don't update the lifetime accumulator.
 
-Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux/macOS builds are `cargo build --release` away but not yet validated. Requires a Rust toolchain to build and `jq` to run the installer.
+---
+
+## Architecture & docs
+
+- **Per-release CHANGELOG:** [`CHANGELOG.md`](./CHANGELOG.md).
+- **Design specs:** `docs/superpowers/specs/` — one per major feature or hotfix, written before implementation.
+- **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
+- **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
+
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v3.6.3**.
