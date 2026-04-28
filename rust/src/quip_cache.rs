@@ -63,11 +63,6 @@ fn read_inner(path: &Path) -> Option<Quip> {
     serde_json::from_slice(&bytes).ok()
 }
 
-#[cfg(test)]
-pub fn read() -> Option<Quip> {
-    read_inner(&paths::quip_cache_file())
-}
-
 /// Statusline-side: read the active quip, decrement, atomic-write.
 /// Returns the quip text when the quip is fresh and has renders left, else None.
 /// Deletes the file when it's stale or exhausted.
