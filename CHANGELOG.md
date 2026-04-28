@@ -12,6 +12,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.6.2 — 2026-04-28
+
+### Fixed
+
+- **React worker zombie on Windows.** The detached `purrgotchi react` worker
+  could hang indefinitely when the underlying HTTP call stalled (TLS handshake,
+  slow proxy, provider rate-limiting), because `ureq`'s per-operation timeouts
+  do not always fire end-to-end on Windows. The hung process kept an open
+  handle on `purrgotchi.exe`, blocking subsequent `cargo build` runs with
+  "Access is denied". A 30-second wall-clock watchdog is now installed at the
+  top of `react::run`; on expiry it logs `[llm] react fail reason=watchdog_timeout`
+  (visible only when `PURR_DEBUG=1`) and force-exits the process with code 0.
+  Exit code matches the rest of `react`'s silent-fallback convention.
+
+### Changed
+
+- **Error logging legibility.** `LlmProviderError` now implements `Display`,
+  and the `err={e:?}` debug-log lines in `hatch.rs` and `react.rs` switch to
+  `err={e}`. HTTP status codes (`HTTP 429: rate limit exceeded`) and error
+  messages now surface as one-line summaries in `debug.log` instead of being
+  buried in derived-`Debug` formatting. This also resolves the three
+  `dead_code` warnings carried since v3.6.0.
+
 ## v3.6.1 — 2026-04-28 — Gemini thinking-budget fix
 
 Hotfix for v3.6.0. The default Gemini model (`gemini-2.5-flash`) ships with extended thinking enabled, which silently consumed our entire `max_tokens` budget (50 for react quips, 80 for hatch blurbs) before any visible output was produced. The API returned a candidate with `finishReason: MAX_TOKENS` and no `parts` field; our parser then rejected the response as `MalformedResponse` and the call site fell back to static. Net effect on v3.6.0: Gemini 2.5 looked broken even though the wire calls succeeded.
