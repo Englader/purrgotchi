@@ -11,6 +11,7 @@
 //! (T5) directly, after which the shim is removed.
 
 pub mod anthropic;
+pub mod gemini;
 
 pub use anthropic::api_key;
 
