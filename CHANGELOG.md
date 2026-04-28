@@ -12,6 +12,43 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.6.3 — 2026-04-28
+
+### Changed
+
+- **Shared LLM transport.** Extracted `ureq` agent construction, `ureq::Error` →
+  `LlmProviderError` mapping, error-body truncation, and the connect/read
+  timeout constants out of every provider module into
+  `rust/src/llm/transport.rs`. Each provider's `complete()` shrinks to a
+  single error arm (`Err(e) => Err(transport::map_ureq_error(e))`); the next
+  provider takes fewer lines to add. The `Transport` branch is split through
+  a pure `map_transport_message(&str)` helper so the timeout/network
+  classification is unit-testable without constructing a
+  `ureq::Error::Transport`.
+- **Error-body truncation now char-based.** `truncate_body` now caps at 500
+  characters (was 512 bytes) and no longer appends a `…` marker. Side effect:
+  fixes a latent UTF-8 panic risk — the previous byte-indexed truncation
+  could split a multi-byte character on a non-ASCII error response. The
+  marker carried no observable contract (no caller inspected it), and the
+  output is debug-log-only.
+- **First-run hint after `hatch`.** When `purrgotchi hatch` succeeds but no
+  LLM provider is configured (`PURR_LLM_PROVIDER` unset, or set but the
+  matching API key is missing), a one-line hint is now printed to stderr
+  pointing the user at `.env`. Statusline / react worker paths remain silent
+  — the hint only fires once per kitten lifetime.
+
+### Removed
+
+- **Dead `quip_cache::read`.** A `#[cfg(test)] pub fn` with zero callers;
+  deleting eliminates the lone test-profile `dead_code` warning.
+
+### Documentation
+
+- **Watchdog flush contract.** Added a comment in `debug.rs` explaining that
+  the file handle is intentionally not wrapped in a `BufWriter` so that the
+  v3.6.2 watchdog's "log then `process::exit`" sequence remains flush-safe.
+  Prevents a future buffering refactor from silently breaking observability.
+
 ## v3.6.2 — 2026-04-28
 
 ### Fixed

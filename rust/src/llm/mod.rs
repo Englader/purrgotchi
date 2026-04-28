@@ -10,6 +10,7 @@ pub mod anthropic;
 pub mod gemini;
 pub mod openai;
 pub mod select;
+mod transport;
 
 // --- Provider-agnostic surface (T1) ---
 

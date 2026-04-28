@@ -109,6 +109,15 @@ pub fn load_or_hatch() -> state::State {
     })
 }
 
+/// Pure: should `hatch::run` emit the "set PURR_LLM_PROVIDER" hint?
+///
+/// True iff the provider-selection result is `Err` — meaning the user
+/// will silently get static personality + no react quips. We point them
+/// at the env var so they can opt in.
+fn should_print_key_hint<T>(result: &Result<T, crate::llm::select::ConfigError>) -> bool {
+    result.is_err()
+}
+
 /// Called by `purrgotchi hatch` CLI command.
 ///
 /// A hatched kitten is permanent: an unforced `hatch` with an existing kitten
@@ -140,6 +149,12 @@ pub fn run(opts: &HatchOpts) {
     match state::save_atomic(&s) {
         Ok(()) => println!("Saved to: {}", crate::paths::state_file().display()),
         Err(e) => eprintln!("warning: could not write state: {e}"),
+    }
+    let provider_status = crate::llm::select::current_provider().map(|_| ());
+    if should_print_key_hint(&provider_status) {
+        eprintln!(
+            "\nhint: set PURR_LLM_PROVIDER (and the matching API key in .env) to enable AI personality and react quips."
+        );
     }
 }
 
@@ -245,6 +260,22 @@ fn validate_blurb(b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- v3.6.3: missing-key hint helper ---
+
+    use crate::llm::select::ConfigError;
+
+    #[test]
+    fn key_hint_when_provider_unset() {
+        let r: Result<(), ConfigError> = Err(ConfigError::ProviderNotSet);
+        assert!(should_print_key_hint(&r));
+    }
+
+    #[test]
+    fn key_hint_when_provider_ok() {
+        let r: Result<(), ConfigError> = Ok(());
+        assert!(!should_print_key_hint(&r));
+    }
 
     fn hatch_with_seed(seed_suffix: u64) -> state::State {
         let seed = identity::fnv1a(&format!("testuser:testhost:{seed_suffix}"));

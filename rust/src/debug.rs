@@ -30,6 +30,9 @@ fn log_inner(line: &str) -> std::io::Result<()> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let dir = paths::state_dir();
     fs::create_dir_all(&dir)?;
+    // Intentionally unbuffered: react::run's watchdog calls debug::log
+    // immediately before std::process::exit(0). Close-on-Drop is a
+    // synchronous flush only because there is no BufWriter here.
     let mut f = fs::OpenOptions::new()
         .create(true)
         .append(true)
