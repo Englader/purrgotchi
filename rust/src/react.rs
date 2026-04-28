@@ -10,7 +10,9 @@ use crate::debug;
 use crate::llm::{self, LlmRequest};
 use crate::quip_cache;
 use crate::state::{self, State};
+use std::time::Duration;
 
+const WATCHDOG_DEADLINE_SECS: u64 = 30;
 const TRANSCRIPT_BUDGET_BYTES: usize = 8 * 1024;
 const QUIP_HARD_CAP_CHARS: usize = 80;
 const REACT_MAX_TOKENS: u32 = 50;
@@ -282,9 +284,35 @@ fn truncate_at_word_boundary(s: &str, max_chars: usize) -> String {
     }
 }
 
+/// Generic watchdog: sleep `deadline`, then run `action` on a background thread.
+/// Detached — the caller does not join. Extracted from `spawn_watchdog` so the
+/// timing behaviour can be unit-tested without invoking `process::exit`.
+fn spawn_watchdog_with_action<F>(deadline: Duration, action: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let _ = std::thread::spawn(move || {
+        std::thread::sleep(deadline);
+        action();
+    });
+}
+
+/// Wall-clock guard for the detached `purrgotchi react` worker. After the
+/// deadline elapses, log a breadcrumb and force-exit the process so a stalled
+/// HTTP call cannot keep `purrgotchi.exe` open and block future cargo builds
+/// (Windows zombie-binary problem). Exit code 0 is consistent with the rest of
+/// `react::run` — every failure here is non-fatal and silent.
+fn spawn_watchdog(deadline: Duration) {
+    spawn_watchdog_with_action(deadline, || {
+        crate::debug::log("[llm] react fail reason=watchdog_timeout");
+        std::process::exit(0);
+    });
+}
+
 /// Top-level entry point for `purrgotchi react <transcript_path>`.
 /// Always exits 0 — every failure is silent + logged.
 pub fn run(transcript_path: &str) {
+    spawn_watchdog(Duration::from_secs(WATCHDOG_DEADLINE_SECS));
     let _ = run_inner(transcript_path);
 }
 
@@ -322,7 +350,7 @@ fn run_inner(transcript_path: &str) -> Option<()> {
             let _ = quip_cache::write(&q);
         }
         Err(e) => {
-            debug::log(&format!("[llm] react fail provider={} err={e:?}", provider.name()));
+            debug::log(&format!("[llm] react fail provider={} err={e}", provider.name()));
         }
     }
     Some(())
@@ -521,5 +549,23 @@ mod tests {
         s.stats = [50, 50, 50, 50, 50];
         s.personality = "test".into();
         s
+    }
+
+    // --- Watchdog tests (v3.6.2) ---
+
+    #[test]
+    fn watchdog_action_fires_after_deadline() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let fired = Arc::new(AtomicBool::new(false));
+        let f = fired.clone();
+        spawn_watchdog_with_action(Duration::from_millis(50), move || {
+            f.store(true, Ordering::SeqCst);
+        });
+        // Sleep well past the deadline to avoid timing flakes on slow CI.
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(fired.load(Ordering::SeqCst), "watchdog action did not fire after deadline");
     }
 }

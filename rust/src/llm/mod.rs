@@ -46,6 +46,18 @@ pub enum LlmProviderError {
     MalformedResponse(String),
 }
 
+impl std::fmt::Display for LlmProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LlmProviderError::AuthMissing => write!(f, "auth missing"),
+            LlmProviderError::Http(status, body) => write!(f, "HTTP {status}: {body}"),
+            LlmProviderError::Network(msg) => write!(f, "network: {msg}"),
+            LlmProviderError::Timeout => write!(f, "timeout"),
+            LlmProviderError::MalformedResponse(msg) => write!(f, "malformed response: {msg}"),
+        }
+    }
+}
+
 /// A pluggable LLM backend. Object-safe so call sites can hold `Box<dyn LlmProvider>`.
 pub trait LlmProvider {
     /// Stable lowercase identifier: `"anthropic"`, `"gemini"`, `"openai"`.
@@ -126,6 +138,38 @@ mod tests {
             max_tokens: 1,
         }).unwrap();
         assert_eq!(resp.text, "echo:u");
+    }
+
+    // --- Display impl tests (v3.6.2) ---
+
+    #[test]
+    fn display_auth_missing_formats_human_readable() {
+        let s = format!("{}", LlmProviderError::AuthMissing);
+        assert_eq!(s, "auth missing");
+    }
+
+    #[test]
+    fn display_http_includes_status_and_body() {
+        let s = format!("{}", LlmProviderError::Http(429, "rate limit exceeded".into()));
+        assert_eq!(s, "HTTP 429: rate limit exceeded");
+    }
+
+    #[test]
+    fn display_network_includes_message() {
+        let s = format!("{}", LlmProviderError::Network("dns lookup failed".into()));
+        assert_eq!(s, "network: dns lookup failed");
+    }
+
+    #[test]
+    fn display_timeout_formats_human_readable() {
+        let s = format!("{}", LlmProviderError::Timeout);
+        assert_eq!(s, "timeout");
+    }
+
+    #[test]
+    fn display_malformed_includes_message() {
+        let s = format!("{}", LlmProviderError::MalformedResponse("missing parts".into()));
+        assert_eq!(s, "malformed response: missing parts");
     }
 
 }
