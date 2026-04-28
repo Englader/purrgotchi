@@ -198,7 +198,7 @@ Output rules:\n\
             }
         }
         Err(e) => {
-            crate::debug::log(&format!("[llm] hatch fail provider={} err={e:?}", provider.name()));
+            crate::debug::log(&format!("[llm] hatch fail provider={} err={e}", provider.name()));
             None
         }
     }

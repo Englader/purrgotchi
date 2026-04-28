@@ -322,7 +322,7 @@ fn run_inner(transcript_path: &str) -> Option<()> {
             let _ = quip_cache::write(&q);
         }
         Err(e) => {
-            debug::log(&format!("[llm] react fail provider={} err={e:?}", provider.name()));
+            debug::log(&format!("[llm] react fail provider={} err={e}", provider.name()));
         }
     }
     Some(())
