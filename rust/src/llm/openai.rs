@@ -10,15 +10,12 @@
 //! requests from this provider until the abstraction grows a per-model knob.
 
 use std::env;
-use std::time::Duration;
 
 use super::{LlmProvider, LlmProviderError, LlmRequest, LlmResponse};
+use super::transport;
 
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 pub const OPENAI_DEFAULT_MODEL: &str = "gpt-4o-mini";
-const CONNECT_TIMEOUT_SECS: u64 = 10;
-const READ_TIMEOUT_SECS: u64 = 10;
-const ERROR_BODY_TRUNCATE: usize = 512;
 
 pub struct OpenAi {
     model: String,
@@ -71,10 +68,6 @@ fn parse_response(body: &str) -> Result<(String, u32, u32), LlmProviderError> {
     Ok((text, input, output))
 }
 
-fn truncate_body(s: String) -> String {
-    if s.len() <= ERROR_BODY_TRUNCATE { s } else { format!("{}…", &s[..ERROR_BODY_TRUNCATE]) }
-}
-
 impl LlmProvider for OpenAi {
     fn name(&self) -> &'static str { "openai" }
 
@@ -82,10 +75,7 @@ impl LlmProvider for OpenAi {
         let key = api_key().ok_or(LlmProviderError::AuthMissing)?;
         let body = build_body(&self.model, &req);
 
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(CONNECT_TIMEOUT_SECS))
-            .timeout_read(Duration::from_secs(READ_TIMEOUT_SECS))
-            .build();
+        let agent = transport::build_agent();
 
         let t0 = std::time::Instant::now();
         let resp = agent.post(OPENAI_API_URL)
@@ -106,18 +96,7 @@ impl LlmProvider for OpenAi {
                     latency_ms,
                 })
             }
-            Err(ureq::Error::Status(code, response)) => {
-                let body = response.into_string().unwrap_or_default();
-                Err(LlmProviderError::Http(code, truncate_body(body)))
-            }
-            Err(ureq::Error::Transport(t)) => {
-                let s = t.to_string();
-                if s.contains("timed out") || s.contains("timeout") {
-                    Err(LlmProviderError::Timeout)
-                } else {
-                    Err(LlmProviderError::Network(s))
-                }
-            }
+            Err(e) => Err(transport::map_ureq_error(e)),
         }
     }
 }

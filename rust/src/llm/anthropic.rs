@@ -5,16 +5,13 @@
 //! caller can override via `Anthropic::new(Some(model))`.
 
 use std::env;
-use std::time::Duration;
 
 use super::{LlmProvider, LlmProviderError, LlmRequest, LlmResponse};
+use super::transport;
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 pub const ANTHROPIC_DEFAULT_MODEL: &str = "claude-haiku-4-5";
-const CONNECT_TIMEOUT_SECS: u64 = 10;
-const READ_TIMEOUT_SECS: u64 = 10;
-const ERROR_BODY_TRUNCATE: usize = 512;
 
 pub struct Anthropic {
     model: String,
@@ -52,10 +49,6 @@ fn parse_response(body: &str) -> Result<(String, u32, u32), LlmProviderError> {
     Ok((text, input, output))
 }
 
-fn truncate_body(s: String) -> String {
-    if s.len() <= ERROR_BODY_TRUNCATE { s } else { format!("{}…", &s[..ERROR_BODY_TRUNCATE]) }
-}
-
 impl LlmProvider for Anthropic {
     fn name(&self) -> &'static str { "anthropic" }
 
@@ -67,10 +60,7 @@ impl LlmProvider for Anthropic {
             "system": req.system,
             "messages": [{"role": "user", "content": req.user}]
         });
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(CONNECT_TIMEOUT_SECS))
-            .timeout_read(Duration::from_secs(READ_TIMEOUT_SECS))
-            .build();
+        let agent = transport::build_agent();
 
         let t0 = std::time::Instant::now();
         let resp = agent.post(ANTHROPIC_API_URL)
@@ -92,18 +82,7 @@ impl LlmProvider for Anthropic {
                     latency_ms,
                 })
             }
-            Err(ureq::Error::Status(code, response)) => {
-                let body = response.into_string().unwrap_or_default();
-                Err(LlmProviderError::Http(code, truncate_body(body)))
-            }
-            Err(ureq::Error::Transport(t)) => {
-                let s = t.to_string();
-                if s.contains("timed out") || s.contains("timeout") {
-                    Err(LlmProviderError::Timeout)
-                } else {
-                    Err(LlmProviderError::Network(s))
-                }
-            }
+            Err(e) => Err(transport::map_ureq_error(e)),
         }
     }
 }
@@ -179,21 +158,6 @@ mod tests {
     #[test]
     fn name_returns_anthropic() {
         assert_eq!(Anthropic::new(None).name(), "anthropic");
-    }
-
-    #[test]
-    fn truncate_body_short_passes_through() {
-        let s = "hello".to_string();
-        assert_eq!(truncate_body(s), "hello");
-    }
-
-    #[test]
-    fn truncate_body_long_is_clipped_with_marker() {
-        let long = "a".repeat(ERROR_BODY_TRUNCATE + 100);
-        let out = truncate_body(long);
-        assert!(out.ends_with('…'));
-        // chars(), not len(), since the trailing marker is multi-byte
-        assert_eq!(out.chars().count(), ERROR_BODY_TRUNCATE + 1);
     }
 
     #[test]
