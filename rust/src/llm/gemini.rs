@@ -44,6 +44,15 @@ fn url_for_model(model: &str) -> String {
 }
 
 /// Build the request body from a normalized `LlmRequest`.
+///
+/// `thinkingConfig.thinkingBudget = 0` disables Gemini 2.5's extended thinking
+/// for this provider. Our use cases (short cat quips, short personality
+/// blurbs) do not need reasoning tokens, and on small `max_tokens` budgets
+/// (~50) thinking eats the entire budget — the response comes back with
+/// `finishReason: MAX_TOKENS` and no `parts`, which our parser then rejects
+/// as `MalformedResponse`. Setting the budget to 0 is the documented escape
+/// hatch and is silently ignored by 2.0 and earlier models, so this is safe
+/// across the whole 2.x family.
 fn build_body(req: &LlmRequest) -> serde_json::Value {
     serde_json::json!({
         "systemInstruction": {
@@ -54,7 +63,8 @@ fn build_body(req: &LlmRequest) -> serde_json::Value {
             "parts": [{"text": req.user}]
         }],
         "generationConfig": {
-            "maxOutputTokens": req.max_tokens
+            "maxOutputTokens": req.max_tokens,
+            "thinkingConfig": {"thinkingBudget": 0}
         }
     })
 }
@@ -229,6 +239,33 @@ mod tests {
         assert_eq!(body.pointer("/contents/0/role").and_then(|v| v.as_str()), Some("user"));
         assert_eq!(body.pointer("/contents/0/parts/0/text").and_then(|v| v.as_str()), Some("Say hi."));
         assert_eq!(body.pointer("/generationConfig/maxOutputTokens").and_then(|v| v.as_u64()), Some(50));
+    }
+
+    #[test]
+    fn build_body_disables_thinking() {
+        // Regression guard: gemini-2.5-flash defaults to extended thinking
+        // mode which consumes all max_tokens before producing visible output.
+        // We always send thinkingBudget=0 to keep the budget for the actual
+        // response.
+        let req = LlmRequest { system: "s".into(), user: "u".into(), max_tokens: 50 };
+        let body = build_body(&req);
+        assert_eq!(
+            body.pointer("/generationConfig/thinkingConfig/thinkingBudget").and_then(|v| v.as_u64()),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn parse_max_tokens_finish_reason_without_parts_is_error() {
+        // Reproduces the v3.6.0 failure mode: gemini-2.5-flash with low
+        // max_tokens returns a candidate with `finishReason: MAX_TOKENS`
+        // but no parts (all tokens spent on thinking). The parser should
+        // reject this as MalformedResponse so the caller falls back silently.
+        let body = r#"{
+            "candidates":[{"content":{"role":"model"},"finishReason":"MAX_TOKENS","index":0}],
+            "usageMetadata":{"promptTokenCount":8,"totalTokenCount":15,"thoughtsTokenCount":7}
+        }"#;
+        assert!(matches!(parse_response(body), Err(LlmProviderError::MalformedResponse(_))));
     }
 
     #[test]
