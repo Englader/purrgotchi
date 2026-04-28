@@ -12,6 +12,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.6.0 — 2026-04-28 — Provider-agnostic LLM (Phase 4)
+
+The LLM layer is no longer Anthropic-only. v3.6.0 ships a pluggable provider abstraction with three impls: Anthropic, Gemini, and OpenAI. A `.env` file is auto-loaded from the current directory so users no longer need to `export` keys per shell.
+
+### Breaking changes
+
+- **`PURR_LLM_PROVIDER` is now required for any LLM feature.** Set it to `anthropic`, `gemini`, or `openai`. Users upgrading from v3.5.0 with only `ANTHROPIC_API_KEY` set will silently fall back to static speech until they add `PURR_LLM_PROVIDER=anthropic` to their environment or `.env`.
+- The legacy `crate::llm::call_haiku()` / `HaikuRequest` / `HaikuResponse` / `LlmError` API is gone. Internal callers now use `llm::select::current_provider()` and the `LlmProvider` trait.
+
+### Added
+
+- `LlmProvider` trait with `name()` and `complete(LlmRequest) -> Result<LlmResponse, LlmProviderError>`. `LlmProviderError::Http(code, body)` carries a truncated response body for diagnostics.
+- Three provider impls: `llm::anthropic::Anthropic` (default model `claude-haiku-4-5`), `llm::gemini::Gemini` (default `gemini-2.5-flash`), `llm::openai::OpenAi` (default `gpt-4o-mini`).
+- `PURR_LLM_MODEL` env var: when set, overrides the active provider's default model.
+- `llm::select::current_provider()` reads `PURR_LLM_PROVIDER` (case-insensitive) and dispatches; returns `Box<dyn LlmProvider>`. `ConfigError::ProviderNotSet` and `ConfigError::UnknownProvider(s)` cover the failure modes (both silent at the call site).
+- `.env` loader: `dotenvy::dotenv()` runs at the very top of `main()`. Process-set vars take precedence over file values. Missing `.env` is a no-op.
+- `.env.example` template at the repo root with all three provider blocks pre-written (commented out).
+- Debug log entries now include `provider=<name>` and `model=<model>` fields when `PURR_DEBUG=1` is set.
+
+### Changed
+
+- `react.rs::run_inner` and `hatch.rs::maybe_llm_blurb` both gate on `current_provider()` instead of the old Anthropic-specific `api_key()` check.
+- `hooks.rs::maybe_spawn_react` skips the fork when `current_provider()` returns an error (provider unset or unknown). The `*_API_KEY` check still happens inside the worker.
+
+### Cost tracking
+
+`lifetime_cost_usd` continues to track Anthropic-only pricing math; Gemini and OpenAI calls do not contribute to the accumulator. The free Gemini tier means most users on Gemini will see no cost growth, which is correct. Documented as a known limitation; a per-provider pricing model could land in v3.7+.
+
+### Security
+
+- `.env` added to `.gitignore`. The committed `.env.example` is the only `.env` file in version control. Users must `cp .env.example .env` and add their secrets locally.
+
+See `docs/superpowers/plans/2026-04-28-v3.6.0-provider-agnostic-llm.md` for the full implementation plan and rationale.
+
 ## v3.5.0 — 2026-04-27 — LLM-powered in-character speech (Phase 3)
 
 The kitten gets an occasional voice. Five items (L1-L5) ship as one bundle.
