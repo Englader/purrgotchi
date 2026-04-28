@@ -291,7 +291,7 @@ fn spawn_watchdog_with_action<F>(deadline: Duration, action: F)
 where
     F: FnOnce() + Send + 'static,
 {
-    std::thread::spawn(move || {
+    let _ = std::thread::spawn(move || {
         std::thread::sleep(deadline);
         action();
     });
