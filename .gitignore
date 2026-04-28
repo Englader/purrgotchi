@@ -28,6 +28,9 @@ node_modules/
 # Claude Code per-machine settings
 .claude/
 
+# Local secrets (LLM provider keys); see .env.example
+.env
+
 # Git worktrees (isolated feature workspaces)
 .worktrees/
 

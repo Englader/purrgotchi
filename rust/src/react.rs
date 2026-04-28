@@ -7,7 +7,7 @@
 //! path logs and exits 0, leaving the statusline to serve a static line.
 
 use crate::debug;
-use crate::llm::{self, HaikuRequest};
+use crate::llm::{self, LlmRequest};
 use crate::quip_cache;
 use crate::state::{self, State};
 
@@ -186,10 +186,10 @@ fn extract_block_text(block: &serde_json::Value) -> String {
     String::new()
 }
 
-/// Build the Haiku request from kitten state + transcript tail.
+/// Build the LLM request from kitten state + transcript tail.
 /// Mood is a best-effort guess — the worker doesn't have the live payload, so
 /// only fed/pet/play/treat-derived moods are available; panic/alert never fire here.
-pub fn build_prompt(s: &State, mood: &str, tail: &TranscriptTail) -> HaikuRequest {
+pub fn build_prompt(s: &State, mood: &str, tail: &TranscriptTail) -> LlmRequest {
     let peak_idx = s.stats.iter().enumerate()
         .max_by_key(|&(_, &v)| v).map(|(i, _)| i).unwrap_or(0);
     let dump_idx = s.stats.iter().enumerate()
@@ -242,7 +242,7 @@ unless the line genuinely ends in one.\n\
         user = truncate_chars(&user, TRANSCRIPT_BUDGET_BYTES);
     }
 
-    HaikuRequest { system, user, max_tokens: REACT_MAX_TOKENS }
+    LlmRequest { system, user, max_tokens: REACT_MAX_TOKENS }
 }
 
 /// Trim an LLM response down to a single safe line for the speech bubble.
@@ -289,10 +289,13 @@ pub fn run(transcript_path: &str) {
 }
 
 fn run_inner(transcript_path: &str) -> Option<()> {
-    if llm::api_key().is_none() {
-        debug::log("[llm] react skip reason=missing_key");
-        return None;
-    }
+    let provider = match llm::select::current_provider() {
+        Ok(p) => p,
+        Err(e) => {
+            debug::log(&format!("[llm] react skip reason=config err={e}"));
+            return None;
+        }
+    };
     let s = state::load()?;
     if s.breed.is_empty() {
         debug::log("[llm] react skip reason=unhatched");
@@ -305,11 +308,11 @@ fn run_inner(transcript_path: &str) -> Option<()> {
     }
     let mood = best_effort_mood(&s);
     let req = build_prompt(&s, mood, &tail);
-    match llm::call_haiku(req) {
+    match provider.complete(req) {
         Ok(resp) => {
             debug::log(&format!(
-                "[llm] react ok latency_ms={} in_tok={} out_tok={}",
-                resp.latency_ms, resp.input_tokens, resp.output_tokens,
+                "[llm] react ok provider={} model={} latency_ms={} in_tok={} out_tok={}",
+                provider.name(), resp.model, resp.latency_ms, resp.input_tokens, resp.output_tokens,
             ));
             let q = sanitize_quip(&resp.text);
             if q.is_empty() {
@@ -319,7 +322,7 @@ fn run_inner(transcript_path: &str) -> Option<()> {
             let _ = quip_cache::write(&q);
         }
         Err(e) => {
-            debug::log(&format!("[llm] react fail err={e:?}"));
+            debug::log(&format!("[llm] react fail provider={} err={e:?}", provider.name()));
         }
     }
     Some(())

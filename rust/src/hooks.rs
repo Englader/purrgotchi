@@ -124,7 +124,10 @@ fn turn_inner(_payload: &crate::payload::Payload) -> Option<()> {
 }
 
 fn maybe_spawn_react(payload: &crate::payload::Payload) {
-    if crate::llm::api_key().is_none() {
+    // Pre-spawn gate: if no provider is configured, skip the fork.
+    // The full auth check (provider's *_API_KEY env var) happens inside
+    // the worker via provider.complete() and is also a silent no-op.
+    if crate::llm::select::current_provider().is_err() {
         return;
     }
     if payload.transcript_path.is_empty() {

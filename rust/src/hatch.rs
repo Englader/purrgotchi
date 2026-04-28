@@ -147,15 +147,19 @@ const HATCH_MAX_TOKENS: u32 = 80;
 const HATCH_BLURB_HARD_CAP_CHARS: usize = 200;
 
 /// Try to generate an LLM personality blurb at hatch. Returns `None` on any
-/// failure or when the API key is missing. Caller falls back to whatever
-/// `generate_from_seed` already stored.
+/// failure (including unconfigured provider or missing API key). Caller falls
+/// back to whatever `generate_from_seed` already stored.
 fn maybe_llm_blurb(s: &state::State) -> Option<String> {
-    if crate::llm::api_key().is_none() {
-        return None;
-    }
     if std::env::var("PURR_FORCE_STATIC_BLURB").is_ok() {
         return None;
     }
+    let provider = match crate::llm::select::current_provider() {
+        Ok(p) => p,
+        Err(e) => {
+            crate::debug::log(&format!("[llm] hatch skip reason=config err={e}"));
+            return None;
+        }
+    };
     let peak_idx = s.stats.iter().enumerate()
         .max_by_key(|&(_, &v)| v).map(|(i, _)| i)?;
     let dump_idx = s.stats.iter().enumerate()
@@ -176,14 +180,14 @@ Output rules:\n\
         "Cat: {} {}\nPeak stat: {peak}\nDump stat: {dump}\n\nWrite the blurb.",
         s.rarity, s.breed,
     );
-    let req = crate::llm::HaikuRequest { system, user, max_tokens: HATCH_MAX_TOKENS };
+    let req = crate::llm::LlmRequest { system, user, max_tokens: HATCH_MAX_TOKENS };
 
     eprintln!("✨ summoning personality…");
-    match crate::llm::call_haiku(req) {
+    match provider.complete(req) {
         Ok(resp) => {
             crate::debug::log(&format!(
-                "[llm] hatch ok latency_ms={} in_tok={} out_tok={}",
-                resp.latency_ms, resp.input_tokens, resp.output_tokens,
+                "[llm] hatch ok provider={} model={} latency_ms={} in_tok={} out_tok={}",
+                provider.name(), resp.model, resp.latency_ms, resp.input_tokens, resp.output_tokens,
             ));
             let cleaned = clean_hatch_blurb(&resp.text);
             if validate_blurb(&cleaned) {
@@ -194,7 +198,7 @@ Output rules:\n\
             }
         }
         Err(e) => {
-            crate::debug::log(&format!("[llm] hatch fail err={e:?}"));
+            crate::debug::log(&format!("[llm] hatch fail provider={} err={e:?}", provider.name()));
             None
         }
     }

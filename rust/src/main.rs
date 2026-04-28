@@ -26,6 +26,10 @@ use std::env;
 use std::process;
 
 fn main() {
+    // Load .env from cwd before reading any env vars. Process-set vars take
+    // precedence (dotenvy default behaviour). Missing file is a no-op.
+    let _ = dotenvy::dotenv();
+
     let args: Vec<String> = env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
 

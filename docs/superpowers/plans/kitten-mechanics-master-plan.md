@@ -121,6 +121,16 @@ _Update as items ship._
     `{name}` placeholder fix. All paths gate on `ANTHROPIC_API_KEY`; static
     fallback on every failure.
 
+- [x] Phase 4 — Provider-agnostic LLM (v3.6.0)
+  - [x] LlmProvider trait + LlmRequest/Response/Error types; three impls
+    shipped (Anthropic, Gemini, OpenAI) selectable via `PURR_LLM_PROVIDER`.
+    `.env` auto-loaded from cwd via `dotenvy`; `PURR_LLM_MODEL` overrides
+    the provider's default model. **Breaking:** `PURR_LLM_PROVIDER` is now
+    required for any LLM feature — existing v3.5.0 users with only
+    `ANTHROPIC_API_KEY` set will silently fall back to static speech until
+    they add the new env var. See
+    `docs/superpowers/plans/2026-04-28-v3.6.0-provider-agnostic-llm.md`.
+
 ---
 
 ## Resume protocol
