@@ -1,15 +1,18 @@
 //! Provider-agnostic LLM surface.
 //!
 //! Defines the `LlmProvider` trait and normalized request/response/error types.
-//! Concrete provider impls will live in sibling modules (e.g. `anthropic`,
-//! `gemini`, `openai`) — see the v3.6.0 plan. Every error variant is non-fatal
-//! at the call site; callers log via `debug::log` and fall back to static.
+//! Concrete provider impls live in sibling modules (e.g. `anthropic`, and in
+//! T3/T4: `gemini`, `openai`). Every error variant is non-fatal at the call
+//! site; callers log via `debug::log` and fall back to static behaviour.
 //!
-//! Note: the Anthropic-specific code below this section is scheduled for
-//! extraction into `llm/anthropic.rs` in T2; for now it lives here unchanged.
+//! The `HaikuRequest`/`HaikuResponse`/`LlmError`/`call_haiku()` shim below
+//! preserves the v3.5.0 API for existing call sites in `react.rs` and
+//! `hatch.rs`. T6/T7 will rewrite those call sites to use the dispatcher
+//! (T5) directly, after which the shim is removed.
 
-use std::env;
-use std::time::Duration;
+pub mod anthropic;
+
+pub use anthropic::api_key;
 
 // --- Provider-agnostic surface (T1) ---
 
@@ -54,13 +57,7 @@ pub trait LlmProvider {
     fn complete(&self, req: LlmRequest) -> Result<LlmResponse, LlmProviderError>;
 }
 
-// --- Legacy Anthropic-specific surface (will move to anthropic.rs in T2) ---
-
-const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION: &str = "2023-06-01";
-const HAIKU_MODEL: &str = "claude-haiku-4-5";
-const CONNECT_TIMEOUT_SECS: u64 = 10;
-const READ_TIMEOUT_SECS: u64 = 10;
+// --- Legacy v3.5.0 shim (removed in T7) ---
 
 #[derive(Debug)]
 pub struct HaikuRequest {
@@ -86,72 +83,31 @@ pub enum LlmError {
     Timeout,
 }
 
-/// Reads `ANTHROPIC_API_KEY` from env. Returns `None` for missing or empty.
-pub fn api_key() -> Option<String> {
-    match env::var("ANTHROPIC_API_KEY") {
-        Ok(s) if !s.is_empty() => Some(s),
-        _ => None,
-    }
-}
-
-/// Parse the Anthropic Messages API response JSON into a `HaikuResponse`.
-/// Pure; no I/O. The `latency_ms` field is set by the caller after the round-trip.
-pub fn parse_haiku_response(body: &str) -> Result<(String, u32, u32), LlmError> {
-    let v: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| LlmError::MalformedResponse(format!("json: {e}")))?;
-    // Error envelope: {"type":"error","error":{"type":"...","message":"..."}}
-    if v.get("type").and_then(|t| t.as_str()) == Some("error") {
-        let msg = v.pointer("/error/message").and_then(|m| m.as_str()).unwrap_or("unknown");
-        return Err(LlmError::MalformedResponse(format!("api error: {msg}")));
-    }
-    let text = v.pointer("/content/0/text")
-        .and_then(|t| t.as_str())
-        .ok_or_else(|| LlmError::MalformedResponse("missing /content/0/text".into()))?
-        .to_string();
-    let input = v.pointer("/usage/input_tokens")
-        .and_then(|t| t.as_u64()).unwrap_or(0) as u32;
-    let output = v.pointer("/usage/output_tokens")
-        .and_then(|t| t.as_u64()).unwrap_or(0) as u32;
-    Ok((text, input, output))
-}
-
+/// Backward-compat shim that calls Anthropic via the new trait, then converts
+/// the result back into the legacy `HaikuResponse`/`LlmError` shapes used by
+/// `react.rs` and `hatch.rs`. Deleted in T7 once both call sites switch to the
+/// dispatcher.
 pub fn call_haiku(req: HaikuRequest) -> Result<HaikuResponse, LlmError> {
-    let key = api_key().ok_or(LlmError::MissingKey)?;
-    let body = serde_json::json!({
-        "model": HAIKU_MODEL,
-        "max_tokens": req.max_tokens,
-        "system": req.system,
-        "messages": [{"role": "user", "content": req.user}]
-    });
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(CONNECT_TIMEOUT_SECS))
-        .timeout_read(Duration::from_secs(READ_TIMEOUT_SECS))
-        .build();
-
-    let t0 = std::time::Instant::now();
-    let resp = agent.post(ANTHROPIC_API_URL)
-        .set("x-api-key", &key)
-        .set("anthropic-version", ANTHROPIC_VERSION)
-        .set("content-type", "application/json")
-        .send_json(body);
-    let latency_ms = t0.elapsed().as_millis() as u64;
-
-    match resp {
-        Ok(r) => {
-            let body = r.into_string().map_err(|e| LlmError::Network(e.to_string()))?;
-            let (text, input_tokens, output_tokens) = parse_haiku_response(&body)?;
-            Ok(HaikuResponse { text, input_tokens, output_tokens, latency_ms })
-        }
-        Err(ureq::Error::Status(code, _)) => Err(LlmError::Http(code)),
-        Err(ureq::Error::Transport(t)) => {
-            // ureq surfaces both timeouts and network failures here.
-            let s = t.to_string();
-            if s.contains("timed out") || s.contains("timeout") {
-                Err(LlmError::Timeout)
-            } else {
-                Err(LlmError::Network(s))
-            }
-        }
+    let provider = anthropic::Anthropic::new(None);
+    let llm_req = LlmRequest {
+        system: req.system,
+        user: req.user,
+        max_tokens: req.max_tokens,
+    };
+    match provider.complete(llm_req) {
+        Ok(r) => Ok(HaikuResponse {
+            text: r.text,
+            input_tokens: r.input_tokens,
+            output_tokens: r.output_tokens,
+            latency_ms: r.latency_ms as u64,
+        }),
+        Err(e) => Err(match e {
+            LlmProviderError::AuthMissing => LlmError::MissingKey,
+            LlmProviderError::Http(code, _body) => LlmError::Http(code),
+            LlmProviderError::Network(s) => LlmError::Network(s),
+            LlmProviderError::Timeout => LlmError::Timeout,
+            LlmProviderError::MalformedResponse(s) => LlmError::MalformedResponse(s),
+        }),
     }
 }
 
@@ -197,7 +153,6 @@ mod tests {
 
     #[test]
     fn llm_provider_error_variants_all_format() {
-        // All five variants implement Debug.
         let _ = format!("{:?}", LlmProviderError::AuthMissing);
         let _ = format!("{:?}", LlmProviderError::Http(500, "oops".into()));
         let _ = format!("{:?}", LlmProviderError::Network("dns".into()));
@@ -207,7 +162,6 @@ mod tests {
 
     #[test]
     fn llm_provider_is_object_safe() {
-        // Confirm `Box<dyn LlmProvider>` compiles by constructing one.
         struct Stub;
         impl LlmProvider for Stub {
             fn name(&self) -> &'static str { "stub" }
@@ -231,76 +185,28 @@ mod tests {
         assert_eq!(resp.text, "echo:u");
     }
 
-    // --- Legacy Anthropic-specific tests (move to anthropic.rs in T2) ---
+    // --- T2 shim conversion tests ---
 
     #[test]
-    fn parse_valid_response() {
-        let body = r#"{
-            "id":"msg_01",
-            "type":"message",
-            "content":[{"type":"text","text":"mrow."}],
-            "usage":{"input_tokens":1234,"output_tokens":5}
-        }"#;
-        let (text, in_tok, out_tok) = parse_haiku_response(body).unwrap();
-        assert_eq!(text, "mrow.");
-        assert_eq!(in_tok, 1234);
-        assert_eq!(out_tok, 5);
+    fn legacy_error_variants_all_format() {
+        let _ = format!("{:?}", LlmError::MissingKey);
+        let _ = format!("{:?}", LlmError::Http(500));
+        let _ = format!("{:?}", LlmError::Network("dns".into()));
+        let _ = format!("{:?}", LlmError::Timeout);
+        let _ = format!("{:?}", LlmError::MalformedResponse("bad".into()));
     }
 
     #[test]
-    fn parse_error_envelope_is_error() {
-        let body = r#"{"type":"error","error":{"type":"invalid_request_error","message":"bad key"}}"#;
-        match parse_haiku_response(body) {
-            Err(LlmError::MalformedResponse(msg)) => assert!(msg.contains("bad key")),
-            other => panic!("expected MalformedResponse, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_missing_content_is_error() {
-        let body = r#"{"id":"msg_01","type":"message","content":[]}"#;
-        assert!(matches!(parse_haiku_response(body), Err(LlmError::MalformedResponse(_))));
-    }
-
-    #[test]
-    fn parse_truncated_json_is_error() {
-        let body = r#"{"content":[{"text":"hi"#;
-        assert!(matches!(parse_haiku_response(body), Err(LlmError::MalformedResponse(_))));
-    }
-
-    #[test]
-    fn parse_missing_usage_defaults_to_zero() {
-        let body = r#"{"content":[{"type":"text","text":"hi"}]}"#;
-        let (text, in_tok, out_tok) = parse_haiku_response(body).unwrap();
-        assert_eq!(text, "hi");
-        assert_eq!(in_tok, 0);
-        assert_eq!(out_tok, 0);
-    }
-
-    #[test]
-    fn api_key_returns_none_for_empty() {
-        // Note: this test relies on env var not being set during `cargo test`.
-        // If a developer has ANTHROPIC_API_KEY set globally, this test will skip.
-        if env::var("ANTHROPIC_API_KEY").is_ok() {
-            return; // skip
-        }
-        assert!(api_key().is_none());
-    }
-
-    #[test]
-    #[ignore] // run with: LLM_INTEGRATION=1 cargo test -- --ignored llm_integration
-    fn llm_integration_call_haiku_round_trip() {
-        if env::var("LLM_INTEGRATION").is_err() {
-            return;
-        }
-        let resp = call_haiku(HaikuRequest {
-            system: "You are a one-word answerer.".into(),
-            user: "Reply with exactly the word: meow".into(),
-            max_tokens: 10,
-        }).expect("integration call should succeed");
-        assert!(!resp.text.is_empty(), "got empty text");
-        assert!(resp.input_tokens > 0);
-        assert!(resp.output_tokens > 0);
-        assert!(resp.latency_ms > 0);
+    fn legacy_haiku_request_response_round_trip() {
+        let req = HaikuRequest { system: "s".into(), user: "u".into(), max_tokens: 5 };
+        assert_eq!(req.max_tokens, 5);
+        let resp = HaikuResponse {
+            text: "hi".into(),
+            input_tokens: 1,
+            output_tokens: 2,
+            latency_ms: 99,
+        };
+        assert_eq!(resp.text, "hi");
+        assert_eq!(resp.latency_ms, 99);
     }
 }
