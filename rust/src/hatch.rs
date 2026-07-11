@@ -99,14 +99,36 @@ pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State
 
 /// Load existing state, or auto-hatch a fresh kitten and persist it.
 ///
-/// Used by statusline and hook entry points so a missing/incompatible
-/// state.json transparently becomes a fresh v2 hatch.
+/// Only a genuinely *missing* state.json hatches. A transient read failure
+/// (Windows sharing violation from an AV scanner, etc.) is retried briefly
+/// and then answered with an in-memory placeholder that is never saved — the
+/// real kitten on disk must survive. A corrupt file is preserved aside
+/// (state.json.corrupt) before the fresh hatch, so the data stays
+/// recoverable.
 pub fn load_or_hatch() -> state::State {
-    state::load().unwrap_or_else(|| {
-        let fresh = generate(&HatchOpts::default());
-        let _ = state::save_atomic(&fresh);
-        fresh
-    })
+    use crate::state::LoadOutcome;
+    let mut outcome = state::load_outcome();
+    for _ in 0..2 {
+        if !matches!(outcome, LoadOutcome::Unreadable) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        outcome = state::load_outcome();
+    }
+    match outcome {
+        LoadOutcome::Loaded(s) => s,
+        LoadOutcome::Unreadable => {
+            crate::debug::log("state.json unreadable — serving placeholder, NOT saving");
+            generate(&HatchOpts::default())
+        }
+        LoadOutcome::Missing | LoadOutcome::Corrupt => {
+            // locked_update re-checks the outcome under the lock (so two
+            // concurrent processes can't double-hatch), preserves a corrupt
+            // file aside, hatches, and saves.
+            state::locked_update(|s| s.clone())
+                .unwrap_or_else(|_| generate(&HatchOpts::default()))
+        }
+    }
 }
 
 /// Pure: should `hatch::run` emit the "set PURR_LLM_PROVIDER" hint?
@@ -124,16 +146,26 @@ fn should_print_key_hint<T>(result: &Result<T, crate::llm::select::ConfigError>)
 /// refuses and exits 1. Dev backdoors (`--rarity`/`--breed`/`--shiny` flags or
 /// `PURR_FORCE_*` env vars) bypass the check.
 pub fn run(opts: &HatchOpts) {
-    if !opts.is_forced()
-        && let Some(existing) = state::load()
-        && !existing.breed.is_empty()
-    {
-        eprintln!(
-            "You already have a {} ({}). Your kitten is permanent.",
-            existing.breed, existing.rarity
-        );
-        eprintln!("Run 'purrgotchi card' to see them.");
-        std::process::exit(1);
+    if !opts.is_forced() {
+        match state::load_outcome() {
+            state::LoadOutcome::Loaded(existing) if !existing.breed.is_empty() => {
+                eprintln!(
+                    "You already have a {} ({}). Your kitten is permanent.",
+                    existing.breed, existing.rarity
+                );
+                eprintln!("Run 'purrgotchi card' to see them.");
+                std::process::exit(1);
+            }
+            state::LoadOutcome::Corrupt | state::LoadOutcome::Unreadable => {
+                eprintln!("state.json exists but could not be read (locked or corrupt).");
+                eprintln!(
+                    "Refusing to hatch over it — check {}",
+                    crate::paths::state_file().display()
+                );
+                std::process::exit(1);
+            }
+            _ => {}
+        }
     }
     let mut s = generate(opts);
     println!("Hatched: {} {} ({}){}",
@@ -146,6 +178,7 @@ pub fn run(opts: &HatchOpts) {
     if let Some(llm_blurb) = maybe_llm_blurb(&s) {
         s.personality = llm_blurb;
     }
+    let _lock = state::acquire_lock();
     match state::save_atomic(&s) {
         Ok(()) => println!("Saved to: {}", crate::paths::state_file().display()),
         Err(e) => eprintln!("warning: could not write state: {e}"),
@@ -153,7 +186,7 @@ pub fn run(opts: &HatchOpts) {
     let provider_status = crate::llm::select::current_provider().map(|_| ());
     if should_print_key_hint(&provider_status) {
         eprintln!(
-            "\nhint: set PURR_LLM_PROVIDER (and the matching API key in .env) to enable AI personality and react quips."
+            "\nhint: set PURR_LLM_PROVIDER (and the matching API key in ~/.claude/purrgotchi/.env) to enable AI personality and react quips."
         );
     }
 }
@@ -221,8 +254,12 @@ Output rules:\n\
 
 fn clean_hatch_blurb(raw: &str) -> String {
     let trimmed = raw.trim();
-    let stripped = if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    let bytes = trimmed.as_bytes();
+    // len >= 2 so a degenerate single-quote-character response can't produce
+    // the panicking slice range 1..0.
+    let stripped = if bytes.len() >= 2
+        && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\''))
     {
         &trimmed[1..trimmed.len() - 1]
     } else {

@@ -112,9 +112,11 @@ pub fn render(s: &State) -> String {
 
     // Bond row (dynamic stat, visually separated from the 5 identity stats above
     // by its own divider block). Value reflects lazy-decay, not raw state.
+    // Decay anchors on the most recent of pet/play/treat — the same anchor the
+    // statusline and stats card use — so all three views agree.
     // Cast the i64 `now` computed above for rarity_color — safe because
     // SystemTime::now().as_secs() is always non-negative and well below i64::MAX.
-    let effective = crate::bond::effective_bond(s.bond, s.last_pet_at, now as u64);
+    let effective = crate::bond::effective_bond(s.bond, crate::bond::last_interaction_at(s), now as u64);
     let bond_bar = stat_bar(effective);
     let pink = crate::colors::C_PINK;
     let reset = crate::colors::C_RESET;
@@ -161,7 +163,10 @@ pub fn render(s: &State) -> String {
 }
 
 fn stat_bar(val: u8) -> String {
-    let filled = (val as usize * 10 + 50) / 100;
+    // Clamp like hooks::nine_cell_bar — a hand-edited/corrupt state.json can
+    // carry any u8, and `10 - filled` must not underflow.
+    let val = val.min(100) as usize;
+    let filled = ((val * 10 + 50) / 100).min(10);
     let empty = 10 - filled;
     format!("{}{}", "█".repeat(filled), "░".repeat(empty))
 }
@@ -216,6 +221,7 @@ mod tests {
             streak_count: 0,
             last_milestone_celebrated: 0,
             last_turn_at: 0,
+            last_celebration_tick_at: 0,
         }
     }
 

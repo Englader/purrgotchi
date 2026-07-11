@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn effective_bond_one_day_loses_five() {
         // 86400 seconds == 5 decay points at BOND_DECAY_PER_DAY=5.
-        assert_eq!(effective_bond(80, 0 + 1, 1 + 86_400), 75);
+        assert_eq!(effective_bond(80, 1, 1 + 86_400), 75);
     }
 
     #[test]

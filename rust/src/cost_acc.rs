@@ -51,8 +51,7 @@ pub fn save_at(path: &Path, sessions: &CostSessions) -> io::Result<()> {
         Some(dir) => dir.join(format!(".cost-sessions.{pid}.tmp")),
         None => std::path::PathBuf::from(format!(".cost-sessions.{pid}.tmp")),
     };
-    let bytes = serde_json::to_vec_pretty(sessions)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let bytes = serde_json::to_vec_pretty(sessions).map_err(io::Error::other)?;
     fs::write(&tmp, bytes)?;
     match fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
@@ -150,6 +149,13 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) {
     }
     let now = crate::state::now_secs();
     let path = crate::paths::cost_sessions_file();
+    // v3.7.0: hold the global state lock across the whole read-modify-write.
+    // Without it, two concurrent Claude Code windows last-writer-win each
+    // other's sidecar entry (double-crediting lifetime cost), and our
+    // whole-struct state save could clobber a concurrent feed hook's
+    // increments. A missed lock just skips this render; the next one retries
+    // the same delta.
+    let Some(_lock) = crate::state::acquire_lock() else { return };
     let mut sessions = load_at(&path);
 
     let mut state = match crate::state::load() {
@@ -164,10 +170,8 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) {
     }
 
     // Sidecar first.
-    if outcome.sidecar_dirty {
-        if save_at(&path, &sessions).is_err() {
-            return;
-        }
+    if outcome.sidecar_dirty && save_at(&path, &sessions).is_err() {
+        return;
     }
     // Only credit the lifetime field on disk if we actually moved the needle.
     if outcome.credit > 0.0 {

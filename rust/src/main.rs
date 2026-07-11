@@ -26,9 +26,12 @@ use std::env;
 use std::process;
 
 fn main() {
-    // Load .env from cwd before reading any env vars. Process-set vars take
-    // precedence (dotenvy default behaviour). Missing file is a no-op.
-    let _ = dotenvy::dotenv();
+    // Load .env ONLY from the trusted state dir (~/.claude/purrgotchi/.env),
+    // never the inherited cwd. Hooks run with cwd = whatever project Claude
+    // Code has open, so a cwd .env would let any repo silently inject HOME,
+    // provider selection, or API keys. Process-set vars take precedence
+    // (dotenvy default behaviour). Missing file is a no-op.
+    let _ = dotenvy::from_path(paths::env_file());
 
     let args: Vec<String> = env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
@@ -99,6 +102,15 @@ fn main() {
                     eprintln!("hatch: unknown rarity '{r}'. Valid: common, uncommon, rare, epic, legendary");
                     process::exit(1);
                 }
+            }
+
+            // Same whitelist treatment as rarity — an unknown breed would
+            // otherwise reach identity::breed_global_idx and panic.
+            if let Some(b) = &force_breed
+                && !identity::is_known_breed(b)
+            {
+                eprintln!("hatch: unknown breed '{b}' (breed names are case-sensitive).");
+                process::exit(1);
             }
 
             let opts = hatch::HatchOpts { force_rarity, force_breed, force_shiny };

@@ -21,6 +21,7 @@ Thumbs.db
 target/
 *.pdb
 *.exe
+*.rlib
 
 # Node/misc
 node_modules/

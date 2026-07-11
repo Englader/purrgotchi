@@ -12,6 +12,78 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.7.0 — 2026-07-11
+
+Bug-sweep release: a multi-agent audit surfaced 12 confirmed high/medium
+defects and 18 minor ones; this release fixes all of them and turns on
+per-second sprite animation.
+
+### Added
+
+- **Live sprite animation.** `install.sh` now writes `refreshInterval: 1`
+  *inside* the `statusLine` settings object (the pre-v3.7.0 installer wrote it
+  at the top level, where Claude Code silently ignores it — the reason sprites
+  only moved on tool calls). The sprite frame now flips every second
+  (`now % 2`; was every 2s), so the cat visibly animates while the session
+  idles.
+- **Cross-process state lock.** All `state.json` read-modify-write cycles
+  (feed/turn/pet/play/treat hooks, cost accumulator, statusline celebration
+  countdown) now serialize through an OS-backed lock file
+  (`.purr.lock`, `LockFileEx`/`flock` via `fs2`). Previously four concurrent
+  writers raced last-writer-wins, silently losing coins, tool calls, streaks,
+  and celebrations, and double-crediting lifetime cost across two windows.
+- **Corrupt-state preservation.** An unparseable `state.json` is renamed to
+  `state.json.corrupt` before a fresh hatch, so the data stays recoverable.
+- **Stale-file sweep.** Orphaned `.*.tmp` atomic-write leftovers (>24h) and
+  per-session turn anchors (>12h) are cleaned up once per user prompt.
+
+### Fixed
+
+- **Kitten no longer destroyed by transient file errors.** `load_or_hatch()`
+  treated *any* `state.json` read failure — an antivirus briefly locking the
+  file, a corrupt write — as "no kitten" and immediately persisted a random
+  fresh one. Loads now distinguish missing / unreadable / corrupt: transient
+  failures are retried and served from a non-persisted placeholder; only a
+  genuinely missing file hatches.
+- **Render-counted overlays survive per-second refresh.** Quips now spend one
+  of their 6 renders at most every 5s (≥30s visible), celebrations tick at
+  most every 2s — instead of burning out in 3–6 seconds under the new refresh.
+- **Quips no longer burned invisibly.** The statusline consumed the quip cache
+  even while a celebration/birthday overlay outranked it, wasting the LLM call
+  without ever displaying the text.
+- **ANSI escape injection via LLM quips.** `sanitize_quip` now strips all
+  control characters; a prompt-injected escape sequence echoed by the model
+  could previously retitle the terminal window or clear the screen through
+  the speech bubble.
+- **`.env` no longer loaded from the project cwd.** The binary reads secrets
+  only from `~/.claude/purrgotchi/.env`; any opened repo's `.env` could
+  previously inject `HOME`, provider selection, or API keys into every hook.
+  `install.sh` seeds the trusted file from the repo `.env` on first install.
+- **Per-turn Cost correct with two windows.** The turn-cost anchor is now
+  keyed per session id; a single shared anchor let concurrent sessions zero
+  or wildly inflate each other's displayed turn cost.
+- **`purr card` bond agrees with statusline/stats.** The card anchored bond
+  decay on `last_pet_at` only, showing bond 0 for a cat that was treated
+  today but petted a month ago. All three views now use
+  `last_interaction_at`.
+- **PEAK/OFF-PEAK label off-by-one.** Hour 14–19 is PEAK "2PM-8PM" and the
+  off-peak label reads "8PM-2PM"; the old code claimed 2PM-3PM for both
+  ranges. Non-Windows `local_hour()` no longer hardcodes UTC+1.
+- **Panic fixes.** A single-quote-character LLM blurb no longer panics
+  `hatch` (`&trimmed[1..0]`); `purr card` no longer panics on stat/bond
+  values >104 (`10 - filled` underflow); `--breed`/`PURR_FORCE_BREED` is
+  validated like `--rarity` instead of panicking on unknown breeds.
+- **`install.sh` handles paths with spaces** (binary path is now quoted in
+  generated commands) and refuses to merge into a malformed `settings.json`
+  instead of dying mid-pipeline with a stray temp file.
+- **Windows `HOME` confusion.** `paths::home_dir()` prefers `USERPROFILE` on
+  Windows so a POSIX-style `HOME` (MSYS2/Cygwin) can't split state into a
+  second kitten at `C:\home\...`.
+- **Atomic-write temp files no longer leak** when the JSON write itself fails
+  (the observed stray `.state.<pid>.tmp`); `debug.log` rotates at 512 KiB;
+  the react worker reads only the transcript tail (256 KiB cap) instead of
+  the whole file.
+
 ## v3.6.3 — 2026-04-28
 
 ### Changed
