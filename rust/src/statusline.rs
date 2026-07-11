@@ -13,7 +13,7 @@ use crate::paths;
 use crate::payload::Payload;
 use crate::render::{
     anchor_col, close_row, format_tokens, human_duration, human_elapsed, pad_col,
-    pad_sprite, progress_bar, short_cwd, time_until_reset,
+    pad_sprite, progress_bar, short_cwd, time_until_reset, truncate_tail,
 };
 use crate::speech::{compute_celebration_speech, compute_speech};
 use crate::sprites::{get_celebration_sprite, get_sprite_lines};
@@ -152,7 +152,12 @@ pub fn run() {
         now,
     );
 
-    let git_branch = read_git_branch(&cwd);
+    // Truncate the branch so `GIT: {branch}` fits its W3 column exactly, the
+    // same way short_cwd shortens the DIR path. `pad_col` only pads — it never
+    // trims — so a long branch name (e.g. feat/v3.8.0-playground-scenes) would
+    // otherwise overflow the column and push the card's right border out of
+    // alignment, shattering the box. Budget = W3 minus the "GIT: " prefix.
+    let git_branch = truncate_tail(&read_git_branch(&cwd), W3 - 5);
 
     let ctx_int = payload.context_window.used_percentage.round() as i64;
     let rate_int = payload.rate_limits.five_hour.used_percentage.round() as i64;
