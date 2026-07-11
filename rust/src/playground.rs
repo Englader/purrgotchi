@@ -765,4 +765,30 @@ mod tests {
         assert!(plain[5].contains('~'), "trail behind her");
         assert!(f.rows.iter().any(|r| r.contains(crate::colors::C_PINK)), "yarn is pink");
     }
+
+    #[test]
+    fn alignment_sweep_every_scene_width_and_second() {
+        // The load-bearing invariant: no rendered row may ever deviate from the
+        // strip width — a longer row wraps the terminal line and shatters the
+        // whole 7-row layout.
+        for kind in ACTIVE_SCENES {
+            for w in [MIN_STRIP, 60, MAX_STRIP] {
+                for elapsed in 0..=45u64 {
+                    for (duration, seed) in [(20u64, 0u64), (30, 12345), (40, u64::MAX)] {
+                        let f = render_scene(
+                            kind, elapsed, duration, seed, w,
+                            (elapsed % 2) as u8, crate::colors::C_CYAN,
+                        );
+                        assert_eq!(f.rows.len(), ROWS);
+                        for (i, row) in f.rows.iter().enumerate() {
+                            assert_eq!(
+                                strip_ansi(row).chars().count(), w,
+                                "{kind:?} w={w} t={elapsed} d={duration} seed={seed} row={i}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
