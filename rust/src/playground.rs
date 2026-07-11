@@ -174,6 +174,88 @@ pub fn start_scene_now(s: &mut crate::state::State, now: u64) {
     s.scene_next_at = now + roll_range(&mut rng, IDLE_MIN_SECS, IDLE_MAX_SECS);
 }
 
+pub const COL_BG: u8 = 0;
+pub const COL_CAT: u8 = 1;
+pub const COL_YELLOW: u8 = 2;
+pub const COL_MAGENTA: u8 = 3;
+pub const COL_PINK: u8 = 4;
+pub const COL_DIM: u8 = 5;
+
+/// 6-row cell grid. Chars carry a color id; emit() converts runs of same-color
+/// cells into ANSI segments so the plain width of every row == canvas width —
+/// the repo-wide plain/ANSI convention (render.rs display_width counts chars).
+pub struct Canvas {
+    w: usize,
+    cells: Vec<(char, u8)>,
+}
+
+impl Canvas {
+    pub fn new(w: usize) -> Self {
+        Canvas { w, cells: vec![(' ', COL_BG); w * ROWS] }
+    }
+
+    pub fn width(&self) -> usize {
+        self.w
+    }
+
+    /// Blit art with its top-left at (x, y). Cells outside the canvas are
+    /// clipped; spaces in the art are transparent.
+    pub fn place(&mut self, x: isize, y: isize, art: &[String], color: u8) {
+        for (dy, line) in art.iter().enumerate() {
+            let row = y + dy as isize;
+            if !(0..ROWS as isize).contains(&row) { continue; }
+            for (dx, ch) in line.chars().enumerate() {
+                if ch == ' ' { continue; }
+                let col = x + dx as isize;
+                if !(0..self.w as isize).contains(&col) { continue; }
+                self.cells[row as usize * self.w + col as usize] = (ch, color);
+            }
+        }
+    }
+
+    pub fn put(&mut self, x: isize, y: isize, ch: char, color: u8) {
+        if !(0..self.w as isize).contains(&x) || !(0..ROWS as isize).contains(&y) {
+            return;
+        }
+        self.cells[y as usize * self.w + x as usize] = (ch, color);
+    }
+
+    pub fn put_str(&mut self, x: isize, y: isize, s: &str, color: u8) {
+        for (i, ch) in s.chars().enumerate() {
+            self.put(x + i as isize, y, ch, color);
+        }
+    }
+
+    /// Render to ROWS ANSI strings. `cat_color` is the ANSI prefix for COL_CAT
+    /// cells (rarity/shiny tint computed by the caller).
+    pub fn emit(&self, cat_color: &str) -> Vec<String> {
+        use crate::colors::{C_DIM, C_MAGENTA, C_PINK, C_RESET, C_YELLOW};
+        let mut rows = Vec::with_capacity(ROWS);
+        for y in 0..ROWS {
+            let mut out = String::with_capacity(self.w + 24);
+            let mut cur = COL_BG;
+            for &(ch, col) in &self.cells[y * self.w..(y + 1) * self.w] {
+                if col != cur {
+                    out.push_str(C_RESET);
+                    match col {
+                        COL_CAT => out.push_str(cat_color),
+                        COL_YELLOW => out.push_str(C_YELLOW),
+                        COL_MAGENTA => out.push_str(C_MAGENTA),
+                        COL_PINK => out.push_str(C_PINK),
+                        COL_DIM => out.push_str(C_DIM),
+                        _ => {} // COL_BG and unknown ids render unstyled
+                    }
+                    cur = col;
+                }
+                out.push(ch);
+            }
+            out.push_str(C_RESET);
+            rows.push(out);
+        }
+        rows
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,5 +390,71 @@ mod tests {
         assert!((SCENE_MIN_SECS..=SCENE_MAX_SECS).contains(&s.scene_duration_secs));
         assert!((5000 + IDLE_MIN_SECS..=5000 + IDLE_MAX_SECS).contains(&s.scene_next_at));
         assert_eq!(s.scene_last_kind, PlaygroundScene::Roll);
+    }
+
+    pub(super) fn strip_ansi(s: &str) -> String {
+        let mut out = String::new();
+        let mut in_esc = false;
+        for ch in s.chars() {
+            if in_esc {
+                if ch == 'm' { in_esc = false; }
+            } else if ch == '\x1b' {
+                in_esc = true;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn canvas_emit_rows_have_exact_plain_width() {
+        let c = Canvas::new(30);
+        let rows = c.emit(crate::colors::C_CYAN);
+        assert_eq!(rows.len(), ROWS);
+        for r in &rows {
+            assert_eq!(strip_ansi(r).chars().count(), 30);
+            assert!(r.ends_with(crate::colors::C_RESET));
+        }
+    }
+
+    #[test]
+    fn place_clips_and_treats_spaces_as_transparent() {
+        let mut c = Canvas::new(10);
+        let art = vec!["ab".to_string(), " c".to_string()];
+        // partially off the left edge and off the top
+        c.place(-1, -1, &art, COL_CAT);
+        let rows = c.emit(crate::colors::C_CYAN);
+        // row -1 clipped entirely; art row 1 lands on canvas row 0: " c" at x=-1
+        // -> 'c' at x=0. Space stayed transparent (background remains ' ').
+        assert_eq!(strip_ansi(&rows[0]), "c         ");
+        // off the right edge
+        let mut c = Canvas::new(10);
+        c.place(9, 0, &art, COL_CAT);
+        let rows = c.emit(crate::colors::C_CYAN);
+        assert_eq!(strip_ansi(&rows[0]), "         a"); // 'b' clipped
+    }
+
+    #[test]
+    fn put_and_put_str_land_where_told() {
+        let mut c = Canvas::new(12);
+        c.put(3, 5, 'o', COL_YELLOW);
+        c.put_str(6, 2, "}{", COL_MAGENTA);
+        let rows = c.emit(crate::colors::C_CYAN);
+        assert_eq!(strip_ansi(&rows[5]).chars().nth(3), Some('o'));
+        assert_eq!(&strip_ansi(&rows[2])[6..8], "}{");
+        // out-of-bounds puts are silently clipped
+        c.put(-5, 0, 'x', COL_PINK);
+        c.put(99, 0, 'x', COL_PINK);
+    }
+
+    #[test]
+    fn emit_uses_cat_color_for_cat_cells_and_named_colors_for_props() {
+        let mut c = Canvas::new(8);
+        c.put(0, 0, 'C', COL_CAT);
+        c.put(2, 0, 'o', COL_YELLOW);
+        let rows = c.emit(crate::colors::C_GREEN);
+        assert!(rows[0].contains(crate::colors::C_GREEN));
+        assert!(rows[0].contains(crate::colors::C_YELLOW));
     }
 }
