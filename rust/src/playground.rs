@@ -256,6 +256,71 @@ impl Canvas {
     }
 }
 
+/// One rendered frame: exactly ROWS ANSI strings, plain width == strip width.
+pub struct SceneFrame {
+    pub rows: Vec<String>,
+}
+
+/// Triangle wave 0..=max..=0 as t grows: position for back-and-forth motion.
+pub(crate) fn tri(t: u64, max: usize) -> usize {
+    if max == 0 { return 0; }
+    let period = (2 * max) as u64;
+    let p = (t % period) as usize;
+    if p <= max { p } else { 2 * max - p }
+}
+
+/// True while the triangle wave is in its rising (rightward) half.
+pub(crate) fn tri_rising(t: u64, max: usize) -> bool {
+    if max == 0 { return true; }
+    ((t % (2 * max) as u64) as usize) < max
+}
+
+pub(crate) fn art_width(art: &[String]) -> usize {
+    art.iter().map(|l| l.chars().count()).max().unwrap_or(0)
+}
+
+const RUN_SPEED: u64 = 3; // cells per second reads as a trot at 1 fps
+
+/// Phase 1 placeholder: the front-facing common sprite slides back and forth.
+/// Phase 2 replaces this with side-view playground art per scene.
+fn cat_art_placeholder(blink: u8) -> Vec<String> {
+    crate::sprites::get_sprite_lines("young", "common", "happy", blink)
+}
+
+fn run_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
+    let art = cat_art_placeholder(blink);
+    let span = canvas.width().saturating_sub(art_width(&art));
+    let t = elapsed * RUN_SPEED + seed % 97; // seed offsets the starting phase
+    let x = tri(t, span);
+    canvas.place(x as isize, 0, &art, COL_CAT);
+}
+
+/// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
+pub fn render_scene(
+    kind: PlaygroundScene,
+    elapsed: u64,
+    duration: u64,
+    seed: u64,
+    strip_width: usize,
+    blink: u8,
+    cat_color: &str,
+) -> SceneFrame {
+    let mut canvas = Canvas::new(strip_width);
+    match kind {
+        PlaygroundScene::None => {}
+        PlaygroundScene::Run => run_scene(&mut canvas, elapsed, seed, blink),
+        // Phase 2 gives each of these its own choreography; until then they
+        // all borrow Run so the engine is demonstrable end to end.
+        PlaygroundScene::Zoomies => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::BallChase => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::ButterflyChase => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::Roll => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::YarnPush => run_scene(&mut canvas, elapsed, seed, blink),
+    }
+    let _ = duration; // consumed by Phase 2 finale beats
+    SceneFrame { rows: canvas.emit(cat_color) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,5 +521,57 @@ mod tests {
         let rows = c.emit(crate::colors::C_GREEN);
         assert!(rows[0].contains(crate::colors::C_GREEN));
         assert!(rows[0].contains(crate::colors::C_YELLOW));
+    }
+
+    #[test]
+    fn tri_wave_bounces_between_zero_and_max() {
+        assert_eq!(tri(0, 10), 0);
+        assert_eq!(tri(10, 10), 10);
+        assert_eq!(tri(15, 10), 5);
+        assert_eq!(tri(20, 10), 0);
+        assert_eq!(tri(25, 10), 5);
+        assert_eq!(tri(7, 0), 0); // degenerate strip
+        assert!(tri_rising(3, 10));
+        assert!(!tri_rising(13, 10));
+    }
+
+    #[test]
+    fn render_scene_rows_are_exact_width_for_all_kinds() {
+        for kind in ACTIVE_SCENES {
+            let f = render_scene(kind, 7, 30, 999, 48, 1, crate::colors::C_CYAN);
+            assert_eq!(f.rows.len(), ROWS);
+            for r in &f.rows {
+                assert_eq!(strip_ansi(r).chars().count(), 48, "{kind:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn render_scene_is_deterministic() {
+        let a = render_scene(PlaygroundScene::Run, 12, 30, 5, 60, 0, crate::colors::C_CYAN);
+        let b = render_scene(PlaygroundScene::Run, 12, 30, 5, 60, 0, crate::colors::C_CYAN);
+        assert_eq!(a.rows, b.rows);
+    }
+
+    #[test]
+    fn run_scene_cat_moves_over_time() {
+        // The cat's leftmost inked column must differ between two elapsed values
+        // closer together than a full bounce period.
+        let inked_start = |f: &SceneFrame| -> Option<usize> {
+            f.rows.iter()
+                .filter_map(|r| strip_ansi(r).chars().position(|c| c != ' '))
+                .min()
+        };
+        let f0 = render_scene(PlaygroundScene::Run, 0, 30, 0, 60, 0, crate::colors::C_CYAN);
+        let f2 = render_scene(PlaygroundScene::Run, 2, 30, 0, 60, 0, crate::colors::C_CYAN);
+        assert_ne!(inked_start(&f0), inked_start(&f2), "cat did not move");
+    }
+
+    #[test]
+    fn render_scene_none_is_blank() {
+        let f = render_scene(PlaygroundScene::None, 5, 30, 1, 40, 0, crate::colors::C_CYAN);
+        for r in &f.rows {
+            assert!(strip_ansi(r).trim().is_empty());
+        }
     }
 }
