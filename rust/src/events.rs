@@ -37,7 +37,7 @@ pub fn detect_milestone(
         Some((CelebrationKind::MilestoneVeteran, 500))
     } else if prev < 1000 && new >= 1000 && watermark < 1000 {
         Some((CelebrationKind::MilestoneMaster, 1000))
-    } else if new >= 2000 && new % 1000 == 0 && new > watermark {
+    } else if new >= 2000 && new.is_multiple_of(1000) && new > watermark {
         Some((CelebrationKind::MilestoneLegendary, new))
     } else {
         None
@@ -341,7 +341,3 @@ mod tests {
         (days_since_epoch * 86_400 + 12 * 3600) as u64  // noon UTC
     }
 }
-
-// Silences the unused-const warnings until the integration tasks consume them.
-#[allow(dead_code)]
-fn _scaffold_holds(_: CelebrationKind) {}

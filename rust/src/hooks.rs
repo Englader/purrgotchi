@@ -19,7 +19,7 @@ const REACT_DICE_DENOM: u64 = 5;
 /// Reuses the existing LCG primitive for distribution.
 pub fn should_fire_react(seed: u64) -> bool {
     let mut rng = crate::identity::Lcg::new(seed);
-    rng.next() % REACT_DICE_DENOM == 0
+    rng.next().is_multiple_of(REACT_DICE_DENOM)
 }
 
 /// Pure helper: given previous and new level, return the celebration to fire.
@@ -49,12 +49,12 @@ pub fn feed() {
 }
 
 fn feed_inner() -> Option<()> {
-    let mut s = crate::hatch::load_or_hatch();
-    let drop_seed = state::now_secs() ^ s.total_tool_calls;
-    apply_feed_dispatch(&mut s, drop_seed);
-    s.last_fed_at = state::now_secs();
-    state::save_atomic(&s).ok()?;
-    Some(())
+    state::locked_update(|s| {
+        let drop_seed = state::now_secs() ^ s.total_tool_calls;
+        apply_feed_dispatch(s, drop_seed);
+        s.last_fed_at = state::now_secs();
+    })
+    .ok()
 }
 
 fn apply_feed_dispatch(
@@ -112,15 +112,15 @@ pub fn turn() {
         serde_json::from_str(&input).unwrap_or_default()
     };
     let _ = turn_inner(&payload);
+    let _ = fs::remove_file(paths::turn_anchor_file_for(&payload.session_id));
+    // Pre-v3.7.0 binaries wrote a single global anchor; clear it too.
     let _ = fs::remove_file(paths::turn_anchor_file());
+    state::sweep_stale_files();
     maybe_spawn_react(&payload);
 }
 
 fn turn_inner(_payload: &crate::payload::Payload) -> Option<()> {
-    let mut s = crate::hatch::load_or_hatch();
-    let now = state::now_secs();
-    apply_turn_dispatch(&mut s, now);
-    state::save_atomic(&s).ok()
+    state::locked_update(|s| apply_turn_dispatch(s, state::now_secs())).ok()
 }
 
 fn maybe_spawn_react(payload: &crate::payload::Payload) {
@@ -160,9 +160,7 @@ pub fn rename(new_name: &str) -> i32 {
         eprintln!("rename: name cannot be empty");
         return 1;
     }
-    let mut s = crate::hatch::load_or_hatch();
-    s.name = new_name.to_string();
-    match state::save_atomic(&s) {
+    match state::locked_update(|s| s.name = new_name.to_string()) {
         Ok(()) => {
             println!("kitten renamed to: {new_name}");
             0
@@ -175,12 +173,10 @@ pub fn rename(new_name: &str) -> i32 {
 }
 
 pub fn pet() {
-    let mut s = crate::hatch::load_or_hatch();
     let now = state::now_secs();
-    let result = bond::try_pet(&mut s, now);
-    println!("{}", format_pet_message(&s.name, &result));
-    if matches!(result, PetResult::Applied { .. }) {
-        let _ = state::save_atomic(&s);
+    match state::locked_update(|s| (s.name.clone(), bond::try_pet(s, now))) {
+        Ok((name, result)) => println!("{}", format_pet_message(&name, &result)),
+        Err(e) => eprintln!("pet: could not update state: {e}"),
     }
 }
 
@@ -208,12 +204,16 @@ fn format_pet_message(name: &str, result: &PetResult) -> String {
 }
 
 pub fn play() {
-    let mut s = crate::hatch::load_or_hatch();
     let now = state::now_secs();
-    let result = crate::bond::try_play(&mut s, now);
-    println!("{}", format_play_message(&s.name, &result, s.last_played_at));
-    if matches!(result, crate::bond::PlayResult::Applied { .. }) {
-        let _ = state::save_atomic(&s);
+    let outcome = state::locked_update(|s| {
+        let result = crate::bond::try_play(s, now);
+        (s.name.clone(), result, s.last_played_at)
+    });
+    match outcome {
+        Ok((name, result, last_played_at)) => {
+            println!("{}", format_play_message(&name, &result, last_played_at));
+        }
+        Err(e) => eprintln!("play: could not update state: {e}"),
     }
 }
 
@@ -259,12 +259,16 @@ fn play_applied_variant(name: &str, last_played_at: u64) -> String {
 }
 
 pub fn treat() {
-    let mut s = crate::hatch::load_or_hatch();
     let now = state::now_secs();
-    let result = crate::bond::try_treat(&mut s, now);
-    println!("{}", format_treat_message(&s.name, &result, s.last_treated_at));
-    if matches!(result, crate::bond::TreatResult::Applied { .. }) {
-        let _ = state::save_atomic(&s);
+    let outcome = state::locked_update(|s| {
+        let result = crate::bond::try_treat(s, now);
+        (s.name.clone(), result, s.last_treated_at)
+    });
+    match outcome {
+        Ok((name, result, last_treated_at)) => {
+            println!("{}", format_treat_message(&name, &result, last_treated_at));
+        }
+        Err(e) => eprintln!("treat: could not update state: {e}"),
     }
 }
 

@@ -11,8 +11,8 @@ pub struct TurnCost {
     pub cents: i64,
 }
 
-pub fn compute_turn_cost(cost_usd: f64) -> TurnCost {
-    let anchor_path = paths::turn_anchor_file();
+pub fn compute_turn_cost(cost_usd: f64, session_id: &str) -> TurnCost {
+    let anchor_path = paths::turn_anchor_file_for(session_id);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let now_us = now.as_micros() as i64;
     let now_real = format!(

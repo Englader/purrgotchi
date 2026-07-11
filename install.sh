@@ -51,6 +51,12 @@ echo ""
 echo "[2/5] Creating state directory..."
 mkdir -p "$STATE_DIR"
 echo "  $STATE_DIR"
+# The binary reads LLM keys only from $STATE_DIR/.env (never from a project
+# cwd). Seed it from the repo's .env on first install.
+if [ -f "$REPO_DIR/.env" ] && [ ! -f "$STATE_DIR/.env" ]; then
+    cp "$REPO_DIR/.env" "$STATE_DIR/.env"
+    echo "  Copied .env -> $STATE_DIR/.env (binary reads keys only from there)"
+fi
 echo ""
 
 # --- 3. Backup settings.json ------------------------------------------------
@@ -69,17 +75,30 @@ echo ""
 # --- 4. Merge settings.json -------------------------------------------------
 echo "[4/5] Updating settings.json with Purrgotchi config..."
 
-STATUSLINE_CMD="$RUST_BIN statusline"
-FEED_CMD="$RUST_BIN feed"
-TURN_CMD="$RUST_BIN turn"
+# Refuse to merge into a broken file — with `set -e` jq would otherwise die
+# mid-pipeline with a raw parse error and leave a stray ${SETTINGS}.new behind.
+if ! jq empty "$SETTINGS" 2>/dev/null; then
+    echo "  ERROR: $SETTINGS is not valid JSON. Fix it (or restore a .bak) and re-run."
+    exit 1
+fi
+
+# Command strings quote the binary path — an unquoted path with spaces
+# (C:/Users/John Doe/...) word-splits when Claude Code runs it via the shell.
+STATUSLINE_CMD="\"$RUST_BIN\" statusline"
+FEED_CMD="\"$RUST_BIN\" feed"
+TURN_CMD="\"$RUST_BIN\" turn"
 
 # Merge our keys while preserving any existing config. Replace our managed
 # hook entries (any command containing "purrgotchi" — matches both legacy
 # bash/python entries and current Rust binary paths) while leaving unrelated
 # hooks untouched.
+#
+# refreshInterval lives INSIDE the statusLine object (a top-level key is
+# silently ignored by Claude Code — that was the pre-v3.7.0 bug that kept
+# sprites from animating). 1s refresh + wall-clock frame = live animation.
 jq --arg sl "$STATUSLINE_CMD" --arg feed "$FEED_CMD" --arg turn "$TURN_CMD" '
-    .statusLine = {"type":"command", "command":$sl, "padding":1}
-    | .refreshInterval = 1
+    .statusLine = {"type":"command", "command":$sl, "padding":1, "refreshInterval":1}
+    | del(.refreshInterval)
     | .hooks //= {}
     | .hooks.PostToolUse = (
         (.hooks.PostToolUse // []) | map(select(.matcher != "*" or ((.hooks[0].command // "") | test("purrgotchi") | not)))
@@ -105,12 +124,12 @@ echo ""
 echo "[5/5] Install complete!"
 echo ""
 echo "Verify by running:"
-echo "  echo '{}' | $RUST_BIN statusline"
+echo "  echo '{}' | \"$RUST_BIN\" statusline"
 echo ""
 echo "Then restart Claude Code — you should see the HUD render on your next turn."
 echo ""
 echo "To rename the kitten:"
-echo "  $RUST_BIN rename \"YourCatName\""
+echo "  \"$RUST_BIN\" rename \"YourCatName\""
 echo ""
 echo "To rollback:"
 echo "  cp <latest .bak file> $SETTINGS"

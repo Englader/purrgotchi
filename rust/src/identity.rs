@@ -52,6 +52,20 @@ pub fn breeds_for_rarity(rarity: &str) -> &'static [&'static str] {
     }
 }
 
+/// True if `breed` exactly matches an entry in any rarity's breed table.
+/// CLI validation gate — an unknown breed reaching `breed_global_idx` panics.
+pub fn is_known_breed(breed: &str) -> bool {
+    [
+        &BREEDS_COMMON[..],
+        &BREEDS_UNCOMMON[..],
+        &BREEDS_RARE[..],
+        &BREEDS_EPIC[..],
+        &BREEDS_LEGENDARY[..],
+    ]
+    .iter()
+    .any(|table| table.contains(&breed))
+}
+
 pub fn breed_global_idx(breed: &str) -> usize {
     let rarities: [&[&str]; 5] = [
         &BREEDS_COMMON,

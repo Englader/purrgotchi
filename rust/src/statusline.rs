@@ -25,6 +25,11 @@ const W3: usize = 28;
 const BOX_WIDTH: usize = 94;
 const SW: usize = 16;
 
+/// Minimum seconds between celebration-countdown decrements. With statusLine
+/// refreshInterval=1 renders arrive every second; ungated, a 3-render
+/// celebration would flash by in 3 seconds.
+const CELEBRATION_TICK_SECS: u64 = 2;
+
 pub fn run() {
     let t_start = SystemTime::now();
     let mut input = String::new();
@@ -61,7 +66,7 @@ pub fn run() {
     };
     let cwd = normalize_windows_path(&cwd_raw);
 
-    let mut st = crate::hatch::load_or_hatch();
+    let st = crate::hatch::load_or_hatch();
     let (coins, level, last_fed_at, kitten_name, rarity, shiny) =
         (st.coins, st.level, st.last_fed_at, st.name.clone(), st.rarity.clone(), st.shiny);
     let celebration_kind = st.celebration_kind;
@@ -99,13 +104,22 @@ pub fn run() {
         last_played_delta,
         last_treated_delta,
     );
-    let frame = ((now / 2) % 2) as u8;
+    // One frame flip per second — visible as animation now that the host
+    // re-renders on a 1s refreshInterval instead of only on events.
+    let frame = (now % 2) as u8;
 
     let reset_5h_str = time_until_reset(payload.rate_limits.five_hour.resets_at, now);
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
     let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
 
-    let quip = crate::quip_cache::consume();
+    // Only consume the quip when it would actually be displayed — celebration
+    // and birthday overlays outrank it in select_speech_source, and consuming
+    // behind them burned the quip's renders without it ever appearing.
+    let quip = if celebration_kind == CelebrationKind::None && !is_birthday {
+        crate::quip_cache::consume()
+    } else {
+        None
+    };
     let (speech_source, speech) = select_speech_source(
         celebration_kind,
         is_birthday,
@@ -121,7 +135,7 @@ pub fn run() {
     let rate_7d_int = payload.rate_limits.seven_day.used_percentage.round() as i64;
     let cost_fmt = format!("{:.2}", payload.cost.total_cost_usd);
 
-    let turn = compute_turn_cost(payload.cost.total_cost_usd);
+    let turn = compute_turn_cost(payload.cost.total_cost_usd, &payload.session_id);
     let turn_cost_fmt = format!("{}.{:02}", turn.whole, turn.cents);
 
     let ctx_bar = progress_bar(payload.context_window.used_percentage, 11);
@@ -366,14 +380,25 @@ pub fn run() {
 
     let _ = out.write_all(buf.as_bytes());
 
-    // Celebration counter: decrement per render, clear kind when done.
-    // Writes state once per active-celebration render (3-6 writes total per event).
-    if st.levelup_renders_remaining > 0 {
-        st.levelup_renders_remaining -= 1;
-        if st.levelup_renders_remaining == 0 {
-            st.celebration_kind = CelebrationKind::None;
-        }
-        let _ = state::save_atomic(&st);
+    // Celebration counter: decrement at most once per CELEBRATION_TICK_SECS,
+    // clear kind when done. The write goes through locked_update on a FRESH
+    // copy of state — saving the render-start snapshot here used to silently
+    // revert any feed/pet/play increment that landed mid-render.
+    let now_u = now as u64;
+    if st.levelup_renders_remaining > 0
+        && now_u >= st.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
+    {
+        let _ = state::locked_update(|fresh| {
+            if fresh.levelup_renders_remaining > 0
+                && now_u >= fresh.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
+            {
+                fresh.levelup_renders_remaining -= 1;
+                fresh.last_celebration_tick_at = now_u;
+                if fresh.levelup_renders_remaining == 0 {
+                    fresh.celebration_kind = CelebrationKind::None;
+                }
+            }
+        });
     }
 
     if debug::enabled() {
@@ -443,11 +468,19 @@ fn local_hour() -> u32 {
 
 #[cfg(not(windows))]
 fn local_hour() -> u32 {
+    // std has no timezone database; ask the system. Falls back to UTC (the
+    // old code hardcoded UTC+1, which was wrong everywhere else).
+    if let Ok(out) = std::process::Command::new("date").arg("+%H").output()
+        && let Ok(s) = String::from_utf8(out.stdout)
+        && let Ok(h) = s.trim().parse::<u32>()
+    {
+        return h % 24;
+    }
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    ((secs / 3600 + 1) % 24) as u32
+    ((secs / 3600) % 24) as u32
 }
 
 fn peak_label(hour: u32) -> (String, String) {
@@ -479,10 +512,13 @@ fn compute_h1_layout(title_len: usize, stars_len: usize, peak_len: usize)
 }
 
 fn peak_period(hour: u32) -> (&'static str, &'static str) {
-    if (14..=20).contains(&hour) {
+    // 14..=19 == 2:00PM-7:59PM, matching the displayed "2PM-8PM" exactly.
+    // (The old 14..=20 bound plus an "9PM-3PM" off-peak label claimed
+    // 2PM-3PM for both ranges.)
+    if (14..=19).contains(&hour) {
         ("PEAK", "2PM-8PM")
     } else {
-        ("OFF PEAK", "9PM-3PM")
+        ("OFF PEAK", "8PM-2PM")
     }
 }
 
@@ -521,15 +557,29 @@ mod tests {
     fn test_peak_period_peak_hours() {
         assert_eq!(peak_period(14), ("PEAK", "2PM-8PM"));
         assert_eq!(peak_period(17), ("PEAK", "2PM-8PM"));
-        assert_eq!(peak_period(20), ("PEAK", "2PM-8PM"));
+        assert_eq!(peak_period(19), ("PEAK", "2PM-8PM"));
     }
 
     #[test]
     fn test_peak_period_off_peak_hours() {
-        assert_eq!(peak_period(0),  ("OFF PEAK", "9PM-3PM"));
-        assert_eq!(peak_period(13), ("OFF PEAK", "9PM-3PM"));
-        assert_eq!(peak_period(21), ("OFF PEAK", "9PM-3PM"));
-        assert_eq!(peak_period(23), ("OFF PEAK", "9PM-3PM"));
+        assert_eq!(peak_period(0),  ("OFF PEAK", "8PM-2PM"));
+        assert_eq!(peak_period(13), ("OFF PEAK", "8PM-2PM"));
+        assert_eq!(peak_period(20), ("OFF PEAK", "8PM-2PM"));
+        assert_eq!(peak_period(23), ("OFF PEAK", "8PM-2PM"));
+    }
+
+    #[test]
+    fn test_peak_period_ranges_do_not_overlap() {
+        // The displayed ranges must partition the day: every hour belongs to
+        // exactly the range its label claims.
+        for hour in 0..24u32 {
+            let (label, range) = peak_period(hour);
+            if (14..=19).contains(&hour) {
+                assert_eq!((label, range), ("PEAK", "2PM-8PM"), "hour {hour}");
+            } else {
+                assert_eq!((label, range), ("OFF PEAK", "8PM-2PM"), "hour {hour}");
+            }
+        }
     }
 
     #[test]
@@ -537,7 +587,7 @@ mod tests {
         let (plain, _) = peak_label(17);
         assert_eq!(plain, "╡ PEAK 2PM-8PM ╞");
         let (plain, _) = peak_label(8);
-        assert_eq!(plain, "╡ OFF PEAK 9PM-3PM ╞");
+        assert_eq!(plain, "╡ OFF PEAK 8PM-2PM ╞");
     }
 
     #[test]

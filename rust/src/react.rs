@@ -55,7 +55,19 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 /// if the file exists but yields nothing usable — caller should treat empty
 /// as "no quip to generate" and skip the API call.
 pub fn read_transcript_tail(path: &str) -> Option<TranscriptTail> {
-    let bytes = std::fs::read(path).ok()?;
+    use std::io::{Read, Seek, SeekFrom};
+    const READ_CAP_BYTES: u64 = 256 * 1024;
+    // Long sessions grow the transcript to hundreds of MB; only the tail
+    // matters, so cap the read instead of loading the whole file into RAM.
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    if len > READ_CAP_BYTES {
+        f.seek(SeekFrom::End(-(READ_CAP_BYTES as i64))).ok()?;
+    }
+    let mut bytes = Vec::with_capacity(len.min(READ_CAP_BYTES) as usize);
+    f.read_to_end(&mut bytes).ok()?;
+    // A mid-line seek start just means the first (partial) line fails JSON
+    // parse and is skipped by the parser.
     let text = String::from_utf8_lossy(&bytes);
     Some(parse_transcript_jsonl(&text))
 }
@@ -88,10 +100,10 @@ pub fn parse_transcript_jsonl(text: &str) -> TranscriptTail {
 
         match role {
             "user" => {
-                if let Some(text) = extract_user_text(msg) {
-                    if !text.is_empty() {
-                        last_user = truncate_chars(&text, USER_MSG_MAX_CHARS);
-                    }
+                if let Some(text) = extract_user_text(msg)
+                    && !text.is_empty()
+                {
+                    last_user = truncate_chars(&text, USER_MSG_MAX_CHARS);
                 }
                 // tool_result blocks arrive on user messages.
                 if let Some(content) = msg.get("content").and_then(|c| c.as_array()) {
@@ -157,11 +169,11 @@ fn extract_user_text(msg: &serde_json::Value) -> Option<String> {
         let mut out = String::new();
         for block in arr {
             let bt = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            if bt == "text" {
-                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                    if !out.is_empty() { out.push(' '); }
-                    out.push_str(t);
-                }
+            if bt == "text"
+                && let Some(t) = block.get("text").and_then(|t| t.as_str())
+            {
+                if !out.is_empty() { out.push(' '); }
+                out.push_str(t);
             }
         }
         if !out.is_empty() {
@@ -251,8 +263,11 @@ unless the line genuinely ends in one.\n\
 pub fn sanitize_quip(raw: &str) -> String {
     // 1. Take first non-empty line.
     let line = raw.lines().map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
-    // 2. Replace any remaining newlines (defensive — first-line shouldn't have any).
-    let line = line.replace(['\n', '\r'], " ");
+    // 2. Strip ALL control characters (ESC, BEL, C0/C1, DEL). The quip is
+    //    printed raw into the terminal by the statusline — a model echoing a
+    //    prompt-injected escape sequence must not be able to retitle the
+    //    window, move the cursor, or clear the screen.
+    let line: String = line.chars().filter(|c| !c.is_control()).collect();
     // 3. Strip surrounding matched quotes.
     let line = strip_quotes(&line);
     // 4. Hard char cap with word-boundary truncation.
@@ -512,9 +527,11 @@ mod tests {
     #[test]
     fn build_prompt_includes_transcript_chunk() {
         let s = test_state();
-        let mut tail = TranscriptTail::default();
-        tail.last_user = "rebase this".into();
-        tail.last_assistant = "did the rebase".into();
+        let tail = TranscriptTail {
+            last_user: "rebase this".into(),
+            last_assistant: "did the rebase".into(),
+            ..Default::default()
+        };
         let req = build_prompt(&s, "calm", &tail);
         assert!(req.user.contains("rebase this"));
         assert!(req.user.contains("did the rebase"));

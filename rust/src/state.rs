@@ -63,6 +63,12 @@ pub struct State {
     pub last_milestone_celebrated: u64,
     #[serde(default)]
     pub last_turn_at: u64,
+    // celebration pacing (v3.7.0, additive — serde(default) for back-compat).
+    // With statusLine refreshInterval=1 the statusline renders every second;
+    // this timestamp gates the per-render celebration countdown so a 3-render
+    // celebration lasts seconds of wall time, not 3 consecutive refreshes.
+    #[serde(default)]
+    pub last_celebration_tick_at: u64,
 }
 
 fn default_bond() -> u8 { crate::bond::BOND_START }
@@ -92,6 +98,7 @@ impl State {
             streak_count: 0,
             last_milestone_celebrated: 0,
             last_turn_at: 0,
+            last_celebration_tick_at: 0,
         }
     }
 }
@@ -117,9 +124,138 @@ fn parse_state(bytes: &[u8]) -> Option<State> {
     Some(s)
 }
 
+/// Why a state load failed. `load()` collapses everything to Option for
+/// read-only display callers; anything that might *write* state.json must go
+/// through this (or `locked_update`) so a transient read failure or a corrupt
+/// file can never be answered by overwriting the user's permanent kitten.
+#[allow(clippy::large_enum_variant)] // Loaded(State) is the hot path; boxing it buys nothing
+pub enum LoadOutcome {
+    Loaded(State),
+    /// state.json does not exist — hatching a fresh kitten is safe.
+    Missing,
+    /// Transient read failure (e.g. a Windows sharing violation while an AV
+    /// scanner or another process holds the file). The kitten still exists.
+    Unreadable,
+    /// The file exists but no longer parses as v2 state. Preserve it aside
+    /// before hatching so the data stays recoverable.
+    Corrupt,
+}
+
+pub fn load_outcome() -> LoadOutcome {
+    match fs::read(paths::state_file()) {
+        Ok(bytes) => match parse_state(&bytes) {
+            Some(s) => LoadOutcome::Loaded(s),
+            None => LoadOutcome::Corrupt,
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => LoadOutcome::Missing,
+        Err(_) => LoadOutcome::Unreadable,
+    }
+}
+
 pub fn load() -> Option<State> {
-    let bytes = fs::read(paths::state_file()).ok()?;
-    parse_state(&bytes)
+    match load_outcome() {
+        LoadOutcome::Loaded(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// Exclusive cross-process lock serializing every state.json (and sidecar)
+/// read-modify-write cycle. OS-backed (LockFileEx/flock via fs2), so a killed
+/// process can never leave a stale lock behind.
+pub struct StateLock {
+    file: fs::File,
+}
+
+impl Drop for StateLock {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
+const LOCK_ATTEMPTS: u32 = 50;
+const LOCK_RETRY_MS: u64 = 10;
+
+/// Try for ~500ms, then give up (returns None). Callers treat a missed lock
+/// as "skip this mutation" — the next hook/render retries, which is always
+/// safer than an unlocked write.
+pub fn acquire_lock() -> Option<StateLock> {
+    use fs2::FileExt;
+    let dir = paths::state_dir();
+    fs::create_dir_all(&dir).ok()?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(paths::lock_file())
+        .ok()?;
+    for _ in 0..LOCK_ATTEMPTS {
+        if file.try_lock_exclusive().is_ok() {
+            return Some(StateLock { file });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(LOCK_RETRY_MS));
+    }
+    None
+}
+
+/// Run a read-modify-write cycle on state.json under the exclusive lock.
+/// Missing state hatches fresh inside the lock; corrupt state is preserved
+/// aside first; a transient read failure aborts with Err — the next event
+/// retries — rather than mutating a stale or fabricated snapshot.
+pub fn locked_update<R>(f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
+    let _lock = acquire_lock()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "state lock busy"))?;
+    let mut s = match load_outcome() {
+        LoadOutcome::Loaded(s) => s,
+        LoadOutcome::Missing => crate::hatch::generate(&crate::hatch::HatchOpts::default()),
+        LoadOutcome::Corrupt => {
+            preserve_corrupt_aside();
+            crate::hatch::generate(&crate::hatch::HatchOpts::default())
+        }
+        LoadOutcome::Unreadable => {
+            return Err(io::Error::other("state.json unreadable"));
+        }
+    };
+    let r = f(&mut s);
+    save_atomic(&s)?;
+    Ok(r)
+}
+
+/// Move an unparseable state.json aside (state.json.corrupt) so a fresh hatch
+/// can't destroy recoverable data. Best-effort; keeps the most recent corpse.
+pub fn preserve_corrupt_aside() {
+    let dst = paths::state_dir().join("state.json.corrupt");
+    let _ = fs::remove_file(&dst);
+    let _ = fs::rename(paths::state_file(), &dst);
+    crate::debug::log("state.json unparseable — preserved as state.json.corrupt");
+}
+
+/// Remove orphaned atomic-write temp files (>24h) and stale per-session turn
+/// anchors (>12h). PID-named temps leak when a process dies between create
+/// and rename; anchors accumulate one file per session. Called from
+/// `hooks::turn` — once per user prompt is plenty.
+pub fn sweep_stale_files() {
+    let Ok(entries) = fs::read_dir(paths::state_dir()) else { return };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy().into_owned();
+        let is_tmp = name.starts_with('.') && name.ends_with(".tmp");
+        let is_anchor = name.starts_with("turn-start-cost-") && name.ends_with(".txt");
+        if !is_tmp && !is_anchor {
+            continue;
+        }
+        let max_age_secs = if is_tmp { 24 * 3600 } else { 12 * 3600 };
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age.as_secs() > max_age_secs);
+        if stale {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
 }
 
 pub fn save_atomic(state: &State) -> io::Result<()> {
@@ -130,7 +266,10 @@ pub fn save_atomic(state: &State) -> io::Result<()> {
     let tmp = dir.join(format!(".state.{pid}.tmp"));
     let final_path = paths::state_file();
 
-    write_json(&tmp, state)?;
+    if let Err(e) = write_json(&tmp, state) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
     match fs::rename(&tmp, &final_path) {
         Ok(()) => Ok(()),
         Err(e) => {
