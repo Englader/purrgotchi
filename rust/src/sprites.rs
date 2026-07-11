@@ -264,7 +264,6 @@ fn lookup_playground(key: &str, frame: u8) -> Option<&'static str> {
         .map(|(_, _, art)| *art)
 }
 
-#[allow(dead_code)] // first non-test caller arrives in Task 9 (playground.rs cat_art) — remove there
 pub fn get_playground_sprite(key: &str, frame: u8) -> Vec<String> {
     let raw = lookup_playground(key, frame)
         .or_else(|| lookup_playground(key, 0))

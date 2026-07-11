@@ -110,7 +110,7 @@ fn roll_range(rng: &mut Lcg, lo: u64, hi: u64) -> u64 {
     lo + rng.next() % (hi - lo + 1)
 }
 
-fn roll_scene(rng: &mut Lcg, last: PlaygroundScene) -> (PlaygroundScene, u64, u64) {
+fn pick_scene(rng: &mut Lcg, last: PlaygroundScene) -> (PlaygroundScene, u64, u64) {
     let mut kind = ACTIVE_SCENES[(rng.next() % ACTIVE_SCENES.len() as u64) as usize];
     if kind == last {
         // One re-roll keeps the picker a pure fold over the seed. With this
@@ -153,7 +153,7 @@ pub fn plan_transition(
         };
     }
     if !overlay_active && now >= scene_next_at {
-        let (kind, duration_secs, seed) = roll_scene(&mut rng, scene_last_kind);
+        let (kind, duration_secs, seed) = pick_scene(&mut rng, scene_last_kind);
         return SceneTransition::Start { kind, duration_secs, seed };
     }
     SceneTransition::None
@@ -166,7 +166,7 @@ pub fn start_scene_now(s: &mut crate::state::State, now: u64) {
     if s.scene_kind != PlaygroundScene::None {
         s.scene_last_kind = s.scene_kind;
     }
-    let (kind, duration_secs, seed) = roll_scene(&mut rng, s.scene_last_kind);
+    let (kind, duration_secs, seed) = pick_scene(&mut rng, s.scene_last_kind);
     s.scene_kind = kind;
     s.scene_started_at = now;
     s.scene_duration_secs = duration_secs;
@@ -281,18 +281,55 @@ pub(crate) fn art_width(art: &[String]) -> usize {
 
 const RUN_SPEED: u64 = 3; // cells per second reads as a trot at 1 fps
 
-/// Phase 1 placeholder: the front-facing common sprite slides back and forth.
-/// Phase 2 replaces this with side-view playground art per scene.
-fn cat_art_placeholder(blink: u8) -> Vec<String> {
-    crate::sprites::get_sprite_lines("young", "common", "happy", blink)
+/// Horizontal cell budget every playground pose fits in (art test enforces <= 12).
+pub(crate) const CAT_W: usize = 12;
+
+fn cat_art(key: &str, blink: u8) -> Vec<String> {
+    crate::sprites::get_playground_sprite(key, blink)
+}
+
+/// Playground art keeps its true height; the ground line is canvas row 5.
+fn place_bottom(canvas: &mut Canvas, x: isize, art: &[String], color: u8) {
+    let y = ROWS as isize - art.len() as isize;
+    canvas.place(x, y, art, color);
+}
+
+/// Shared back-and-forth run movement. Returns (x, facing_right).
+fn run_leg(canvas: &mut Canvas, t: u64, blink: u8) -> (usize, bool) {
+    let span = canvas.width().saturating_sub(CAT_W);
+    let x = tri(t, span);
+    let right = tri_rising(t, span);
+    let key = if right { "run_right" } else { "run_left" };
+    place_bottom(canvas, x as isize, &cat_art(key, blink), COL_CAT);
+    (x, right)
 }
 
 fn run_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
-    let art = cat_art_placeholder(blink);
-    let span = canvas.width().saturating_sub(art_width(&art));
-    let t = elapsed * RUN_SPEED + seed % 97; // seed offsets the starting phase
-    let x = tri(t, span);
-    canvas.place(x as isize, 0, &art, COL_CAT);
+    run_leg(canvas, elapsed * RUN_SPEED + seed % 97, blink);
+}
+
+const ZOOMIES_SPEED: u64 = 8;
+
+fn zoomies_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
+    let (x, right) = run_leg(canvas, elapsed * ZOOMIES_SPEED + seed % 97, blink);
+    // skid dust kicked up behind her
+    for d in [2isize, 4, 6] {
+        let tx = if right {
+            x as isize - d
+        } else {
+            x as isize + CAT_W as isize - 1 + d
+        };
+        canvas.put(tx, 5, '-', COL_DIM);
+    }
+}
+
+const ROLL_SPEED: u64 = 3;
+
+fn roll_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
+    let span = canvas.width().saturating_sub(CAT_W);
+    let x = ((elapsed * ROLL_SPEED + seed % 13) as usize).min(span);
+    let key = if x >= span { "sit" } else { "roll" };
+    place_bottom(canvas, x as isize, &cat_art(key, blink), COL_CAT);
 }
 
 /// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
@@ -309,12 +346,11 @@ pub fn render_scene(
     match kind {
         PlaygroundScene::None => {}
         PlaygroundScene::Run => run_scene(&mut canvas, elapsed, seed, blink),
-        // Phase 2 gives each of these its own choreography; until then they
-        // all borrow Run so the engine is demonstrable end to end.
-        PlaygroundScene::Zoomies => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::Zoomies => zoomies_scene(&mut canvas, elapsed, seed, blink),
+        // Ball/Butterfly/Yarn still borrow Run until Tasks 10-11.
         PlaygroundScene::BallChase => run_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::ButterflyChase => run_scene(&mut canvas, elapsed, seed, blink),
-        PlaygroundScene::Roll => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::Roll => roll_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::YarnPush => run_scene(&mut canvas, elapsed, seed, blink),
     }
     let _ = duration; // consumed by Phase 2 finale beats
@@ -573,5 +609,39 @@ mod tests {
         for r in &f.rows {
             assert!(strip_ansi(r).trim().is_empty());
         }
+    }
+
+    #[test]
+    fn run_uses_side_view_art_not_placeholder() {
+        let f = render_scene(PlaygroundScene::Run, 1, 30, 0, 60, 0, crate::colors::C_CYAN);
+        let plain: String = f.rows.iter().map(|r| strip_ansi(r)).collect::<Vec<_>>().join("\n");
+        // side-view run art has the ~~ tail + > muzzle; placeholder was the
+        // front-facing 6-line HUD sprite
+        assert!(plain.contains("( o.o )>") || plain.contains("<( o.o )"), "{plain}");
+    }
+
+    #[test]
+    fn zoomies_moves_faster_than_run() {
+        let right_edge = |kind: PlaygroundScene, t: u64| -> usize {
+            let f = render_scene(kind, t, 30, 0, 100, 0, crate::colors::C_CYAN);
+            f.rows.iter().filter_map(|r| {
+                let p = strip_ansi(r);
+                p.chars().enumerate().filter(|(_, c)| *c != ' ').map(|(i, _)| i).max()
+            }).max().unwrap()
+        };
+        let run_delta = right_edge(PlaygroundScene::Run, 1) - right_edge(PlaygroundScene::Run, 0);
+        let zoom_delta = right_edge(PlaygroundScene::Zoomies, 1) - right_edge(PlaygroundScene::Zoomies, 0);
+        assert!(zoom_delta > run_delta, "zoomies {zoom_delta} vs run {run_delta}");
+    }
+
+    #[test]
+    fn roll_travels_and_sits_at_the_end() {
+        // span = 100 - 12 = 88; seed 0 -> arrival once elapsed*3 >= 88
+        let plain = |t: u64| -> Vec<String> {
+            render_scene(PlaygroundScene::Roll, t, 40, 0, 100, 0, crate::colors::C_CYAN)
+                .rows.iter().map(|r| strip_ansi(r)).collect()
+        };
+        assert!(plain(5).iter().any(|r| r.contains("'-..-'")), "mid-scene shows roll art");
+        assert!(plain(35).iter().any(|r| r.contains("/\\_/\\")), "end shows sitting cat ears");
     }
 }
