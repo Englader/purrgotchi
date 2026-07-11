@@ -358,6 +358,59 @@ fn ball_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink
     }
 }
 
+const BUTTERFLY_SPEED: u64 = 2;
+
+fn butterfly_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink: u8) {
+    let w = canvas.width();
+    let finale = elapsed + FINALE_SECS >= duration;
+    let phase = seed % 83;
+    let bspan = w.saturating_sub(3);
+    let bfly = if blink == 0 { "}{" } else { "}i{" };
+    let cspan = w.saturating_sub(CAT_W);
+    if finale {
+        // she commits to the pounce where the chase ended; the butterfly
+        // escapes to the upper air
+        let ct = duration.saturating_sub(FINALE_SECS + 2) * BUTTERFLY_SPEED + phase;
+        let cx = tri(ct, cspan);
+        place_bottom(canvas, cx as isize, &cat_art("pounce", blink), COL_CAT);
+        let ex = tri(elapsed * 5 + phase, bspan).max(bspan / 2);
+        canvas.put_str(ex as isize, 0, bfly, COL_MAGENTA);
+    } else {
+        let bx = tri(elapsed * BUTTERFLY_SPEED + phase, bspan);
+        // (elapsed % 3 + seed % 3) never exceeds 4 — a plain elapsed + seed
+        // would overflow in debug builds when seed is near u64::MAX.
+        let by = ((elapsed % 3 + seed % 3) % 3) as isize; // flutter across rows 0..2
+        let ct = elapsed.saturating_sub(2) * BUTTERFLY_SPEED + phase;
+        let cx = tri(ct, cspan);
+        let key = if tri_rising(ct, cspan) { "run_right" } else { "run_left" };
+        place_bottom(canvas, cx as isize, &cat_art(key, blink), COL_CAT);
+        canvas.put_str(bx as isize, by, bfly, COL_MAGENTA);
+    }
+}
+
+const YARN_SPEED: u64 = 2;
+
+fn yarn_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
+    let w = canvas.width();
+    let span = w.saturating_sub(CAT_W + 2); // room for the yarn ball ahead
+    let t = elapsed * YARN_SPEED + seed % 79;
+    let x = tri(t, span) as isize;
+    let right = tri_rising(t, span);
+    let key = if right { "run_right" } else { "run_left" };
+    place_bottom(canvas, x, &cat_art(key, blink), COL_CAT);
+    // yarn ball rides just ahead of her paws; unraveled string curls behind
+    let yx = if right { x + CAT_W as isize } else { x - 2 };
+    canvas.put(yx, 5, '@', COL_PINK);
+    for d in 1..=3isize {
+        let tx = if right {
+            x - 2 * d
+        } else {
+            x + CAT_W as isize - 1 + 2 * d
+        };
+        canvas.put(tx, 5, '~', COL_PINK);
+    }
+}
+
 /// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
 pub fn render_scene(
     kind: PlaygroundScene,
@@ -374,10 +427,9 @@ pub fn render_scene(
         PlaygroundScene::Run => run_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::Zoomies => zoomies_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::BallChase => ball_scene(&mut canvas, elapsed, duration, seed, blink),
-        // Butterfly/Yarn still borrow Run until Task 11.
-        PlaygroundScene::ButterflyChase => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::ButterflyChase => butterfly_scene(&mut canvas, elapsed, duration, seed, blink),
         PlaygroundScene::Roll => roll_scene(&mut canvas, elapsed, seed, blink),
-        PlaygroundScene::YarnPush => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::YarnPush => yarn_scene(&mut canvas, elapsed, seed, blink),
     }
     SceneFrame { rows: canvas.emit(cat_color) }
 }
@@ -684,5 +736,33 @@ mod tests {
         let plain_fin: String = fin.rows.iter().map(|r| strip_ansi(r)).collect::<Vec<_>>().join("\n");
         assert!(plain_fin.contains(">.<"), "pounce face at finale");
         assert!(fin.rows.iter().any(|r| r.contains(crate::colors::C_YELLOW)), "ball trapped under paws");
+    }
+
+    #[test]
+    fn butterfly_flutters_in_the_upper_rows() {
+        let f = render_scene(PlaygroundScene::ButterflyChase, 6, 30, 11, 80, 0, crate::colors::C_CYAN);
+        assert!(f.rows.iter().any(|r| r.contains(crate::colors::C_MAGENTA)), "butterfly is magenta");
+        let plain: Vec<String> = f.rows.iter().map(|r| strip_ansi(r)).collect();
+        assert!(
+            plain[0].contains("}{") || plain[1].contains("}{") || plain[2].contains("}{"),
+            "butterfly in rows 0-2"
+        );
+    }
+
+    #[test]
+    fn butterfly_finale_pounces_and_butterfly_escapes_to_top_row() {
+        let f = render_scene(PlaygroundScene::ButterflyChase, 27, 30, 11, 80, 1, crate::colors::C_CYAN);
+        let plain: Vec<String> = f.rows.iter().map(|r| strip_ansi(r)).collect();
+        assert!(plain.iter().any(|r| r.contains(">.<")), "pounce at finale");
+        assert!(plain[0].contains("}i{"), "butterfly escaped to the top row");
+    }
+
+    #[test]
+    fn yarn_scene_shows_ball_and_trail_on_ground_row() {
+        let f = render_scene(PlaygroundScene::YarnPush, 8, 30, 3, 80, 0, crate::colors::C_CYAN);
+        let plain: Vec<String> = f.rows.iter().map(|r| strip_ansi(r)).collect();
+        assert!(plain[5].contains('@'), "yarn ball on the ground row");
+        assert!(plain[5].contains('~'), "trail behind her");
+        assert!(f.rows.iter().any(|r| r.contains(crate::colors::C_PINK)), "yarn is pink");
     }
 }
