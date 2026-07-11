@@ -211,6 +211,23 @@ static CELEBRATIONS: &[(CelebrationKind, u8, &str)] = &[
     (CelebrationKind::RandomDrop,         1, sprite!("levelup_1.txt")),
 ];
 
+// Playground scene art (v3.8.0) — side-view poses, stage-agnostic (rarity
+// color carries identity). True height <= 4 lines; the playground engine
+// bottom-aligns on its 6-row canvas, so no 6-line padding here.
+type PlaygroundRow = (&'static str, u8, &'static str);
+static PLAYGROUND: &[PlaygroundRow] = &[
+    ("run_right", 0, sprite!("playground_run_right_0.txt")),
+    ("run_right", 1, sprite!("playground_run_right_1.txt")),
+    ("run_left",  0, sprite!("playground_run_left_0.txt")),
+    ("run_left",  1, sprite!("playground_run_left_1.txt")),
+    ("roll",      0, sprite!("playground_roll_0.txt")),
+    ("roll",      1, sprite!("playground_roll_1.txt")),
+    ("pounce",    0, sprite!("playground_pounce_0.txt")),
+    ("pounce",    1, sprite!("playground_pounce_1.txt")),
+    ("sit",       0, sprite!("playground_sit_0.txt")),
+    ("sit",       1, sprite!("playground_sit_1.txt")),
+];
+
 fn lookup_sprite(stage: &str, rarity: &str, mood: &str, frame: u8) -> Option<&'static str> {
     SPRITES.iter()
         .find(|(s, r, m, f, _)| *s == stage && *r == rarity && *m == mood && *f == frame)
@@ -239,6 +256,28 @@ pub fn get_celebration_sprite(kind: CelebrationKind, frame: u8) -> Vec<String> {
         .or_else(|| lookup_sprite("young", "common", "calm", 0))
         .unwrap_or("");
     normalize_lines(raw)
+}
+
+fn lookup_playground(key: &str, frame: u8) -> Option<&'static str> {
+    PLAYGROUND.iter()
+        .find(|(k, f, _)| *k == key && *f == frame)
+        .map(|(_, _, art)| *art)
+}
+
+#[allow(dead_code)] // first non-test caller arrives in Task 9 (playground.rs cat_art) — remove there
+pub fn get_playground_sprite(key: &str, frame: u8) -> Vec<String> {
+    let raw = lookup_playground(key, frame)
+        .or_else(|| lookup_playground(key, 0))
+        .or_else(|| lookup_playground("run_right", 0))
+        .unwrap_or("");
+    let mut lines: Vec<String> = raw
+        .split('\n')
+        .map(|l| l.trim_end_matches('\r').to_string())
+        .collect();
+    if lines.last().map(|s| s.is_empty()).unwrap_or(false) {
+        lines.pop();
+    }
+    lines
 }
 
 fn normalize_lines(raw: &str) -> Vec<String> {
@@ -322,5 +361,35 @@ mod tests {
         assert!(!lines.is_empty());
         assert!(lines.iter().any(|l| !l.is_empty()),
             "Greeting frame 1 must resolve to non-empty art");
+    }
+
+    #[test]
+    fn playground_table_has_expected_count() {
+        assert_eq!(PLAYGROUND.len(), 10);
+    }
+
+    #[test]
+    fn playground_art_fits_engine_budget() {
+        // <= 4 lines tall, <= 12 chars wide, pure 7-bit ASCII — the engine's
+        // CAT_W math and the 6-row canvas depend on these bounds.
+        for (key, frame, art) in PLAYGROUND {
+            let lines: Vec<&str> = art.trim_end_matches('\n').split('\n').collect();
+            assert!(lines.len() <= 4, "{key}@{frame} is {} lines", lines.len());
+            for l in &lines {
+                let l = l.trim_end_matches('\r');
+                assert!(l.chars().count() <= 12, "{key}@{frame} line too wide: {l:?}");
+                assert!(l.is_ascii(), "{key}@{frame} has non-ASCII: {l:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn get_playground_sprite_returns_true_height_and_falls_back() {
+        let run = get_playground_sprite("run_right", 0);
+        assert!(run.len() <= 4 && !run.is_empty());
+        // unknown frame -> frame 0
+        assert_eq!(get_playground_sprite("roll", 9), get_playground_sprite("roll", 0));
+        // unknown key -> run_right@0
+        assert_eq!(get_playground_sprite("nope", 0), get_playground_sprite("run_right", 0));
     }
 }
