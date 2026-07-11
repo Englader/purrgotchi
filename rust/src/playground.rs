@@ -332,6 +332,32 @@ fn roll_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     place_bottom(canvas, x as isize, &cat_art(key, blink), COL_CAT);
 }
 
+const BALL_SPEED: u64 = 4;
+const CHASE_LAG_SECS: u64 = 2;
+
+fn ball_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink: u8) {
+    let w = canvas.width();
+    let finale = elapsed + FINALE_SECS >= duration;
+    let phase = seed % 89;
+    let cspan = w.saturating_sub(CAT_W);
+    // the cat chases the ball's trajectory with a 2 s lag
+    let ct = elapsed.saturating_sub(CHASE_LAG_SECS) * BALL_SPEED + phase;
+    let cx = tri(ct, cspan);
+    if finale {
+        let art = cat_art("pounce", blink);
+        place_bottom(canvas, cx as isize, &art, COL_CAT);
+        // ball trapped under her paws
+        canvas.put(cx as isize + art_width(&art) as isize - 2, 5, 'o', COL_YELLOW);
+    } else {
+        let key = if tri_rising(ct, cspan) { "run_right" } else { "run_left" };
+        place_bottom(canvas, cx as isize, &cat_art(key, blink), COL_CAT);
+        // ball leads, bouncing between the ground and one row up
+        let bx = tri(elapsed * BALL_SPEED + phase, w.saturating_sub(1));
+        let by = if elapsed.is_multiple_of(2) { 5 } else { 4 };
+        canvas.put(bx as isize, by, 'o', COL_YELLOW);
+    }
+}
+
 /// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
 pub fn render_scene(
     kind: PlaygroundScene,
@@ -347,13 +373,12 @@ pub fn render_scene(
         PlaygroundScene::None => {}
         PlaygroundScene::Run => run_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::Zoomies => zoomies_scene(&mut canvas, elapsed, seed, blink),
-        // Ball/Butterfly/Yarn still borrow Run until Tasks 10-11.
-        PlaygroundScene::BallChase => run_scene(&mut canvas, elapsed, seed, blink),
+        PlaygroundScene::BallChase => ball_scene(&mut canvas, elapsed, duration, seed, blink),
+        // Butterfly/Yarn still borrow Run until Task 11.
         PlaygroundScene::ButterflyChase => run_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::Roll => roll_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::YarnPush => run_scene(&mut canvas, elapsed, seed, blink),
     }
-    let _ = duration; // consumed by Phase 2 finale beats
     SceneFrame { rows: canvas.emit(cat_color) }
 }
 
@@ -643,5 +668,21 @@ mod tests {
         };
         assert!(plain(5).iter().any(|r| r.contains("'-..-'")), "mid-scene shows roll art");
         assert!(plain(35).iter().any(|r| r.contains("/\\_/\\")), "end shows sitting cat ears");
+    }
+
+    #[test]
+    fn ball_chase_shows_yellow_ball_mid_scene_and_catch_at_finale() {
+        let mid = render_scene(PlaygroundScene::BallChase, 5, 30, 7, 80, 0, crate::colors::C_CYAN);
+        assert!(
+            mid.rows.iter().any(|r| r.contains(crate::colors::C_YELLOW)),
+            "ball (yellow) visible mid-scene"
+        );
+        let plain_mid: String = mid.rows.iter().map(|r| strip_ansi(r)).collect::<Vec<_>>().join("\n");
+        assert!(!plain_mid.contains(">.<"), "no pounce before the finale");
+
+        let fin = render_scene(PlaygroundScene::BallChase, 27, 30, 7, 80, 0, crate::colors::C_CYAN);
+        let plain_fin: String = fin.rows.iter().map(|r| strip_ansi(r)).collect::<Vec<_>>().join("\n");
+        assert!(plain_fin.contains(">.<"), "pounce face at finale");
+        assert!(fin.rows.iter().any(|r| r.contains(crate::colors::C_YELLOW)), "ball trapped under paws");
     }
 }
