@@ -11,6 +11,7 @@
 // allow holds until Phase 3 Task 13 removes it once everything is live.
 #![allow(dead_code)]
 
+use crate::identity::Lcg;
 use crate::state::PlaygroundScene;
 
 /// The playground is 6 rows tall — the sprite rows of the 7-row HUD (row 6 is speech).
@@ -94,6 +95,85 @@ pub(crate) fn force_scene_from(v: Option<&str>) -> Option<PlaygroundScene> {
     }
 }
 
+/// What the scheduler should do this render. Applied inside locked_update on a
+/// FRESH state copy — plan_transition is re-run there, so a stale snapshot can
+/// never clobber a concurrent write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SceneTransition {
+    None,
+    Bootstrap { next_at: u64 },
+    End { last_kind: PlaygroundScene, next_at: u64 },
+    Start { kind: PlaygroundScene, duration_secs: u64, seed: u64 },
+}
+
+fn roll_range(rng: &mut Lcg, lo: u64, hi: u64) -> u64 {
+    lo + rng.next() % (hi - lo + 1)
+}
+
+fn roll_scene(rng: &mut Lcg, last: PlaygroundScene) -> (PlaygroundScene, u64, u64) {
+    let mut kind = ACTIVE_SCENES[(rng.next() % ACTIVE_SCENES.len() as u64) as usize];
+    if kind == last {
+        // One re-roll keeps the picker a pure fold over the seed. With this
+        // Lcg (odd multiplier + odd increment) consecutive outputs alternate
+        // parity, so the re-roll can never land on the same slot — but do not
+        // rely on that: treat a post-re-roll repeat as accepted if the RNG
+        // ever changes.
+        kind = ACTIVE_SCENES[(rng.next() % ACTIVE_SCENES.len() as u64) as usize];
+    }
+    let duration_secs = roll_range(rng, SCENE_MIN_SECS, SCENE_MAX_SECS);
+    let seed = rng.next();
+    (kind, duration_secs, seed)
+}
+
+/// Pure scheduler. `overlay_active` = celebration running or birthday.
+pub fn plan_transition(
+    scene_kind: PlaygroundScene,
+    scene_started_at: u64,
+    scene_duration_secs: u64,
+    scene_next_at: u64,
+    scene_last_kind: PlaygroundScene,
+    overlay_active: bool,
+    now: u64,
+) -> SceneTransition {
+    let mut rng = Lcg::new(now ^ 0x504C_4159); // "PLAY"
+    if scene_kind != PlaygroundScene::None {
+        let expired = now >= scene_started_at.saturating_add(scene_duration_secs);
+        let regressed = now < scene_started_at;
+        if expired || regressed {
+            return SceneTransition::End {
+                last_kind: scene_kind,
+                next_at: now + roll_range(&mut rng, IDLE_MIN_SECS, IDLE_MAX_SECS),
+            };
+        }
+        return SceneTransition::None;
+    }
+    if scene_next_at == 0 {
+        return SceneTransition::Bootstrap {
+            next_at: now + roll_range(&mut rng, IDLE_MIN_SECS, IDLE_MAX_SECS),
+        };
+    }
+    if !overlay_active && now >= scene_next_at {
+        let (kind, duration_secs, seed) = roll_scene(&mut rng, scene_last_kind);
+        return SceneTransition::Start { kind, duration_secs, seed };
+    }
+    SceneTransition::None
+}
+
+/// Start a scene immediately (the `purr play` trigger). Mutates only scene
+/// fields; call inside an existing locked_update closure.
+pub fn start_scene_now(s: &mut crate::state::State, now: u64) {
+    let mut rng = Lcg::new(now ^ s.scene_seed ^ 0x6D65_6F77); // "meow"
+    if s.scene_kind != PlaygroundScene::None {
+        s.scene_last_kind = s.scene_kind;
+    }
+    let (kind, duration_secs, seed) = roll_scene(&mut rng, s.scene_last_kind);
+    s.scene_kind = kind;
+    s.scene_started_at = now;
+    s.scene_duration_secs = duration_secs;
+    s.scene_seed = seed;
+    s.scene_next_at = now + roll_range(&mut rng, IDLE_MIN_SECS, IDLE_MAX_SECS);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +216,97 @@ mod tests {
         assert_eq!(force_scene_from(Some("yarn")), Some(PlaygroundScene::YarnPush));
         assert_eq!(force_scene_from(Some("nope")), None);
         assert_eq!(force_scene_from(None), None);
+    }
+
+    #[test]
+    fn bootstrap_schedules_first_scene() {
+        let t = plan_transition(PlaygroundScene::None, 0, 0, 0, PlaygroundScene::None, false, 1000);
+        match t {
+            SceneTransition::Bootstrap { next_at } => {
+                assert!((1000 + IDLE_MIN_SECS..=1000 + IDLE_MAX_SECS).contains(&next_at));
+            }
+            SceneTransition::None | SceneTransition::End { .. } | SceneTransition::Start { .. } => {
+                panic!("expected Bootstrap, got {t:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn start_fires_only_at_or_after_next_at_and_without_overlay() {
+        // before next_at -> None
+        let t = plan_transition(PlaygroundScene::None, 0, 0, 5000, PlaygroundScene::None, false, 4999);
+        assert_eq!(t, SceneTransition::None);
+        // at next_at with overlay -> None (deferred)
+        let t = plan_transition(PlaygroundScene::None, 0, 0, 5000, PlaygroundScene::None, true, 5000);
+        assert_eq!(t, SceneTransition::None);
+        // at next_at, no overlay -> Start with sane duration
+        let t = plan_transition(PlaygroundScene::None, 0, 0, 5000, PlaygroundScene::None, false, 5000);
+        match t {
+            SceneTransition::Start { kind, duration_secs, seed: _ } => {
+                assert_ne!(kind, PlaygroundScene::None);
+                assert!((SCENE_MIN_SECS..=SCENE_MAX_SECS).contains(&duration_secs));
+            }
+            SceneTransition::None | SceneTransition::Bootstrap { .. } | SceneTransition::End { .. } => {
+                panic!("expected Start, got {t:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn active_scene_ends_after_duration_and_on_clock_regression() {
+        // mid-scene -> None
+        let t = plan_transition(PlaygroundScene::Run, 1000, 30, 0, PlaygroundScene::None, false, 1015);
+        assert_eq!(t, SceneTransition::None);
+        // expired -> End carrying last_kind
+        let t = plan_transition(PlaygroundScene::Run, 1000, 30, 0, PlaygroundScene::None, false, 1030);
+        match t {
+            SceneTransition::End { last_kind, next_at } => {
+                assert_eq!(last_kind, PlaygroundScene::Run);
+                assert!((1030 + IDLE_MIN_SECS..=1030 + IDLE_MAX_SECS).contains(&next_at));
+            }
+            SceneTransition::None | SceneTransition::Bootstrap { .. } | SceneTransition::Start { .. } => {
+                panic!("expected End, got {t:?}")
+            }
+        }
+        // clock went backwards -> End too
+        let t = plan_transition(PlaygroundScene::Run, 1000, 30, 0, PlaygroundScene::None, false, 500);
+        assert!(matches!(t, SceneTransition::End { .. }));
+    }
+
+    #[test]
+    fn overlay_does_not_block_end_transition() {
+        let t = plan_transition(PlaygroundScene::Run, 1000, 30, 0, PlaygroundScene::None, true, 2000);
+        assert!(matches!(t, SceneTransition::End { .. }));
+    }
+
+    #[test]
+    fn picked_scene_rarely_repeats_last_kind() {
+        // One re-roll on collision. With the current Lcg, consecutive outputs
+        // alternate parity so repeats are actually impossible (expect 0); the
+        // loose <30/300 bound only guards against a future RNG swap.
+        let mut repeats = 0;
+        for now in 0..300u64 {
+            let t = plan_transition(
+                PlaygroundScene::None, 0, 0, 1, PlaygroundScene::Run, false, 10_000 + now,
+            );
+            if let SceneTransition::Start { kind, .. } = t {
+                if kind == PlaygroundScene::Run { repeats += 1; }
+            } else {
+                panic!("expected Start");
+            }
+        }
+        assert!(repeats < 30, "no-repeat re-roll looks broken: {repeats}/300");
+    }
+
+    #[test]
+    fn start_scene_now_activates_and_defers_scheduler() {
+        let mut s = crate::state::State::base(1000);
+        s.scene_kind = PlaygroundScene::Roll; // pretend one is already active
+        start_scene_now(&mut s, 5000);
+        assert_ne!(s.scene_kind, PlaygroundScene::None);
+        assert_eq!(s.scene_started_at, 5000);
+        assert!((SCENE_MIN_SECS..=SCENE_MAX_SECS).contains(&s.scene_duration_secs));
+        assert!((5000 + IDLE_MIN_SECS..=5000 + IDLE_MAX_SECS).contains(&s.scene_next_at));
+        assert_eq!(s.scene_last_kind, PlaygroundScene::Roll);
     }
 }
