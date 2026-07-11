@@ -136,10 +136,22 @@ pub fn run() {
         None
     };
 
-    // Only consume the quip when it would actually be displayed — celebration
-    // and birthday overlays outrank it in select_speech_source, and consuming
-    // behind them burned the quip's renders without it ever appearing.
-    let quip = if celebration_kind == CelebrationKind::None && !is_birthday {
+    // Caption context: only when the scene is actually visible. `finale` pins
+    // the catch-beat line for scenes that have one.
+    let scene_overlay = scene_strip.map(|_| {
+        let elapsed = (now as u64).saturating_sub(scene_started_at);
+        let finale = scene_duration_secs > 0
+            && elapsed >= scene_duration_secs.saturating_sub(crate::playground::FINALE_SECS);
+        (scene_kind, finale)
+    });
+
+    // Only consume the quip when it would actually be displayed — celebration,
+    // birthday, and scene overlays outrank it in select_speech_source, and
+    // consuming behind them burned the quip's renders without it ever appearing.
+    let quip = if celebration_kind == CelebrationKind::None
+        && !is_birthday
+        && scene_strip.is_none()
+    {
         crate::quip_cache::consume()
     } else {
         None
@@ -147,6 +159,7 @@ pub fn run() {
     let (speech_source, speech) = select_speech_source(
         celebration_kind,
         is_birthday,
+        scene_overlay,
         quip,
         mood,
         now,
@@ -198,7 +211,7 @@ pub fn run() {
     };
     let speech_color: String = if matches!(
         speech_source,
-        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip | SpeechSource::Scene
     ) {
         // Celebration, birthday, and LLM-quip speech: pink for warmth/specialness,
         // matching the existing rail/HUD pink accent.
@@ -619,6 +632,7 @@ fn peak_period(hour: u32) -> (&'static str, &'static str) {
 pub(crate) enum SpeechSource {
     Celebration,
     Birthday,
+    Scene,
     Quip,
     Mood,
 }
@@ -626,6 +640,7 @@ pub(crate) enum SpeechSource {
 pub(crate) fn select_speech_source(
     celebration_kind: crate::state::CelebrationKind,
     is_birthday: bool,
+    scene: Option<(PlaygroundScene, bool)>,
     quip: Option<String>,
     mood: &str,
     now: i64,
@@ -635,6 +650,12 @@ pub(crate) fn select_speech_source(
     }
     if is_birthday {
         return (SpeechSource::Birthday, crate::speech::compute_birthday_speech(now).to_string());
+    }
+    if let Some((kind, finale)) = scene {
+        return (
+            SpeechSource::Scene,
+            crate::speech::compute_scene_speech(kind, now, finale).to_string(),
+        );
     }
     if let Some(q) = quip {
         return (SpeechSource::Quip, q);
@@ -738,6 +759,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::LevelUp,
             /* is_birthday */ false,
+            /* scene */ None,
             /* quip */ Some("ignored".into()),
             "calm",
             0,
@@ -750,6 +772,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::None,
             /* is_birthday */ true,
+            /* scene */ None,
             Some("ignored".into()),
             "calm",
             0,
@@ -762,6 +785,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::None,
             false,
+            None,
             Some("the cat watches".into()),
             "calm",
             0,
@@ -776,9 +800,50 @@ mod tests {
             crate::state::CelebrationKind::None,
             false,
             None,
+            None,
             "calm",
             0,
         );
         assert_eq!(got.0, super::SpeechSource::Mood);
+    }
+
+    #[test]
+    fn scene_outranks_quip_and_mood() {
+        let (src, text) = select_speech_source(
+            CelebrationKind::None,
+            false,
+            Some((PlaygroundScene::BallChase, false)),
+            Some("cached quip".to_string()),
+            "calm",
+            0,
+        );
+        assert_eq!(src, SpeechSource::Scene);
+        assert_eq!(text, "after it!");
+    }
+
+    #[test]
+    fn celebration_outranks_scene() {
+        let (src, _) = select_speech_source(
+            CelebrationKind::LevelUp,
+            false,
+            Some((PlaygroundScene::Run, false)),
+            None,
+            "calm",
+            0,
+        );
+        assert_eq!(src, SpeechSource::Celebration);
+    }
+
+    #[test]
+    fn scene_finale_caption_reaches_the_speech_line() {
+        let (_, text) = select_speech_source(
+            CelebrationKind::None,
+            false,
+            Some((PlaygroundScene::BallChase, true)),
+            None,
+            "calm",
+            0,
+        );
+        assert_eq!(text, "gotcha!!");
     }
 }
