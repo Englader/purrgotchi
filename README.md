@@ -45,9 +45,9 @@ If you'd rather edit `~/.claude/settings.json` by hand:
   "statusLine": {
     "type": "command",
     "command": "C:/absolute/path/to/purrgotchi/rust/target/release/purrgotchi.exe statusline",
-    "padding": 1
+    "padding": 1,
+    "refreshInterval": 1
   },
-  "refreshInterval": 1,
   "hooks": {
     "PostToolUse": [{
       "matcher": "*",
@@ -59,6 +59,8 @@ If you'd rather edit `~/.claude/settings.json` by hand:
   }
 }
 ```
+
+Note that `refreshInterval` sits **inside** the `statusLine` object — Claude Code ignores it anywhere else. It re-runs the statusline every second even while the session idles, which is what makes the kitten actually animate.
 
 ### Optional: a CLI wrapper
 
@@ -109,7 +111,7 @@ cp .env.example .env
 # PURR_LLM_MODEL=gpt-4o-mini
 ```
 
-`.env` is loaded automatically from the cwd when Purrgotchi runs. Process-level environment variables (e.g. shell-exported) win over `.env` values. `PURR_LLM_PROVIDER` is **required**; `PURR_LLM_MODEL` is optional and defaults to the cheapest fast model for each provider. Daily LLM cost runs roughly **$0.01–$0.06** at typical Claude Code usage rates.
+Purrgotchi reads `.env` from **`~/.claude/purrgotchi/.env`** only (`install.sh` copies the repo's `.env` there on first install). It deliberately does not load `.env` from the current directory — hooks run with the cwd of whatever project you have open, and a stranger repo's `.env` should never be able to inject keys or config. Process-level environment variables (e.g. shell-exported) win over `.env` values. `PURR_LLM_PROVIDER` is **required**; `PURR_LLM_MODEL` is optional and defaults to the cheapest fast model for each provider. Daily LLM cost runs roughly **$0.01–$0.06** at typical Claude Code usage rates.
 
 After hatching with no provider configured, you'll see a one-line stderr hint reminding you these env vars exist. Configure later via `purrgotchi rename`-style on-disk edits — no restart of the kitten needed.
 
@@ -215,4 +217,4 @@ Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI cal
 - **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
 - **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
 
-All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v3.6.3**.
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v3.7.0**.
