@@ -17,7 +17,7 @@ use crate::render::{
 };
 use crate::speech::{compute_celebration_speech, compute_speech};
 use crate::sprites::{get_celebration_sprite, get_sprite_lines};
-use crate::state::{self, CelebrationKind};
+use crate::state::{self, CelebrationKind, PlaygroundScene};
 
 const W1: usize = 28;
 const W2: usize = 30;
@@ -112,6 +112,30 @@ pub fn run() {
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
     let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
 
+    // Playground scene visibility — resolved before the quip guard so Phase 2
+    // can stop quips from being consumed (burned) behind a running scene.
+    // PURR_FORCE_SCENE loops a scene on a 30 s cycle without touching state.
+    let forced_scene = crate::playground::force_scene();
+    let (scene_kind, scene_started_at, scene_duration_secs, scene_seed) =
+        match forced_scene {
+            Some(k) => (k, (now as u64) - (now as u64) % 30, 30, 42),
+            None => (
+                st.scene_kind,
+                st.scene_started_at,
+                st.scene_duration_secs,
+                st.scene_seed,
+            ),
+        };
+    let scene_eligible = scene_kind != PlaygroundScene::None
+        && celebration_kind == CelebrationKind::None
+        && !is_birthday
+        && crate::playground::enabled();
+    let scene_strip = if scene_eligible {
+        crate::playground::strip_width()
+    } else {
+        None
+    };
+
     // Only consume the quip when it would actually be displayed — celebration
     // and birthday overlays outrank it in select_speech_source, and consuming
     // behind them burned the quip's renders without it ever appearing.
@@ -196,6 +220,22 @@ pub fn run() {
     } else {
         crate::colors::rarity_color(&rarity, shiny, now)
     };
+
+    // During a scene the cat keeps her rarity/shiny tint even if a quip is
+    // active (quips normally re-tint the home sprite pink; there is no home
+    // sprite on screen while she plays).
+    let scene_frame = scene_strip.map(|w| {
+        let rarity_tint = crate::colors::rarity_color(&rarity, shiny, now);
+        crate::playground::render_scene(
+            scene_kind,
+            (now as u64).saturating_sub(scene_started_at),
+            scene_duration_secs,
+            scene_seed,
+            w,
+            frame,
+            &rarity_tint,
+        )
+    });
 
     // --- Build the 7 HUD rows ---
     let sep_p = " │ ";
@@ -371,6 +411,10 @@ pub fn run() {
             buf.push_str(&format!(
                 "{row}   {speech_color}\"{speech}\"{C_RESET}\n"
             ));
+        } else if let Some(sf) = &scene_frame {
+            // Scene rows carry their own colors + trailing reset and are
+            // already padded to the strip width.
+            buf.push_str(&format!("{row}   {}\n", sf.rows[i]));
         } else {
             let line = sprite_lines.get(i).map(String::as_str).unwrap_or("");
             let padded = pad_sprite(line, SW);
@@ -399,6 +443,50 @@ pub fn run() {
                 }
             }
         });
+    }
+
+    // Playground scheduler — same locked_update-on-fresh-state discipline as
+    // the celebration tick above. Forced scenes bypass state entirely.
+    if forced_scene.is_none() && crate::playground::enabled() {
+        let planned = crate::playground::plan_transition(
+            st.scene_kind,
+            st.scene_started_at,
+            st.scene_duration_secs,
+            st.scene_next_at,
+            st.scene_last_kind,
+            st.celebration_kind != CelebrationKind::None || is_birthday,
+            now_u,
+        );
+        if planned != crate::playground::SceneTransition::None {
+            let _ = state::locked_update(|fresh| {
+                // Re-plan on the FRESH copy — the snapshot may be stale.
+                match crate::playground::plan_transition(
+                    fresh.scene_kind,
+                    fresh.scene_started_at,
+                    fresh.scene_duration_secs,
+                    fresh.scene_next_at,
+                    fresh.scene_last_kind,
+                    fresh.celebration_kind != CelebrationKind::None || is_birthday,
+                    now_u,
+                ) {
+                    crate::playground::SceneTransition::None => {}
+                    crate::playground::SceneTransition::Bootstrap { next_at } => {
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::End { last_kind, next_at } => {
+                        fresh.scene_last_kind = last_kind;
+                        fresh.scene_kind = PlaygroundScene::None;
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::Start { kind, duration_secs, seed } => {
+                        fresh.scene_kind = kind;
+                        fresh.scene_started_at = now_u;
+                        fresh.scene_duration_secs = duration_secs;
+                        fresh.scene_seed = seed;
+                    }
+                }
+            });
+        }
     }
 
     if debug::enabled() {
