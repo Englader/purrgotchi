@@ -177,7 +177,23 @@ A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, tr
 - **Daily greeting** — first prompt of each day triggers a "welcome back".
 - **Random drops** — low-probability "+10 coins" surprises.
 
-Priority order for HUD overlays: **celebration > birthday > LLM quip > mood**.
+Priority order for HUD overlays: **celebration > birthday > scene > LLM quip > mood**.
+
+---
+
+## Playground scenes
+
+Thalia doesn't just sit beside her card — every few minutes she plays in the
+open space to the right of it: chasing a bouncing ball, stalking a butterfly,
+doing zoomies, rolling across the screen, or pushing a ball of yarn. Scenes
+last 20–40 seconds, pick themselves at random (never the same one twice in a
+row), and `purr play` starts one immediately.
+
+- Needs a reasonably wide terminal (~125+ columns) and Claude Code v2.1.153 or
+  newer (which reports the terminal width to the status line). On narrower
+  terminals the playground simply stays off — nothing breaks.
+- To turn scenes off entirely, add `PURR_PLAYGROUND=0` to
+  `~/.claude/purrgotchi/.env`.
 
 ---
 
