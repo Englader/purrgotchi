@@ -117,6 +117,25 @@ pub fn short_cwd(full_path: &str, home: &str) -> String {
     }
 }
 
+/// Truncate `s` to at most `max` display columns, keeping the TAIL behind a
+/// leading `...` (the same shape short_cwd gives paths). For fields whose end
+/// carries the meaning — paths, git branch names — so a long value can never
+/// overflow its fixed card column and shove the box border out of alignment.
+/// `pad_col` only pads short content; it never trims, so callers must shorten
+/// oversized values here first.
+pub fn truncate_tail(s: &str, max: usize) -> String {
+    let count = display_width(s);
+    if count <= max {
+        return s.to_string();
+    }
+    if max <= 3 {
+        return ".".repeat(max);
+    }
+    let keep = max - 3;
+    let tail: String = s.chars().skip(count - keep).collect();
+    format!("...{tail}")
+}
+
 pub fn pad_col(plain: &str, ansi: &str, width: usize) -> (String, String) {
     let len = display_width(plain);
     let pad = width.saturating_sub(len);
@@ -190,6 +209,30 @@ pub fn format_ymd(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncate_tail_leaves_short_strings_untouched() {
+        assert_eq!(truncate_tail("main", 23), "main");
+        assert_eq!(truncate_tail("", 23), "");
+        // exactly at the limit (23 chars) is left alone
+        assert_eq!(truncate_tail("exactly-twenty-three-ch", 23), "exactly-twenty-three-ch");
+    }
+
+    #[test]
+    fn truncate_tail_keeps_tail_behind_ellipsis() {
+        // 29-char branch into a 23-col budget -> "..." + last 20, fits exactly
+        let out = truncate_tail("feat/v3.8.0-playground-scenes", 23);
+        assert_eq!(display_width(&out), 23);
+        assert!(out.starts_with("..."));
+        assert!(out.ends_with("playground-scenes"), "got {out:?}");
+    }
+
+    #[test]
+    fn truncate_tail_degenerate_small_max() {
+        assert_eq!(truncate_tail("anything", 3), "...");
+        assert_eq!(truncate_tail("anything", 2), "..");
+        assert_eq!(truncate_tail("anything", 0), "");
+    }
 
     #[test]
     fn format_ymd_epoch_zero() {

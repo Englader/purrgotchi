@@ -13,11 +13,11 @@ use crate::paths;
 use crate::payload::Payload;
 use crate::render::{
     anchor_col, close_row, format_tokens, human_duration, human_elapsed, pad_col,
-    pad_sprite, progress_bar, short_cwd, time_until_reset,
+    pad_sprite, progress_bar, short_cwd, time_until_reset, truncate_tail,
 };
 use crate::speech::{compute_celebration_speech, compute_speech};
 use crate::sprites::{get_celebration_sprite, get_sprite_lines};
-use crate::state::{self, CelebrationKind};
+use crate::state::{self, CelebrationKind, PlaygroundScene};
 
 const W1: usize = 28;
 const W2: usize = 30;
@@ -112,10 +112,46 @@ pub fn run() {
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
     let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
 
-    // Only consume the quip when it would actually be displayed — celebration
-    // and birthday overlays outrank it in select_speech_source, and consuming
-    // behind them burned the quip's renders without it ever appearing.
-    let quip = if celebration_kind == CelebrationKind::None && !is_birthday {
+    // Playground scene visibility — resolved before the quip guard so Phase 2
+    // can stop quips from being consumed (burned) behind a running scene.
+    // PURR_FORCE_SCENE loops a scene on a 30 s cycle without touching state.
+    let forced_scene = crate::playground::force_scene();
+    let (scene_kind, scene_started_at, scene_duration_secs, scene_seed) =
+        match forced_scene {
+            Some(k) => (k, (now as u64) - (now as u64) % 30, 30, 42),
+            None => (
+                st.scene_kind,
+                st.scene_started_at,
+                st.scene_duration_secs,
+                st.scene_seed,
+            ),
+        };
+    let scene_eligible = scene_kind != PlaygroundScene::None
+        && celebration_kind == CelebrationKind::None
+        && !is_birthday
+        && crate::playground::enabled();
+    let scene_strip = if scene_eligible {
+        crate::playground::strip_width()
+    } else {
+        None
+    };
+
+    // Caption context: only when the scene is actually visible. `finale` pins
+    // the catch-beat line for scenes that have one.
+    let scene_overlay = scene_strip.map(|_| {
+        let elapsed = (now as u64).saturating_sub(scene_started_at);
+        let finale = scene_duration_secs > 0
+            && elapsed >= scene_duration_secs.saturating_sub(crate::playground::FINALE_SECS);
+        (scene_kind, finale)
+    });
+
+    // Only consume the quip when it would actually be displayed — celebration,
+    // birthday, and scene overlays outrank it in select_speech_source, and
+    // consuming behind them burned the quip's renders without it ever appearing.
+    let quip = if celebration_kind == CelebrationKind::None
+        && !is_birthday
+        && scene_strip.is_none()
+    {
         crate::quip_cache::consume()
     } else {
         None
@@ -123,12 +159,18 @@ pub fn run() {
     let (speech_source, speech) = select_speech_source(
         celebration_kind,
         is_birthday,
+        scene_overlay,
         quip,
         mood,
         now,
     );
 
-    let git_branch = read_git_branch(&cwd);
+    // Truncate the branch so `GIT: {branch}` fits its W3 column exactly, the
+    // same way short_cwd shortens the DIR path. `pad_col` only pads — it never
+    // trims — so a long branch name (e.g. feat/v3.8.0-playground-scenes) would
+    // otherwise overflow the column and push the card's right border out of
+    // alignment, shattering the box. Budget = W3 minus the "GIT: " prefix.
+    let git_branch = truncate_tail(&read_git_branch(&cwd), W3 - 5);
 
     let ctx_int = payload.context_window.used_percentage.round() as i64;
     let rate_int = payload.rate_limits.five_hour.used_percentage.round() as i64;
@@ -169,7 +211,7 @@ pub fn run() {
     };
     let speech_color: String = if matches!(
         speech_source,
-        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip | SpeechSource::Scene
     ) {
         // Celebration, birthday, and LLM-quip speech: pink for warmth/specialness,
         // matching the existing rail/HUD pink accent.
@@ -196,6 +238,22 @@ pub fn run() {
     } else {
         crate::colors::rarity_color(&rarity, shiny, now)
     };
+
+    // During a scene the cat keeps her rarity/shiny tint even if a quip is
+    // active (quips normally re-tint the home sprite pink; there is no home
+    // sprite on screen while she plays).
+    let scene_frame = scene_strip.map(|w| {
+        let rarity_tint = crate::colors::rarity_color(&rarity, shiny, now);
+        crate::playground::render_scene(
+            scene_kind,
+            (now as u64).saturating_sub(scene_started_at),
+            scene_duration_secs,
+            scene_seed,
+            w,
+            frame,
+            &rarity_tint,
+        )
+    });
 
     // --- Build the 7 HUD rows ---
     let sep_p = " │ ";
@@ -371,6 +429,10 @@ pub fn run() {
             buf.push_str(&format!(
                 "{row}   {speech_color}\"{speech}\"{C_RESET}\n"
             ));
+        } else if let Some(sf) = &scene_frame {
+            // Scene rows carry their own colors + trailing reset and are
+            // already padded to the strip width.
+            buf.push_str(&format!("{row}   {}\n", sf.rows[i]));
         } else {
             let line = sprite_lines.get(i).map(String::as_str).unwrap_or("");
             let padded = pad_sprite(line, SW);
@@ -399,6 +461,50 @@ pub fn run() {
                 }
             }
         });
+    }
+
+    // Playground scheduler — same locked_update-on-fresh-state discipline as
+    // the celebration tick above. Forced scenes bypass state entirely.
+    if forced_scene.is_none() && crate::playground::enabled() {
+        let planned = crate::playground::plan_transition(
+            st.scene_kind,
+            st.scene_started_at,
+            st.scene_duration_secs,
+            st.scene_next_at,
+            st.scene_last_kind,
+            st.celebration_kind != CelebrationKind::None || is_birthday,
+            now_u,
+        );
+        if planned != crate::playground::SceneTransition::None {
+            let _ = state::locked_update(|fresh| {
+                // Re-plan on the FRESH copy — the snapshot may be stale.
+                match crate::playground::plan_transition(
+                    fresh.scene_kind,
+                    fresh.scene_started_at,
+                    fresh.scene_duration_secs,
+                    fresh.scene_next_at,
+                    fresh.scene_last_kind,
+                    fresh.celebration_kind != CelebrationKind::None || is_birthday,
+                    now_u,
+                ) {
+                    crate::playground::SceneTransition::None => {}
+                    crate::playground::SceneTransition::Bootstrap { next_at } => {
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::End { last_kind, next_at } => {
+                        fresh.scene_last_kind = last_kind;
+                        fresh.scene_kind = PlaygroundScene::None;
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::Start { kind, duration_secs, seed } => {
+                        fresh.scene_kind = kind;
+                        fresh.scene_started_at = now_u;
+                        fresh.scene_duration_secs = duration_secs;
+                        fresh.scene_seed = seed;
+                    }
+                }
+            });
+        }
     }
 
     if debug::enabled() {
@@ -526,6 +632,7 @@ fn peak_period(hour: u32) -> (&'static str, &'static str) {
 pub(crate) enum SpeechSource {
     Celebration,
     Birthday,
+    Scene,
     Quip,
     Mood,
 }
@@ -533,6 +640,7 @@ pub(crate) enum SpeechSource {
 pub(crate) fn select_speech_source(
     celebration_kind: crate::state::CelebrationKind,
     is_birthday: bool,
+    scene: Option<(PlaygroundScene, bool)>,
     quip: Option<String>,
     mood: &str,
     now: i64,
@@ -542,6 +650,12 @@ pub(crate) fn select_speech_source(
     }
     if is_birthday {
         return (SpeechSource::Birthday, crate::speech::compute_birthday_speech(now).to_string());
+    }
+    if let Some((kind, finale)) = scene {
+        return (
+            SpeechSource::Scene,
+            crate::speech::compute_scene_speech(kind, now, finale).to_string(),
+        );
     }
     if let Some(q) = quip {
         return (SpeechSource::Quip, q);
@@ -645,6 +759,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::LevelUp,
             /* is_birthday */ false,
+            /* scene */ None,
             /* quip */ Some("ignored".into()),
             "calm",
             0,
@@ -657,6 +772,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::None,
             /* is_birthday */ true,
+            /* scene */ None,
             Some("ignored".into()),
             "calm",
             0,
@@ -669,6 +785,7 @@ mod tests {
         let got = super::select_speech_source(
             crate::state::CelebrationKind::None,
             false,
+            None,
             Some("the cat watches".into()),
             "calm",
             0,
@@ -683,9 +800,50 @@ mod tests {
             crate::state::CelebrationKind::None,
             false,
             None,
+            None,
             "calm",
             0,
         );
         assert_eq!(got.0, super::SpeechSource::Mood);
+    }
+
+    #[test]
+    fn scene_outranks_quip_and_mood() {
+        let (src, text) = select_speech_source(
+            CelebrationKind::None,
+            false,
+            Some((PlaygroundScene::BallChase, false)),
+            Some("cached quip".to_string()),
+            "calm",
+            0,
+        );
+        assert_eq!(src, SpeechSource::Scene);
+        assert_eq!(text, "after it!");
+    }
+
+    #[test]
+    fn celebration_outranks_scene() {
+        let (src, _) = select_speech_source(
+            CelebrationKind::LevelUp,
+            false,
+            Some((PlaygroundScene::Run, false)),
+            None,
+            "calm",
+            0,
+        );
+        assert_eq!(src, SpeechSource::Celebration);
+    }
+
+    #[test]
+    fn scene_finale_caption_reaches_the_speech_line() {
+        let (_, text) = select_speech_source(
+            CelebrationKind::None,
+            false,
+            Some((PlaygroundScene::BallChase, true)),
+            None,
+            "calm",
+            0,
+        );
+        assert_eq!(text, "gotcha!!");
     }
 }

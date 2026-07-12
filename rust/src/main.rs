@@ -12,6 +12,7 @@ mod llm;
 mod mood;
 mod paths;
 mod payload;
+mod playground;
 mod quip_cache;
 mod react;
 mod render;

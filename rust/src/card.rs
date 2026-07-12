@@ -222,6 +222,12 @@ mod tests {
             last_milestone_celebrated: 0,
             last_turn_at: 0,
             last_celebration_tick_at: 0,
+            scene_kind: state::PlaygroundScene::None,
+            scene_started_at: 0,
+            scene_duration_secs: 0,
+            scene_seed: 0,
+            scene_next_at: 0,
+            scene_last_kind: state::PlaygroundScene::None,
         }
     }
 

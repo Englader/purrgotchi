@@ -131,6 +131,25 @@ _Update as items ship._
     they add the new env var. See
     `docs/superpowers/plans/2026-04-28-v3.6.0-provider-agnostic-llm.md`.
 
+- [x] v3.7.0 — Bug-sweep release (multi-agent audit): cross-process
+  `state.json` lock, corrupt/transient-safe loads, per-second sprite
+  animation, and ANSI-injection hardening across ~30 confirmed defects. Not a
+  roadmap phase; recorded here for version continuity. See `CHANGELOG.md`.
+
+- [x] Phase 5 — Playground scenes (v3.8.0)
+  - [x] Thalia plays animated scenes (run, zoomies, ball chase, butterfly
+    chase, roll, yarn push) in the strip right of the HUD card, extending to
+    the terminal's right edge. Deterministic engine: every frame is a pure
+    function of `(kind, elapsed, duration, seed, strip_width, blink)`; state
+    is written only at scene start/end via `state::locked_update` on a fresh
+    copy. A random scene starts every 2–5 min and lasts 20–40 s; `purr play`
+    starts one immediately. Scene captions on the speech row
+    (priority celebration > birthday > scene > quip > mood; quip guard stops
+    quips burning during scenes). Six additive `serde(default)` state fields;
+    `version` stays 2. New side-view ASCII sprite set (run/roll/pounce/sit).
+    `PURR_PLAYGROUND=0` kill switch. See
+    `docs/superpowers/plans/2026-07-11-v3.8.0-playground-scenes.md`.
+
 ---
 
 ## Resume protocol

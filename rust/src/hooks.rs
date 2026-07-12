@@ -207,6 +207,10 @@ pub fn play() {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_play(s, now);
+        // Playing always starts a playground scene — even on cooldown or with
+        // empty pockets, she still wants to play. Bond/coin outcomes above are
+        // untouched.
+        crate::playground::start_scene_now(s, now);
         (s.name.clone(), result, s.last_played_at)
     });
     match outcome {

@@ -25,6 +25,20 @@ pub enum CelebrationKind {
     RandomDrop,
 }
 
+/// Playground scene kinds (v3.8.0). `None` = idle. See
+/// docs/superpowers/specs/2026-07-11-v3.8.0-playground-scenes-design.md.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlaygroundScene {
+    #[default]
+    None,
+    Run,
+    Zoomies,
+    BallChase,
+    ButterflyChase,
+    Roll,
+    YarnPush,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
     pub version: u32,
@@ -69,6 +83,21 @@ pub struct State {
     // celebration lasts seconds of wall time, not 3 consecutive refreshes.
     #[serde(default)]
     pub last_celebration_tick_at: u64,
+    // playground scenes (v3.8.0, additive — serde(default) for back-compat).
+    // A scene is pure data; every frame renders as a function of elapsed time,
+    // so nothing here changes per-frame — only at scene start/end.
+    #[serde(default)]
+    pub scene_kind: PlaygroundScene,
+    #[serde(default)]
+    pub scene_started_at: u64,
+    #[serde(default)]
+    pub scene_duration_secs: u64,
+    #[serde(default)]
+    pub scene_seed: u64,
+    #[serde(default)]
+    pub scene_next_at: u64,
+    #[serde(default)]
+    pub scene_last_kind: PlaygroundScene,
 }
 
 fn default_bond() -> u8 { crate::bond::BOND_START }
@@ -99,6 +128,12 @@ impl State {
             last_milestone_celebrated: 0,
             last_turn_at: 0,
             last_celebration_tick_at: 0,
+            scene_kind: PlaygroundScene::None,
+            scene_started_at: 0,
+            scene_duration_secs: 0,
+            scene_seed: 0,
+            scene_next_at: 0,
+            scene_last_kind: PlaygroundScene::None,
         }
     }
 }
@@ -473,5 +508,39 @@ mod tests {
         assert_eq!(s.streak_count, 0);
         assert_eq!(s.last_milestone_celebrated, 0);
         assert_eq!(s.last_turn_at, 0);
+    }
+
+    #[test]
+    fn v3_7_0_state_without_scene_fields_parses_with_defaults() {
+        // Shape of a real v3.7.0 state.json — no scene_* keys at all.
+        let json = r#"{
+            "version": 2, "name": "Thalia", "birth_time": 100, "last_fed_at": 100,
+            "total_tool_calls": 7, "coins": 3, "level": 1, "lifetime_cost_usd": 0.5,
+            "breed": "tabby", "rarity": "common", "shiny": false,
+            "stats": [1,2,3,4,5], "personality": "curious {name}"
+        }"#;
+        let s: State = serde_json::from_str(json).expect("old state must parse");
+        assert_eq!(s.scene_kind, PlaygroundScene::None);
+        assert_eq!(s.scene_started_at, 0);
+        assert_eq!(s.scene_duration_secs, 0);
+        assert_eq!(s.scene_seed, 0);
+        assert_eq!(s.scene_next_at, 0);
+        assert_eq!(s.scene_last_kind, PlaygroundScene::None);
+    }
+
+    #[test]
+    fn scene_fields_roundtrip_through_json() {
+        let mut s = State::base(1000);
+        s.scene_kind = PlaygroundScene::BallChase;
+        s.scene_started_at = 2000;
+        s.scene_duration_secs = 30;
+        s.scene_seed = 42;
+        s.scene_next_at = 2500;
+        s.scene_last_kind = PlaygroundScene::Roll;
+        let json = serde_json::to_string(&s).unwrap();
+        let back: State = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.scene_kind, PlaygroundScene::BallChase);
+        assert_eq!(back.scene_last_kind, PlaygroundScene::Roll);
+        assert_eq!(back.scene_next_at, 2500);
     }
 }

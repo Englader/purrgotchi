@@ -12,6 +12,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v3.8.0 — 2026-07-12
+
+Feature release: Thalia now plays animated scenes in the open strip to the
+right of her HUD card.
+
+### Added
+
+- **Playground scenes.** Thalia plays animated scenes (run, zoomies, ball
+  chase, butterfly chase, roll, yarn push) in the strip right of the HUD card,
+  extending to the terminal's right edge. A random scene starts every 2–5
+  minutes and lasts 20–40 seconds; `purr play` starts one immediately.
+- **Scene captions on the speech row.** Priority:
+  celebration > birthday > scene > LLM quip > mood; quips are not consumed
+  while a scene is on screen.
+- **Side-view sprite art set** (run / roll / pounce / sit, pure ASCII).
+- **`PURR_PLAYGROUND=0` kill switch** (state-dir `.env` or process env).
+
+### Notes
+
+- Terminal width comes from the `COLUMNS` env var Claude Code sets for
+  statusline processes (v2.1.153+); without it a conservative default applies.
+- Old `state.json` files load unchanged (additive serde defaults, version 2).
+
 ## v3.7.0 — 2026-07-11
 
 Bug-sweep release: a multi-agent audit surfaced 12 confirmed high/medium

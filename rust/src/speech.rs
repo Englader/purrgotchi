@@ -133,6 +133,41 @@ const RANDOM_DROP: &[&str] = &[
     "*pounces on shiny*",
 ];
 
+// Playground scene captions (v3.8.0) — rotate on the same 30 s bucket as the
+// other pools; BallChase/ButterflyChase pin a finale line for the catch beat.
+const SCENE_RUN: &[&str] = &[
+    "laps! gotta go fast",
+    "wind in my whiskers",
+    "stretchin' the paws",
+];
+const SCENE_ZOOMIES: &[&str] = &[
+    "ZOOMIES!!",
+    "can't stop won't stop",
+    "the floor is lava",
+];
+const SCENE_BALL: &[&str] = &[
+    "after it!",
+    "the ball is MINE",
+    "almost...",
+];
+const SCENE_BALL_FINALE: &str = "gotcha!!";
+const SCENE_BUTTERFLY: &[&str] = &[
+    "ooh, flappy friend!",
+    "so close...",
+    "patience... patience...",
+];
+const SCENE_BUTTERFLY_FINALE: &str = "pounce!! ...it got away";
+const SCENE_ROLL: &[&str] = &[
+    "roly poly mode",
+    "wheeee~",
+    "not dizzy. you're dizzy",
+];
+const SCENE_YARN: &[&str] = &[
+    "yarn!! my nemesis",
+    "push. push. push.",
+    "the string must pay",
+];
+
 pub fn compute_speech(mood: &str, now_secs: i64) -> &'static str {
     let pool: &[&str] = match mood {
         "calm" => CALM,
@@ -172,6 +207,36 @@ pub fn compute_celebration_speech(
 pub fn compute_birthday_speech(now_secs: i64) -> &'static str {
     let idx = ((now_secs.max(0) / 30) as usize) % BIRTHDAY.len();
     BIRTHDAY[idx]
+}
+
+pub fn compute_scene_speech(
+    kind: crate::state::PlaygroundScene,
+    now_secs: i64,
+    finale: bool,
+) -> &'static str {
+    use crate::state::PlaygroundScene;
+    if finale {
+        match kind {
+            PlaygroundScene::BallChase => return SCENE_BALL_FINALE,
+            PlaygroundScene::ButterflyChase => return SCENE_BUTTERFLY_FINALE,
+            PlaygroundScene::None
+            | PlaygroundScene::Run
+            | PlaygroundScene::Zoomies
+            | PlaygroundScene::Roll
+            | PlaygroundScene::YarnPush => {}
+        }
+    }
+    let pool: &[&str] = match kind {
+        PlaygroundScene::Run => SCENE_RUN,
+        PlaygroundScene::Zoomies => SCENE_ZOOMIES,
+        PlaygroundScene::BallChase => SCENE_BALL,
+        PlaygroundScene::ButterflyChase => SCENE_BUTTERFLY,
+        PlaygroundScene::Roll => SCENE_ROLL,
+        PlaygroundScene::YarnPush => SCENE_YARN,
+        PlaygroundScene::None => return "mrow",
+    };
+    let idx = ((now_secs.max(0) / 30) as usize) % pool.len();
+    pool[idx]
 }
 
 #[cfg(test)]
@@ -264,5 +329,31 @@ mod tests {
         assert_eq!(BIRTHDAY.len(), 5);
         assert_eq!(GREETING.len(), 5);
         assert_eq!(RANDOM_DROP.len(), 5);
+    }
+
+    use crate::state::PlaygroundScene;
+
+    #[test]
+    fn scene_speech_rotates_by_30s_bucket() {
+        let a = compute_scene_speech(PlaygroundScene::Zoomies, 0, false);
+        let b = compute_scene_speech(PlaygroundScene::Zoomies, 30, false);
+        assert_ne!(a, b);
+        assert_eq!(compute_scene_speech(PlaygroundScene::Zoomies, 0, false), "ZOOMIES!!");
+    }
+
+    #[test]
+    fn scene_finale_pins_ball_and_butterfly() {
+        assert_eq!(compute_scene_speech(PlaygroundScene::BallChase, 0, true), "gotcha!!");
+        assert_eq!(
+            compute_scene_speech(PlaygroundScene::ButterflyChase, 99, true),
+            "pounce!! ...it got away"
+        );
+        // scenes without an ending beat ignore the finale flag
+        assert_eq!(compute_scene_speech(PlaygroundScene::Run, 0, true), "laps! gotta go fast");
+    }
+
+    #[test]
+    fn scene_none_falls_back_to_mrow() {
+        assert_eq!(compute_scene_speech(PlaygroundScene::None, 0, false), "mrow");
     }
 }
