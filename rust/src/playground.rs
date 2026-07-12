@@ -5,12 +5,6 @@
 //! when a scene starts or ends (scheduler in statusline.rs; instant trigger in
 //! hooks.rs `play`). Spec: docs/superpowers/specs/2026-07-11-v3.8.0-playground-scenes-design.md
 
-// Items in this module gain their callers across Phases 1-3 of the build plan
-// (engine -> statusline in Phase 1, choreography in Phase 2, play trigger in
-// Phase 3). The bin-only crate flags not-yet-wired items as dead code, so this
-// allow holds until Phase 3 Task 13 removes it once everything is live.
-#![allow(dead_code)]
-
 use crate::identity::Lcg;
 use crate::state::PlaygroundScene;
 
