@@ -16,7 +16,13 @@ set -euo pipefail
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SETTINGS="$HOME/.claude/settings.json"
 STATE_DIR="$HOME/.claude/purrgotchi"
-RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi.exe"
+# Cargo only appends .exe on Windows targets (Git Bash/MSYS2/Cygwin); WSL,
+# Linux and macOS produce a bare `purrgotchi`.
+case "${OSTYPE:-}" in
+    msys*|cygwin*|win32*) BIN_EXT=".exe" ;;
+    *)                    BIN_EXT="" ;;
+esac
+RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi${BIN_EXT}"
 
 echo "=============================================="
 echo "  Purrgotchi installer"
@@ -31,7 +37,7 @@ missing=()
 command -v jq >/dev/null 2>&1 || missing+=("jq")
 
 if [ ! -x "$RUST_BIN" ]; then
-    missing+=("purrgotchi.exe (build with: cd rust && cargo build --release)")
+    missing+=("purrgotchi${BIN_EXT} (build with: cd rust && cargo build --release)")
 fi
 
 if [ ${#missing[@]} -gt 0 ]; then
