@@ -10,8 +10,6 @@ import { PALETTE } from './hud'
 type UserEvent = RenderInput<'UserMessage'>
 type ToolEvent = RenderInput<'ToolUse'>
 
-/** colors.rs `PURPLE` (rare): the chip of every tool without its own colour. */
-const RARE_PURPLE = '#aa64ff'
 const ROW_SURFACES: readonly string[] = ['terminal', 'desktop', 'vscode', 'mobile']
 /** Spinner is raised on these alone. */
 const SPINNER_SURFACES: readonly string[] = ['terminal', 'desktop', 'vscode']
@@ -35,7 +33,7 @@ function chipOf(tool: string): { label: string; short: string; color: string } {
   const known = CHIPS[tool]
   if (known !== undefined) return known
   const label = tool.toUpperCase().slice(0, OTHER_LABEL_MAX)
-  return { label, short: label.slice(0, 2), color: RARE_PURPLE }
+  return { label, short: label.slice(0, 2), color: PALETTE.violet }
 }
 
 /** A row the person typed: at the composer or through the Remote Control bridge. */

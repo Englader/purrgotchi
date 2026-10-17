@@ -8,7 +8,7 @@ export const PALETTE = {
   cyan: '#0abdc6', // primary data
   yellow: '#f3f31b', // money, limits
   purple: '#711c91', // section rules
-  violet: '#b45cff', // section rules
+  violet: '#aa64ff', // section rules; colors.rs PURPLE (rare)
   mint: '#57eca6', // good
   red: '#ff5468', // danger
   dim: '#6d6488', // labels

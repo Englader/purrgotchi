@@ -251,6 +251,15 @@ test('/purr works with a missing binary', async ($, on) => {
   expect(spies.registered).toContain('purr')
   const r = await $.command.run(cmd('purr'))
   expect(r.text?.startsWith('Opened')).toBe(true)
+  // border + header 3, the wrapped problem text 3: not the full kitten pane.
+  expect(spies.opens.at(-1)?.rows).toBe(6)
+})
+
+test('section rules use the colors.rs rare purple', async ($, on) => {
+  const spies = await startReady($, on)
+  await spies.clock.settle()
+  const pane = await mountPane($, 'terminal')
+  expect((await pane.find({ type: 'Text', text: /^SESSION \s*$/ }))?.props.color).toBe('#aa64ff')
 })
 
 test('auto-open on start for dock + openPaneOnStart', async ($, on) => {

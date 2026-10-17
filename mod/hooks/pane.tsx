@@ -49,24 +49,29 @@ const ROWS = { chrome: 2 + 1, speech: 1, session: 1 + 2 + 1, limits: 1 + 2, butt
 const PIXEL_SPRITE_ROWS = 16
 /** The info column: name, rarity, breed, stage, bond, coin, mood, plus xp and fed with `hud`. */
 const infoRows = (f: FrameJson) => 7 + (f.hud !== undefined ? 2 : 0)
+/** The missing / outdated binary text, wrapped at the pane's width. */
+const PROBLEM_ROWS = 3
 
 /**
  * The body rows the whole pane needs inline (an inline pane opens a third of
  * the screen tall otherwise, cutting off the session, limits and buttons).
- * Without a kitten yet, as tall as one with the pixel sprite.
+ * Without a kitten yet, as tall as one with the pixel sprite; a binary
+ * problem is the header and its text alone.
  */
-function paneRows(f: FrameJson | null): number {
+function paneRows(f: FrameJson | null, status: BinaryStatus): number {
+  if (status.kind === 'missing' || status.kind === 'outdated') return ROWS.chrome + PROBLEM_ROWS
   const kitten = f === null ? PIXEL_SPRITE_ROWS : Math.max(f.pixels !== undefined ? PIXEL_SPRITE_ROWS : f.sprite.length, infoRows(f))
   const scene = f?.scene?.rows.length ?? 0
   return ROWS.chrome + kitten + ROWS.speech + scene + ROWS.session + ROWS.limits + ROWS.buttons
 }
 
-/** `paneRows` for the frame stored now. Never throws. */
+/** `paneRows` for the frame and binary stored now. Never throws. */
 async function wantedRows($: EngineInterface): Promise<number> {
   try {
-    return paneRows(await readFrame($))
+    const [frame, status] = await Promise.all([readFrame($), readBinary($)])
+    return paneRows(frame, status)
   } catch {
-    return paneRows(null)
+    return paneRows(null, { kind: 'unknown' })
   }
 }
 

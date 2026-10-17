@@ -40,7 +40,7 @@ Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS bu
    /plugin install purrgotchi@purrgotchi
    ```
 
-   The CLI equivalents are `claude plugin marketplace add Englader/purrgotchi` and `claude plugin install purrgotchi@purrgotchi`. On the desktop app: `+` → Plugins → Add marketplace → Add plugin. (Claude Code ≥ 2.1.275 also accepts the one-step form `/plugin install purrgotchi --marketplace Englader/purrgotchi`.)
+   The CLI equivalents are `claude plugin marketplace add Englader/purrgotchi` and `claude plugin install purrgotchi@purrgotchi`. On the desktop app: `+` → Plugins → Add marketplace → Add plugin. From a shell it is also one step: `claude plugin install purrgotchi --marketplace Englader/purrgotchi` (it adds the marketplace first).
 
 3. The hooks are live immediately: no restart and no `jq`. The first tool call hatches your kitten with a toast. With the default `dock` layout the pane opens by itself on a wide terminal (≥ 144 columns); `/purr` opens it at any width.
 
@@ -64,7 +64,7 @@ Plugin commands are not namespaced, and `/stats` and `/rename` are Claude Code b
 
 ### Options
 
-Set these in `/config` (they are the plugin's `userConfig`):
+Set these in `/config` or with `/plugin configure purrgotchi` (they are the plugin's `userConfig`; `claude plugin install … --config key=value` sets them at install time):
 
 | Option | Default | What it does |
 |---|---|---|
