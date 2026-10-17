@@ -46,8 +46,6 @@ export type Runtime = {
   noPixels: boolean
   /** The `purrgotchi serve` frame stream (dock / bottom), once spawned. */
   serve?: ServeSource
-  /** Never spawn `serve`: the clock polls `frame` instead. */
-  serveDisabled: boolean
   /** The latest prompt's text (capped), the quip's "what the user asked". */
   lastUser: string
   /** A session-model quip is being made: no second one starts meanwhile. */
@@ -69,7 +67,6 @@ export function createRuntime(options: PurrOptions): Runtime {
     ctxPct: null,
     frameFailures: 0,
     noPixels: false,
-    serveDisabled: false,
     lastUser: '',
     quipInFlight: false,
   }
@@ -103,11 +100,5 @@ export function warnOnce($: Pick<EngineInterface, 'ui'>, rt: Runtime, key: strin
   }
 }
 
-/** A debug-log line. Never throws. */
-export function debugLog($: Pick<EngineInterface, 'ui'>, text: string): void {
-  try {
-    $.ui.log(text, { to: 'debug' })
-  } catch {
-    // observer
-  }
-}
+// Lives in binary.ts (spawnLines logs too); re-exported for every other module.
+export { debugLog } from './binary'

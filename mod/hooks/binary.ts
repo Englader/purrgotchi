@@ -86,15 +86,20 @@ export async function runJson<T>(
   } catch (e) {
     return { kind: 'failed', reason: 'rejected', detail: errText(e) }
   }
-  const obj = parseLine(r.stdout)
+  return outcomeOf<T>(r.stdout, r.stderr, r.exitCode)
+}
+
+/** A run's output (or one `serve` line) as a v1 answer, or why it is not one. Pure. */
+export function outcomeOf<T>(stdout: string, stderr: string, exitCode: number): RunOutcome<T> {
+  const obj = parseLine(stdout)
   if (obj === null) {
-    const detail = (r.stderr.trim() || r.stdout.trim()).slice(0, 200)
-    return { kind: 'failed', reason: 'not-json', exitCode: r.exitCode, detail }
+    const detail = (stderr.trim() || stdout.trim()).slice(0, 200)
+    return { kind: 'failed', reason: 'not-json', exitCode, detail }
   }
   if (obj.v !== 1) {
-    return { kind: 'failed', reason: 'wrong-version', exitCode: r.exitCode, detail: `v=${String(obj.v)}` }
+    return { kind: 'failed', reason: 'wrong-version', exitCode, detail: `v=${String(obj.v)}` }
   }
-  return { kind: 'json', exitCode: r.exitCode, value: obj as T | ErrorJson }
+  return { kind: 'json', exitCode, value: obj as T | ErrorJson }
 }
 
 /**
@@ -190,16 +195,6 @@ const STREAM_ERROR: ProcessSpawnResult = { code: null, signal: 'stream-error' }
 /** Ended by `stop()`. */
 const STOPPED: ProcessSpawnResult = { code: null, signal: 'stopped' }
 
-/**
- * `buffer` (the last partial line) plus `chunk`, as the complete lines and the
- * new partial line. Pure; empty lines are kept (the caller skips them).
- */
-export function splitLines(buffer: string, chunk: string): { lines: string[]; rest: string } {
-  const parts = (buffer + chunk).split('\n')
-  const rest = parts.pop() ?? ''
-  return { lines: parts, rest }
-}
-
 type SpawnControl = { stopped: boolean; stream: HookStream<ProcessSpawnChunk, ProcessSpawnResult> | null }
 
 /** The `.catch` of a stopped stream's `return()` (a top-level function: the module scan needs one). */
@@ -235,7 +230,7 @@ export function spawnLines(
 }
 
 /** A debug-log line. Never throws. */
-function spawnLog($: SpawnHost, text: string): void {
+export function debugLog($: { readonly ui: Pick<EngineInterface['ui'], 'log'> }, text: string): void {
   try {
     $.ui.log(text, { to: 'debug' })
   } catch {
@@ -254,7 +249,7 @@ async function pumpLines(
     stream = $.process.spawn({ argv })
     ctl.stream = stream
   } catch (e) {
-    spawnLog($, `spawn ${argv[1] ?? ''} refused: ${errText(e)}`)
+    debugLog($, `spawn ${argv[1] ?? ''} refused: ${errText(e)}`)
     return SPAWN_FAILED
   }
   let rest = ''
@@ -265,19 +260,20 @@ async function pumpLines(
       pulled = true
       if (ctl.stopped) break
       if (chunk.stream === 'stderr') {
-        if (!stderrSeen) spawnLog($, `${argv[1] ?? ''} stderr: ${chunk.text.slice(0, 200)}`)
+        if (!stderrSeen) debugLog($, `${argv[1] ?? ''} stderr: ${chunk.text.slice(0, 200)}`)
         stderrSeen = true
         continue
       }
-      const split = splitLines(rest, chunk.text)
-      rest = split.rest
-      for (const line of split.lines) {
+      // Complete lines; the last part is the next chunk's partial line.
+      const lines = (rest + chunk.text).split('\n')
+      rest = lines.pop() ?? ''
+      for (const line of lines) {
         if (ctl.stopped) break
         if (line.trim() === '') continue
         try {
           await onLine(line)
         } catch (e) {
-          spawnLog($, `${argv[1] ?? ''} line failed: ${errText(e)}`)
+          debugLog($, `${argv[1] ?? ''} line failed: ${errText(e)}`)
         }
       }
     }
@@ -285,7 +281,7 @@ async function pumpLines(
     return await stream.result
   } catch (e) {
     if (ctl.stopped) return STOPPED
-    spawnLog($, `${argv[1] ?? ''} ${pulled ? 'stream broke' : 'did not start'}: ${errText(e)}`)
+    debugLog($, `${argv[1] ?? ''} ${pulled ? 'stream broke' : 'did not start'}: ${errText(e)}`)
     return pulled ? STREAM_ERROR : SPAWN_FAILED
   }
 }

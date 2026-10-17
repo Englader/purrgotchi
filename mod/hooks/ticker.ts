@@ -14,7 +14,7 @@
 import type { EngineInterface, StateDollar, Timer } from 'claude-code'
 
 import { writeFrame } from './atoms'
-import { errorCode, errText, isError, okValue, runJson, TIMEOUT } from './binary'
+import { errorCode, errText, isError, okValue, outcomeOf, runJson, TIMEOUT } from './binary'
 import type { RunOutcome } from './binary'
 import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
@@ -22,8 +22,8 @@ import { finiteOr0, statusText } from './hud'
 import type { PurrOptions } from './options'
 import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
-import { SERVE_ENABLED, servePolls, serveWants, startServe } from './serve'
-import type { ErrorJson, FrameJson } from '../types'
+import { servePolls, serveWants, startServe } from './serve'
+import type { FrameJson } from '../types'
 
 /** The slice of `$` a tick needs (any hook's or timer's `$`). */
 type TickHost = FeedHost & StateDollar
@@ -66,8 +66,8 @@ function frameArgv(o: FrameOpts): string[] {
   return ['frame', '--json', ...frameFlags(o)]
 }
 
-function serveArgv(o: FrameOpts, intervalMs = 1000): string[] {
-  return ['serve', '--interval-ms', String(intervalMs), ...frameFlags(o)]
+function serveArgv(o: FrameOpts): string[] {
+  return ['serve', '--interval-ms', '1000', ...frameFlags(o)]
 }
 
 /**
@@ -79,8 +79,11 @@ function ctxBucket(p: number | null): number {
 }
 
 /** Pixel art is only drawn by the pane and the band, and only until an older binary rejects the flag. */
+/** dock / bottom: the 1 s layouts, streamed from `serve` and drawn with pixels. */
+const isLive = (layout: PurrOptions['layout']) => layout === 'dock' || layout === 'bottom'
+
 function wantsPixels(rt: Runtime): boolean {
-  return !rt.noPixels && (rt.options.layout === 'dock' || rt.options.layout === 'bottom')
+  return !rt.noPixels && isLive(rt.options.layout)
 }
 
 /** An older binary refusing `--pixels`: exit 2 with no JSON, or a `bad_args` answer. */
@@ -136,7 +139,7 @@ export function startTicker($: ClockHost, rt: Runtime): void {
   const ms = tickIntervalMs(rt.options.layout)
   if (ms === null) return
   const t = (rt.ticker ??= { timer: null, inflight: null })
-  if (ms === 1000 && SERVE_ENABLED && !rt.serveDisabled) {
+  if (isLive(rt.options.layout)) {
     startServe($, rt, wantedServeArgv(rt), line => applyLine($, rt, line))
   }
   try {
@@ -159,18 +162,12 @@ function onClock($: ClockHost, rt: Runtime): void {
   }
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-
 /** One `serve` line, applied as a tick's answer. True when it was a v1 answer. Never throws. */
 async function applyLine($: TickHost, rt: Runtime, line: string): Promise<boolean> {
-  let v: unknown
-  try {
-    v = JSON.parse(line)
-  } catch {
-    return false // stray output: skipped
-  }
-  if (!isObj(v) || v.v !== 1 || (v.ok !== true && !isError(v))) return false
-  await applyFrame($, rt, { kind: 'json', exitCode: 0, value: v as FrameJson | ErrorJson })
+  const out = outcomeOf<FrameJson>(line, '', 0)
+  // Stray output, another version, or no answer shape: skipped.
+  if (out.kind !== 'json' || (out.value.ok !== true && !isError(out.value))) return false
+  await applyFrame($, rt, out)
   return true
 }
 

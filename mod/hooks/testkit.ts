@@ -3,7 +3,7 @@
 // uses, and `fx` holds Phase 0-shaped binary output. Tests never run the
 // real binary.
 import { mock } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import type { ConfigValue, ModelCompleteInput, On, PaneOpenArgs, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
@@ -316,6 +316,10 @@ export const paneProps = (cols: number) =>
     scroll: { offset: 0, bodyRows: 30 },
     view: {},
   }) as const
+
+/** Mounts the kitten pane on `surface` at `cols` body columns, as a surface draws it. */
+export const mountPane = ($: Engine, surface: 'terminal' | 'desktop' | 'mobile' = 'terminal', cols = 58) =>
+  $.ui.mount({ plugin: 'purrgotchi', surface, component: 'Pane', requestId: 'kitten', props: paneProps(cols) })
 
 /** A promise the test opens with `release()`. */
 export function gate(): { wait: Promise<void>; release: () => void } {

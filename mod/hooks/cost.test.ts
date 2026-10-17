@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { defaultRun, fx, ok, paneProps, startReady } from './testkit'
+import { defaultRun, fx, mountPane, ok, startReady } from './testkit'
 import type { EngineOptions } from './testkit'
 
 const costs = (runs: string[][]) => runs.filter(a => a[1] === 'cost')
@@ -58,13 +58,7 @@ test('lifetime total shows in pane', async ($, on) => {
   await spies.clock.settle()
   await $.session.measure({ ...measure, cost: { usd: 0.123 }, changed: ['cost'] })
   await spies.clock.settle()
-  const pane = await $.ui.mount({
-    plugin: 'purrgotchi',
-    surface: 'terminal',
-    component: 'Pane',
-    requestId: 'kitten',
-    props: paneProps(58),
-  })
+  const pane = await mountPane($)
   expect(await pane.find({ text: /cost \$0\.12 · all \$3\.42/ })).toBeDefined()
 })
 
@@ -75,13 +69,7 @@ test('a large lifetime total still fits its half-width pane cell', async ($, on)
   await spies.clock.settle()
   await $.session.measure({ ...measure, cost: { usd: 12.34 }, changed: ['cost'] })
   await spies.clock.settle()
-  const pane = await $.ui.mount({
-    plugin: 'purrgotchi',
-    surface: 'terminal',
-    component: 'Pane',
-    requestId: 'kitten',
-    props: paneProps(58),
-  })
+  const pane = await mountPane($)
   // inner 54, so each paired cell is 27 wide and truncates beyond it.
   expect(await pane.find({ text: /^cost (?=.*1234\.56).{1,22}$/ })).toBeDefined()
 })
@@ -91,13 +79,7 @@ test('cost error keeps the pane without a total', async ($, on) => {
   await spies.clock.settle()
   await $.session.measure({ ...measure, cost: { usd: 0.123 }, changed: ['cost'] })
   await spies.clock.settle()
-  const pane = await $.ui.mount({
-    plugin: 'purrgotchi',
-    surface: 'terminal',
-    component: 'Pane',
-    requestId: 'kitten',
-    props: paneProps(58),
-  })
+  const pane = await mountPane($)
   expect(await pane.find({ text: /cost \$0\.12 session/ })).toBeDefined()
   expect(await pane.find({ text: /total/ })).toBeUndefined()
   expect(spies.toasts).toEqual([])

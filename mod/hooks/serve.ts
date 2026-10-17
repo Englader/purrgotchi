@@ -16,13 +16,10 @@
 // is state only.
 import type { EngineInterface, Timer } from 'claude-code'
 
-import { spawnLines } from './binary'
+import { errText, spawnLines } from './binary'
 import type { SpawnedLines, SpawnHost } from './binary'
 import { debugLog } from './runtime'
 import type { Runtime } from './runtime'
-
-/** The probe kept the child alive from `session.start`: stream frames. */
-export const SERVE_ENABLED = true
 
 const DEBOUNCE_MS = 500
 const QUICK_EXITS = 3
@@ -66,7 +63,7 @@ export function startServe(
   argv: readonly string[],
   onLine: (line: string) => Promise<boolean>,
 ): void {
-  if (!SERVE_ENABLED || rt.serveDisabled || rt.serve !== undefined) return
+  if (rt.serve !== undefined) return
   const s: ServeSource = { argv, wanted: argv, child: null, gen: 0, exits: [], broken: false, quiet: 0, debounce: null, onLine }
   rt.serve = s
   spawnServe($, rt, s)
@@ -83,7 +80,7 @@ function spawnServe($: ServeHost, rt: Runtime, s: ServeSource): void {
     s.child = child
     void awaitExit($, rt, s, gen, child)
   } catch (e) {
-    debugLog($, `serve not spawned: ${String(e)}`)
+    debugLog($, `serve not spawned: ${errText(e)}`)
   }
 }
 
@@ -111,7 +108,7 @@ async function awaitExit($: ServeHost, rt: Runtime, s: ServeSource, gen: number,
       if (gen === s.gen && s.child === null && !s.broken) spawnServe($, rt, s)
     })
   } catch (e) {
-    debugLog($, `serve respawn not scheduled: ${String(e)}`)
+    debugLog($, `serve respawn not scheduled: ${errText(e)}`)
   }
 }
 
@@ -132,7 +129,7 @@ export function serveWants($: ServeHost, rt: Runtime, argv: readonly string[]): 
       restartServe($, rt, s)
     })
   } catch (e) {
-    debugLog($, `serve restart not scheduled: ${String(e)}`)
+    debugLog($, `serve restart not scheduled: ${errText(e)}`)
   }
 }
 

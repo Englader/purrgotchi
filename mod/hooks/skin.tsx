@@ -21,7 +21,9 @@ const OTHER_LABEL_MAX = 10
 
 export const JACK_IN = '▓▒░ jacking in'
 
-const CHIPS: Readonly<Record<string, { label: string; short: string; color: string }>> = {
+type Chip = { label: string; short: string; color: string }
+
+const CHIPS: Readonly<Record<string, Chip>> = {
   Read: { label: 'READ', short: 'R', color: PALETTE.cyan },
   Edit: { label: 'EDIT', short: 'E', color: PALETTE.magenta },
   Write: { label: 'WRITE', short: 'W', color: PALETTE.magenta },
@@ -29,7 +31,7 @@ const CHIPS: Readonly<Record<string, { label: string; short: string; color: stri
 }
 
 /** The tool's chip: its own, or the name upper-cased in rare purple. */
-function chipOf(tool: string): { label: string; short: string; color: string } {
+function chipOf(tool: string): Chip {
   const known = CHIPS[tool]
   if (known !== undefined) return known
   const label = tool.toUpperCase().slice(0, OTHER_LABEL_MAX)

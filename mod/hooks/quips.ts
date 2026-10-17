@@ -13,8 +13,8 @@ import type { QuipPromptJson, QuipStoreJson } from '../types'
 
 /** Mirrors `REACT_DICE_DENOM = 5` in the binary's hooks.rs (`quip-prompt` has no dice of its own). */
 export const QUIP_PROBABILITY = 1 / 5
-export const QUIP_MAX_CHARS = 500
-export const QUIP_TIMEOUT_MS = 15000
+const QUIP_MAX_CHARS = 500
+const QUIP_TIMEOUT_MS = 15000
 /** The smallest model: a quip is a few words. */
 const QUIP_MODEL = 'haiku'
 const USER_MAX_CHARS = 2000
@@ -35,10 +35,10 @@ export function quipDraw(turnId: string): number {
 }
 
 /** The slice of a `turn.complete` input the gate reads. */
-export type QuipTurn = { answer: string; turnId: string; agentId?: string; isAborted: boolean; reason: string }
+type QuipTurn = { answer: string; turnId: string; agentId?: string; isAborted: boolean; reason: string }
 
 /** Only a main-loop turn the model answered, with something to remark on, once at a time, and the dice. */
-export function shouldQuip(rt: Runtime, e: QuipTurn): boolean {
+function shouldQuip(rt: Runtime, e: QuipTurn): boolean {
   if (!ready(rt) || rt.quipInFlight) return false
   if (e.agentId !== undefined || e.isAborted || e.reason !== 'answer' || e.answer.trim() === '') return false
   return quipDraw(e.turnId) < QUIP_PROBABILITY
@@ -51,7 +51,7 @@ type QuipHost = Parameters<typeof pokeTicker>[0] & Pick<EngineInterface, 'model'
  * here: it goes to `quip-store` as one argv element and the binary sanitizes
  * it. Never throws; at most one at a time.
  */
-export async function runQuip($: QuipHost, rt: Runtime, answer: string): Promise<void> {
+async function runQuip($: QuipHost, rt: Runtime, answer: string): Promise<void> {
   rt.quipInFlight = true
   try {
     const stdin = JSON.stringify({ last_user: rt.lastUser, last_assistant: answer.slice(0, ASSISTANT_MAX_CHARS) })

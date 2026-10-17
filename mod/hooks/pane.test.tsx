@@ -1,8 +1,7 @@
 import { expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
 
 import { pixelFixtures } from './fixtures/pixels'
-import { cmd, defaultRun, engine, fx, ok, paneProps, START, startReady } from './testkit'
+import { cmd, defaultRun, engine, fx, mountPane, ok, paneProps, START, startReady } from './testkit'
 import type { EngineOptions } from './testkit'
 import type { HudJson, SceneJson } from '../types'
 
@@ -11,13 +10,9 @@ import type { HudJson, SceneJson } from '../types'
 // asserted through the drawn tree and what the engine saw.
 
 const SURFACES = ['terminal', 'desktop', 'mobile'] as const
-type Surface = (typeof SURFACES)[number]
 
 const ticks = (runs: string[][]) => runs.filter(a => a[1] === 'frame' && a.includes('--width'))
 
-function mountPane($: Engine, surface: Surface, cols = 58) {
-  return $.ui.mount({ plugin: 'purrgotchi', surface, component: 'Pane', requestId: 'kitten', props: paneProps(cols) })
-}
 
 /** The handshake and every frame answer `frame`; other verbs answer `action`. */
 const answering =
