@@ -109,7 +109,7 @@ async function sendFeed($: FeedHost, rt: Runtime, n: number): Promise<boolean> {
 export function registerFeed(on: On, rt: Runtime): void {
   on('tool.call', async ($, e, next) => {
     const r = await next(e)
-    if (ready(rt) && !('deny' in r)) {
+    if (ready(rt) && typeof r.deny !== 'string') {
       rt.feeds.add(1)
       void flushFeeds($, rt)
     }
