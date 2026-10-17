@@ -88,7 +88,7 @@ impl SceneFrame {
 
     /// Add a prop, clamped so it never clips the canvas.
     pub(super) fn put(&mut self, (w, h): (usize, PxHeight), prop: Prop, frame: u8, x: i32, y: i32, front: bool) {
-        let s = art::prop(prop, frame, h);
+        let s = art::prop(prop, frame);
         let (x, y) = (x.clamp(0, (w as i32 - s.w as i32).max(0)), y.clamp(0, ph(h) - s.h as i32));
         self.props.push(Placed { prop, frame, x, y, front });
     }
@@ -395,7 +395,7 @@ pub(crate) fn draw(f: &SceneFrame, width: usize, look: &CatLook, h: PxHeight) ->
     }
     let draw = |c: &mut PxCanvas, front: bool| {
         for p in f.props.iter().filter(|p| p.front == front) {
-            c.blit(&art::prop(p.prop, p.frame, h), p.x, p.y);
+            c.blit(&art::prop(p.prop, p.frame), p.x, p.y);
         }
     };
     draw(&mut c, false);
@@ -429,7 +429,7 @@ mod tests {
     }
 
     fn size(p: &Placed) -> (i32, i32) {
-        let s = art::prop(p.prop, p.frame, H12);
+        let s = art::prop(p.prop, p.frame);
         (s.w as i32, s.h as i32)
     }
 

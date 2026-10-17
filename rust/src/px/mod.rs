@@ -309,7 +309,7 @@ fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, for
     if let Some(k) = f.z {
         // Drifts up and away from the tucked head (right end of the Curl
         // map), mirrored when she faces left; the top one is the dim frame.
-        let z = art::prop(art::Prop::Z, u8::from(k == 2), h);
+        let z = art::prop(art::Prop::Z, u8::from(k == 2));
         let (k, zw) = (i32::from(k), z.w as i32);
         let (zx, zy) = match (h, f.facing_right) {
             (PxHeight::H12, true) => (f.x + w - 4 + k, (top - 3 - k).max(0)),
@@ -329,7 +329,7 @@ fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, for
 /// A shiny cat twinkles: a sparkle on even seconds at a free spot near her,
 /// a new spot every 2 s. Skipped when no candidate is free.
 fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64) {
-    let s = art::prop(art::Prop::Sparkle, 0, c.h);
+    let s = art::prop(art::Prop::Sparkle, 0);
     let (sw, sh) = (s.w as i32, s.h as i32);
     for i in 0..4 {
         let h = life::ihash(key ^ (i << 60));
@@ -374,7 +374,7 @@ fn sheet_cells(breed: &str, h: PxHeight) -> Vec<(String, PxSprite)> {
     }
     for p in art::ALL_PROPS {
         for f in 0..2 {
-            cells.push((format!("{p:?} {f}"), art::prop(p, f, h)));
+            cells.push((format!("{p:?} {f}"), art::prop(p, f)));
         }
     }
     cells

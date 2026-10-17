@@ -73,7 +73,7 @@ fn confetti(f: &mut SceneFrame, w: usize, n: usize, now: u64, h: PxHeight) {
 /// sides, staggered 4 px apart; one is hidden while it wraps.
 fn sparkles(f: &mut SceneFrame, w: usize, n: usize, now: u64, cx: i32, cw: i32, h: PxHeight) {
     let (k, frame) = ((now % CYCLE) as i32, (now % 2) as u8);
-    let sh = art::prop(Prop::Sparkle, 0, h).h as i32;
+    let sh = art::prop(Prop::Sparkle, 0).h as i32;
     for i in 0..n as i32 {
         let rise = (SPEED * k + 4 * i) % scene::ph(h);
         if rise <= scene::ph(h) - sh {
@@ -100,7 +100,7 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
         Overlay::Celebration(LevelUp) => sparkles(&mut f, width, 3, now, cx, cw, h),
         Overlay::Celebration(EvolvingYoung | EvolvingAdult) => sparkles(&mut f, width, 2, now, cx, cw, h),
         Overlay::Celebration(Streak) => {
-            let fh = art::prop(Prop::Flame, 0, h).h as i32;
+            let fh = art::prop(Prop::Flame, 0).h as i32;
             put(&mut f, width, Prop::Flame, frame, cx - 4, scene::ph(h) - fh, h);
             put(&mut f, width, Prop::Flame, frame ^ 1, cx + cw + 1, scene::ph(h) - fh, h);
         }
@@ -110,13 +110,13 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
         Overlay::Celebration(Greeting) => {
             // Over the cat's empty back corner, bobbing 1 px. The small cats
             // have no room there, so it floats beside her back instead.
-            let x = if h == PxHeight::H12 { cx + 1 } else { cx - art::prop(Prop::Heart, 0, h).w as i32 - 1 };
+            let x = if h == PxHeight::H12 { cx + 1 } else { cx - art::prop(Prop::Heart, 0).w as i32 - 1 };
             put(&mut f, width, Prop::Heart, 0, x, top + i32::from(frame), h);
         }
         Overlay::Celebration(RandomDrop) => {
             // Falls from the top over 3 s (0, 4, 8 px), then glints on the ground.
             let k = (now % CYCLE) as i32;
-            let ch = art::prop(Prop::Coin, 0, h).h as i32;
+            let ch = art::prop(Prop::Coin, 0).h as i32;
             put(&mut f, width, Prop::Coin, if k < 3 { 0 } else { frame }, cx + cw, (scene::ph(h) - ch) * k.min(2) / 2, h);
         }
         Overlay::Celebration(None) => {}
@@ -232,7 +232,7 @@ mod tests {
                         let f = fx_frame(o, now, w, &look(stage), H12);
                         assert_eq!(f.x, (w as i32 - 16) / 2, "cat is centred");
                         for p in &f.props {
-                            let s = art::prop(p.prop, p.frame, H12);
+                            let s = art::prop(p.prop, p.frame);
                             let (sw, sh) = (s.w as i32, s.h as i32);
                             assert!(p.x >= 0 && p.y >= 0 && p.x + sw <= w as i32 && p.y + sh <= H, "{o:?} {p:?}");
                             let on_cat = p.x < f.x + 16 && p.x + sw > f.x;

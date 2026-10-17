@@ -416,7 +416,7 @@ pub(super) fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
 /// No outline: props are drawn over the cat's ground and sky. Every height
 /// uses these.
-pub(crate) fn prop(p: Prop, frame: u8, _h: PxHeight) -> PxSprite {
+pub(crate) fn prop(p: Prop, frame: u8) -> PxSprite {
     let second = frame % 2 == 1;
     let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
     match (p, second) {
@@ -501,11 +501,11 @@ mod tests {
         };
         for p in ALL_PROPS {
             for f in 0..2 {
-                let s = prop(p, f, H12);
+                let s = prop(p, f);
                 let (w, h) = size(p);
                 assert!(s.w <= w && s.h <= h && s.px.len() == s.w * s.h, "{p:?} f{f}: {}x{}", s.w, s.h);
                 assert!(s.px.iter().any(Option::is_some), "{p:?} f{f}: empty");
-                assert_eq!(s.px, prop(p, f, H12).px, "{p:?} f{f}: not deterministic");
+                assert_eq!(s.px, prop(p, f).px, "{p:?} f{f}: not deterministic");
             }
         }
     }
@@ -516,9 +516,9 @@ mod tests {
             if matches!(p, Prop::Ball | Prop::Yarn | Prop::Heart | Prop::Hat | Prop::Confetti) {
                 continue;
             }
-            assert_ne!(prop(p, 0, H12).px, prop(p, 1, H12).px, "{p:?}");
+            assert_ne!(prop(p, 0).px, prop(p, 1).px, "{p:?}");
         }
-        let hues: std::collections::HashSet<_> = (0u8..6).map(|f| prop(Prop::Confetti, f, H12).px[0].map(|c| c.hex())).collect();
+        let hues: std::collections::HashSet<_> = (0u8..6).map(|f| prop(Prop::Confetti, f).px[0].map(|c| c.hex())).collect();
         assert_eq!(hues.len(), 6);
     }
 
