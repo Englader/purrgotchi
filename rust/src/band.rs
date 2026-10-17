@@ -43,7 +43,7 @@ pub fn parse_opts(args: &[String]) -> Result<BandOpts, String> {
         return Err(format!("--cols must be in 1..={MAX_COLS}, got {cols}"));
     }
     let rows: usize = num("--rows", value(args, "--rows")?.ok_or("--rows is required")?)?;
-    let height = PxHeight::from_rows(rows).ok_or_else(|| format!("--rows must be 3, 4 or 6, got {rows}"))?;
+    let height = PxHeight::from_rows(rows).ok_or_else(|| format!("--rows must be 5 or 6, got {rows}"))?;
     let fps = value(args, "--fps")?.map_or(Ok(DEFAULT_FPS), |v| num::<u32>("--fps", v))?.clamp(15, 60);
     let context_pct = match value(args, "--context-pct")? {
         None => 0.0,

@@ -142,11 +142,11 @@ fn main() {
             }
             Some("downscale") => match dev_height(&args) {
                 px::PxHeight::H12 => {
-                    eprintln!("usage: purrgotchi pixels downscale --height 8|6");
+                    eprintln!("usage: purrgotchi pixels downscale --height 10");
                     process::exit(2);
                 }
                 h => {
-                    print!("{}", px::art_small::downscale_source(h));
+                    print!("{}", px::art10::downscale_source(h));
                     process::exit(0);
                 }
             },
@@ -171,7 +171,7 @@ fn main() {
                 process::exit(0);
             }
             _ => {
-                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate|downscale [--breed B] [--height 12|8|6] [--json]");
+                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate|downscale [--breed B] [--height 12|10] [--json]");
                 process::exit(2);
             }
         },
@@ -204,11 +204,11 @@ fn dev_width(args: &[String]) -> usize {
     })
 }
 
-/// `--height 12|8|6` of the `pixels` dev verbs (default 12).
+/// `--height 12|10` of the `pixels` dev verbs (default 12).
 fn dev_height(args: &[String]) -> px::PxHeight {
     let Some(v) = cli::flag_value(args, "--height") else { return px::PxHeight::H12 };
     v.parse().ok().and_then(px::PxHeight::from_px).unwrap_or_else(|| {
-        eprintln!("--height must be 12, 8 or 6, got {v:?}");
+        eprintln!("--height must be 12 or 10, got {v:?}");
         process::exit(2);
     })
 }

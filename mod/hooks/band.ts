@@ -75,10 +75,10 @@ export function resetBand(): void {
   Object.assign(B, fresh())
 }
 
-/** `requested` if it fits in `maxRows`, else the largest of 6, 4, 3 that does, else 0. */
+/** `requested` if it fits in `maxRows`, else the largest of 6, 5 that does, else 0. */
 export function pickRows(requested: Rows, maxRows: number): Rows | 0 {
   if (requested <= maxRows) return requested
-  for (const r of [6, 4, 3] as const) if (r <= maxRows) return r
+  for (const r of [6, 5] as const) if (r <= maxRows) return r
   return 0
 }
 

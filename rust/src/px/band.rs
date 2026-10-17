@@ -80,11 +80,11 @@ mod tests {
     #[test]
     fn pack_cells_rules() {
         let (a, b) = (Rgb(0x10, 0x20, 0x30), Rgb(255, 0, 0));
-        let mut c = PxCanvas::new(2, PxHeight::H6);
+        let mut c = PxCanvas::new(2, PxHeight::H10);
         c.set(0, 0, a);
         c.set(1, 1, b);
         let out = pack_cells(&c);
-        assert_eq!(out.len(), 3 * 24);
+        assert_eq!(out.len(), 5 * 24);
         assert_eq!(cells(&out)[..6], [0x2580, snap(a), DEFAULT_COLOR, 0x2584, snap(b), DEFAULT_COLOR]);
         c.set(0, 1, b);
         assert_eq!(cells(&pack_cells(&c))[..3], [0x2580, snap(a), snap(b)]);

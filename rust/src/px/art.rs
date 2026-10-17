@@ -343,8 +343,8 @@ const WAVE: [&str; 10] = [
 
 /// Interior slot map for a pose, facing right.
 pub(crate) fn pose_map(p: Pose, h: PxHeight) -> &'static [&'static str] {
-    if h != PxHeight::H12 {
-        return super::art_small::pose_map_small(p, h);
+    if h == PxHeight::H10 {
+        return super::art10::pose_map10(p);
     }
     match p {
         Pose::Sit => &SIT,
@@ -414,12 +414,9 @@ pub(super) fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 
 /// A prop, already coloured. `frame` toggles the 2-frame flaps and flickers
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
-/// No outline: props are drawn over the cat's ground and sky. The 8-px band
-/// keeps these; 6 px swaps the tall ones for `art_small::prop_small`.
-pub(crate) fn prop(p: Prop, frame: u8, h: PxHeight) -> PxSprite {
-    if h == PxHeight::H6 {
-        return super::art_small::prop_small(p, frame);
-    }
+/// No outline: props are drawn over the cat's ground and sky. Every height
+/// uses these.
+pub(crate) fn prop(p: Prop, frame: u8, _h: PxHeight) -> PxSprite {
     let second = frame % 2 == 1;
     let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
     match (p, second) {

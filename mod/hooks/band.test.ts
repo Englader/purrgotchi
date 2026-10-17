@@ -10,9 +10,9 @@ import type { EngineOptions, SpawnScript } from './testkit'
 
 const BIN = '/opt/purr/purrgotchi'
 const ENV = { env: { PURR_BIN: BIN }, exists: [BIN] } as const
-const argvAt = (cols: number, rows: 3 | 4 | 6 = 4) => bandArgv(BIN, cols, rows, 30, 0)
-/** Valid cells for 115 x 4 (or `cols` x `rows`), told apart by `seed`. */
-function cells(seed: number, cols = 115, rows = 4): string {
+const argvAt = (cols: number, rows: 5 | 6 = 5) => bandArgv(BIN, cols, rows, 30, 0)
+/** Valid cells for 115 x 5 (or `cols` x `rows`), told apart by `seed`. */
+function cells(seed: number, cols = 115, rows = 5): string {
   const w = new Uint32Array(cols * rows * 3).fill(0x0100_0000)
   for (let i = 0; i < cols * rows; i++) w[i * 3] = 0x20
   w[0] = 0x2580
@@ -41,11 +41,11 @@ async function started($: Engine, on: Parameters<typeof engine>[0], o: EngineOpt
 }
 
 test('pickRows: the requested height if it fits, else the largest that does', () => {
-  expect(pickRows(4, 40)).toBe(4)
-  expect(pickRows(6, 5)).toBe(4)
-  expect(pickRows(4, 3)).toBe(3)
-  expect(pickRows(3, 2)).toBe(0)
+  expect(pickRows(5, 40)).toBe(5)
+  expect(pickRows(6, 5)).toBe(5)
   expect(pickRows(6, 15)).toBe(6)
+  expect(pickRows(5, 4)).toBe(0)
+  expect(pickRows(6, 2)).toBe(0)
 })
 
 test('blankCells is default-colour spaces', () => {
@@ -57,12 +57,12 @@ test('first render spawns band argv', async ($, on) => {
   const spies = await started($, on, { spawn: silent() })
   await mountBand($)
   await spies.clock.advance(100)
-  expect(spies.spawns).toEqual([[BIN, 'band', '--cols', '115', '--rows', '4', '--fps', '30', '--context-pct', '0']])
+  expect(spies.spawns).toEqual([[BIN, 'band', '--cols', '115', '--rows', '5', '--fps', '30', '--context-pct', '0']])
 })
 
 test('hello then frame blits once with its cells', async ($, on) => {
   const g = gate()
-  const spies = await started($, on, { spawn: silent([bandHello(115, 4), { wait: g.wait }, bandFrame(1, CELLS1)]) })
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5), { wait: g.wait }, bandFrame(1, CELLS1)]) })
   const band = await mountBand($)
   await spies.clock.advance(100)
   expect(spies.blits).toEqual([])
@@ -70,11 +70,11 @@ test('hello then frame blits once with its cells', async ($, on) => {
   await spies.clock.settle()
   expect(spies.blits).toEqual([{ requestId: 'above-prompt', key: 'purr-band', cells: CELLS1 }])
   await band.redraw()
-  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { key: 'purr-band', columns: 115, rows: 4, cells: CELLS1 } })
+  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { key: 'purr-band', columns: 115, rows: 5, cells: CELLS1 } })
 })
 
 test('hello and frame in one chunk blit the frame', async ($, on) => {
-  const spies = await started($, on, { spawn: silent([bandHello(115, 4) + bandFrame(1, CELLS1)]) })
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5) + bandFrame(1, CELLS1)]) })
   await mountBand($)
   await spies.clock.advance(100)
   expect(spies.blits.map(b => b.cells)).toEqual([CELLS1])
@@ -83,7 +83,7 @@ test('hello and frame in one chunk blit the frame', async ($, on) => {
 test('two frames in one chunk blit only the latest', async ($, on) => {
   const g = gate()
   const spies = await started($, on, {
-    spawn: silent([bandHello(115, 4), { wait: g.wait }, bandFrame(1, ONE) + bandFrame(2, TWO)]),
+    spawn: silent([bandHello(115, 5), { wait: g.wait }, bandFrame(1, ONE) + bandFrame(2, TWO)]),
   })
   await mountBand($)
   await spies.clock.advance(100)
@@ -95,7 +95,7 @@ test('two frames in one chunk blit only the latest', async ($, on) => {
 test('a split frame line is carried to the next chunk', async ($, on) => {
   const f = bandFrame(1, SPLIT)
   const g = gate()
-  const spies = await started($, on, { spawn: silent([bandHello(115, 4) + f.slice(0, 9), { wait: g.wait }, f.slice(9)]) })
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5) + f.slice(0, 9), { wait: g.wait }, f.slice(9)]) })
   await mountBand($)
   await spies.clock.advance(100)
   expect(spies.blits).toEqual([])
@@ -107,14 +107,14 @@ test('a split frame line is carried to the next chunk', async ($, on) => {
 test('an error line blanks the band once', async ($, on) => {
   const err = line({ v: 1, ok: false, error: 'no_kitten', message: 'no kitten' })
   const g = gate()
-  const spies = await started($, on, { spawn: silent([bandHello(115, 4) + bandFrame(1, CAT), { wait: g.wait }, err + err]) })
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5) + bandFrame(1, CAT), { wait: g.wait }, err + err]) })
   const band = await mountBand($)
   await spies.clock.advance(100)
   g.release()
   await spies.clock.settle()
-  expect(spies.blits.map(b => b.cells)).toEqual([CAT, blankCells(115, 4)])
+  expect(spies.blits.map(b => b.cells)).toEqual([CAT, blankCells(115, 5)])
   await band.redraw()
-  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { cells: blankCells(115, 4) } })
+  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { cells: blankCells(115, 5) } })
 })
 
 test('render before start passes then invalidates', async ($, on) => {
@@ -123,7 +123,7 @@ test('render before start passes then invalidates', async ($, on) => {
   expect(await band.find({ type: 'Raster' })).toBeUndefined()
   await $.session.start(START)
   await spies.clock.settle()
-  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { key: 'purr-band', columns: 115, rows: 4, cells: blankCells(115, 4) } })
+  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { key: 'purr-band', columns: 115, rows: 5, cells: blankCells(115, 5) } })
 })
 
 test('desktop surface and surveys pass through and never spawn', async ($, on) => {
@@ -155,13 +155,13 @@ test('a band narrower than 24 draws nothing', async ($, on) => {
 test('a short maxRows falls back to the largest height that fits', async ($, on) => {
   const spies = await started($, on, { env: { PURR_BIN: BIN, PURR_BAND_ROWS: '6' }, spawn: silent() })
   const band = await mountBand($, 115, 5)
-  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { rows: 4 } })
+  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { rows: 5 } })
   await spies.clock.advance(100)
-  expect(flag(spies.spawns[0], '--rows')).toBe('4')
+  expect(flag(spies.spawns[0], '--rows')).toBe('5')
 })
 
 test('child exit respawns after 1 s then 2 s', async ($, on) => {
-  const spies = await started($, on, { spawn: () => ({ steps: [bandHello(115, 4)], end: { code: 0, signal: null } }) })
+  const spies = await started($, on, { spawn: () => ({ steps: [bandHello(115, 5)], end: { code: 0, signal: null } }) })
   await mountBand($)
   await spies.clock.advance(100)
   expect(spies.spawns).toHaveLength(1)
@@ -178,7 +178,7 @@ test('child exit respawns after 1 s then 2 s', async ($, on) => {
 test('resize storm respawns once', async ($, on) => {
   const g = gate()
   const spies = await started($, on, {
-    spawn: (_, n) => ({ steps: n === 1 ? [bandHello(115, 4), { wait: g.wait }, bandFrame(9, OLD)] : [] }),
+    spawn: (_, n) => ({ steps: n === 1 ? [bandHello(115, 5), { wait: g.wait }, bandFrame(9, OLD)] : [] }),
   })
   const band = await mountBand($)
   await spies.clock.advance(100)
@@ -191,7 +191,7 @@ test('resize storm respawns once', async ($, on) => {
   g.release()
   await spies.clock.settle()
   expect(spies.blits).toEqual([])
-  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { columns: 80, cells: blankCells(80, 4) } })
+  expect(await band.drawn()).toMatchObject({ type: 'Raster', props: { columns: 80, cells: blankCells(80, 5) } })
   await spies.clock.advance(200) // 250 ms after the last redraw
   expect(spies.spawns).toHaveLength(1)
   await spies.clock.advance(200) // 450 ms after it
@@ -203,7 +203,7 @@ test('resize storm respawns once', async ($, on) => {
 })
 
 test('a resize back to the running size does not respawn', async ($, on) => {
-  const spies = await started($, on, { spawn: silent([bandHello(115, 4)]) })
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5)]) })
   const band = await mountBand($)
   await spies.clock.advance(100)
   await band.redraw(props(100))

@@ -9,26 +9,24 @@ use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
-pub(crate) mod art_small;
+pub(crate) mod art10;
 pub(crate) mod band;
 pub(crate) mod fx;
 pub(crate) mod life;
 pub(crate) mod paint;
 pub(crate) mod scene;
 
-/// Canvas height in pixels: 12 (statusline, 6 rows), 8 (4 rows) or 6 (3 rows).
+/// Canvas height in pixels: 12 (statusline and band, 6 rows) or 10 (band, 5 rows).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PxHeight {
-    H6,
-    H8,
+    H10,
     H12,
 }
 
 impl PxHeight {
     pub fn px(self) -> usize {
         match self {
-            Self::H6 => 6,
-            Self::H8 => 8,
+            Self::H10 => 10,
             Self::H12 => 12,
         }
     }
@@ -40,8 +38,7 @@ impl PxHeight {
 
     pub fn from_rows(r: usize) -> Option<Self> {
         match r {
-            3 => Some(Self::H6),
-            4 => Some(Self::H8),
+            5 => Some(Self::H10),
             6 => Some(Self::H12),
             _ => None,
         }
@@ -50,13 +47,12 @@ impl PxHeight {
     /// Widest painted sprite, outline included.
     pub fn cat_max_w(self) -> usize {
         match self {
-            Self::H6 => 8,
-            Self::H8 => 11,
+            Self::H10 => 14,
             Self::H12 => 16,
         }
     }
 
-    /// `--height 6|8|12` of the `pixels` dev verbs.
+    /// `--height 10|12` of the `pixels` dev verbs.
     pub fn from_px(px: usize) -> Option<Self> {
         Self::from_rows(px / 2).filter(|h| h.px() == px)
     }
@@ -386,7 +382,7 @@ fn sheet_cells(breed: &str, h: PxHeight) -> Vec<(String, PxSprite)> {
 
 const SHEET_COLS: usize = 6;
 
-/// Dev verb `pixels sheet [--breed B] [--height 12|8|6] [--json]`: every pose
+/// Dev verb `pixels sheet [--breed B] [--height 12|10] [--json]`: every pose
 /// and prop.
 pub(crate) fn sheet(breed: &str, h: PxHeight, json: bool) -> String {
     let title = if h == PxHeight::H12 { breed.to_string() } else { format!("{breed} ({} px)", h.px()) };
@@ -499,15 +495,17 @@ mod tests {
 
     #[test]
     fn heights_size_the_canvas() {
-        for (h, rows) in [(PxHeight::H8, 4), (PxHeight::H6, 3), (PxHeight::H12, 6)] {
+        for (h, rows) in [(PxHeight::H10, 5), (PxHeight::H12, 6)] {
             assert_eq!(encode(&PxCanvas::new(10, h), PixelMode::Full).len(), rows, "{h:?}");
             assert_eq!(h.rows(), rows);
             assert_eq!(PxHeight::from_rows(rows), Some(h));
         }
-        assert_eq!(PxHeight::from_rows(5), None);
-        assert_eq!((PxHeight::H12.px(), PxHeight::H8.px(), PxHeight::H6.px()), (12, 8, 6));
-        assert_eq!((PxHeight::H12.cat_max_w(), PxHeight::H8.cat_max_w(), PxHeight::H6.cat_max_w()), (16, 11, 8));
-        assert_eq!((PxHeight::from_px(8), PxHeight::from_px(6), PxHeight::from_px(12), PxHeight::from_px(4)), (Some(PxHeight::H8), Some(PxHeight::H6), Some(PxHeight::H12), None));
+        for bad in [3, 4, 7] {
+            assert_eq!(PxHeight::from_rows(bad), None, "{bad}");
+        }
+        assert_eq!((PxHeight::H12.px(), PxHeight::H10.px()), (12, 10));
+        assert_eq!((PxHeight::H12.cat_max_w(), PxHeight::H10.cat_max_w()), (16, 14));
+        assert_eq!((PxHeight::from_px(10), PxHeight::from_px(12), PxHeight::from_px(8), PxHeight::from_px(6)), (Some(PxHeight::H10), Some(PxHeight::H12), None, None));
     }
 
     #[test]

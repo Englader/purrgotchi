@@ -132,9 +132,9 @@ fn band_exits_zero_when_stdout_closes() {
 }
 
 #[test]
-fn band_accepts_three_and_four_rows() {
+fn band_accepts_five_and_six_rows() {
     let sb = Sandbox::with_state("band_rows", json!({}));
-    for rows in [3usize, 4] {
+    for rows in [5usize, 6] {
         let text = String::from_utf8(test_clock_rows(&sb, "60", &rows.to_string(), NOW * 1000, 2)).unwrap();
         let lines: Vec<Value> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(lines[0]["rows"].as_u64(), Some(rows as u64));
@@ -165,7 +165,7 @@ fn band_test_clock_is_deterministic() {
 fn band_bad_args_exit_2() {
     let sb = Sandbox::with_state("band_bad", json!({}));
     for bad in [
-        vec!["--cols", "60", "--rows", "5"],
+        vec!["--cols", "60", "--rows", "4"],
         vec!["--cols", "60", "--rows", "8"],
         vec!["--cols", "0", "--rows", "6"],
         vec!["--cols", "513", "--rows", "6"],
@@ -218,8 +218,8 @@ fn band_hash_golden() {
         ("celebration_levelup", json!({ "celebration_kind": "LevelUp", "levelup_renders_remaining": 2, "last_celebration_tick_at": NOW })),
     ];
     let mut lines = String::new();
-    // 6 rows first (the original lines), then the 8-px and 6-px cats.
-    for (rows, prefix) in [("6", ""), ("4", "rows4_"), ("3", "rows3_")] {
+    // 6 rows first (the original lines), then the 10-px cat.
+    for (rows, prefix) in [("6", ""), ("5", "rows5_")] {
         for (name, patch) in &cases {
             let sb = Sandbox::with_state(&format!("band_gold_{prefix}{name}"), patch.clone());
             let text = String::from_utf8(test_clock_rows(&sb, "120", rows, NOW * 1000, 60)).unwrap();
