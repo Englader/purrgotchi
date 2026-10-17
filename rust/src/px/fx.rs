@@ -20,12 +20,13 @@ use super::{PxCanvas, PxHeight};
 use crate::pixel;
 use crate::state::CelebrationKind;
 
-/// Seconds per rising / falling cycle (`k = now % CYCLE`).
+/// Seconds per rising / falling cycle (`k = now % CYCLE`). At the
+/// statusline tempo (`fall_px_s` 2) one cycle spans exactly the 12-px
+/// canvas, so the wrap is seamless there.
 const CYCLE: u64 = 6;
-/// Px per second for rising sparkles and falling confetti: one cycle spans
-/// exactly the 12-px canvas, so the wrap is seamless there.
-const SPEED: i32 = 2;
 const BIRTHDAY_CONFETTI: usize = 10;
+/// The band coin: falls for `DROP_MS`, bounces once, then glints.
+const DROP_MS: u64 = 450;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Overlay {
@@ -67,7 +68,20 @@ fn cycle_ms(now_ms: u64) -> i32 {
 }
 
 /// Falling confetti: piece `i` of this 6 s block, wrapping top to bottom.
+/// In the band each piece falls on its own, a px at a time at 5-7 px/s, and
+/// comes back in at the top somewhere new (no 6 s re-roll of them all).
 fn confetti(f: &mut SceneFrame, w: usize, n: usize, now_ms: u64, h: PxHeight, t: &Tempo) {
+    if t.smooth {
+        let ph = scene::ph(h) as u64;
+        for i in 0..n as u64 {
+            let piece = ihash(i << 32 ^ 0xC0FE);
+            let speed = (t.fall_px_s as u64 + piece % 3).saturating_sub(1);
+            let y = (now_ms % (1 << 40)) * speed / 1000 + piece % ph;
+            let hv = ihash((i << 32) ^ (y / ph));
+            put(f, w, Prop::Confetti, ((piece >> 48) % 6) as u8, (hv % w.max(1) as u64) as i32, (y % ph) as i32, h);
+        }
+        return;
+    }
     let (block, fall) = (now_ms / (CYCLE * 1000), t.fall_px_s * cycle_ms(now_ms) / 1000);
     for i in 0..n as u64 {
         let hv = ihash(i << 32 ^ block);
@@ -76,13 +90,17 @@ fn confetti(f: &mut SceneFrame, w: usize, n: usize, now_ms: u64, h: PxHeight, t:
     }
 }
 
-/// `n` sparkles rising `SPEED` px/s on both sides of the cat, alternating
-/// sides, staggered 4 px apart; one is hidden while it wraps.
+/// `n` sparkles rising `fall_px_s` on both sides of the cat, alternating
+/// sides, staggered 4 px apart; one is hidden while it wraps. In the band
+/// they rise on through the 6 s cycle (not a whole lap of 10 px), spread
+/// evenly up the canvas so a side's two never touch.
 fn sparkles(f: &mut SceneFrame, w: usize, n: usize, now_ms: u64, (cx, cw): (i32, i32), h: PxHeight, t: &Tempo) {
-    let (k, frame) = (cycle_ms(now_ms), frame(now_ms, t));
+    let ph = scene::ph(h) as u64;
+    let (k, gap) = if t.smooth { (now_ms % (1 << 40), ph / n as u64) } else { (cycle_ms(now_ms) as u64, 4) };
+    let frame = frame(now_ms, t);
     let sh = art::prop(Prop::Sparkle, 0).h as i32;
     for i in 0..n as i32 {
-        let rise = (SPEED * k / 1000 + 4 * i) % scene::ph(h);
+        let rise = ((t.fall_px_s as u64 * k / 1000 + gap * i as u64) % ph) as i32;
         if rise <= scene::ph(h) - sh {
             let x = if i % 2 == 0 { cx - 4 } else { cx + cw + 1 };
             put(f, w, Prop::Sparkle, frame, x, scene::ph(h) - sh - rise, h);
@@ -131,10 +149,22 @@ pub(crate) fn fx_frame_ms(o: Overlay, now_ms: u64, width: usize, look: &CatLook,
             put(&mut f, width, Prop::Heart, 0, x, top + i32::from(frame), h);
         }
         Overlay::Celebration(RandomDrop) => {
-            // Falls from the top over 3 s (0, 4, 8 px), then glints on the ground.
-            let k = cycle_ms(now_ms) / 1000;
-            let ch = art::prop(Prop::Coin, 0).h as i32;
-            put(&mut f, width, Prop::Coin, if k < 3 { 0 } else { frame }, cx + cw, (scene::ph(h) - ch) * k.min(2) / 2, h);
+            // Falls from the top over 3 s (0, 4, 8 px), then glints on the
+            // ground. In the band it drops, bounces once and glints once a
+            // second.
+            let ground = scene::ph(h) - art::prop(Prop::Coin, 0).h as i32;
+            let (y, frame) = if t.smooth {
+                let k = cycle_ms(now_ms) as u64;
+                match k {
+                    k if k < DROP_MS => ((i64::from(ground) * (k * k) as i64 / (DROP_MS * DROP_MS) as i64) as i32, 0),
+                    k if k < DROP_MS + 200 => (ground - scene::hop(k - DROP_MS, 200, 2), 0),
+                    k => (ground, u8::from(k >= 1000 && (k / t.flash_ms).is_multiple_of(4))),
+                }
+            } else {
+                let k = cycle_ms(now_ms) / 1000;
+                (ground * k.min(2) / 2, if k < 3 { 0 } else { frame })
+            };
+            put(&mut f, width, Prop::Coin, frame, cx + cw, y, h);
         }
         Overlay::Celebration(None) => {}
         Overlay::Birthday => {
@@ -181,6 +211,7 @@ mod tests {
     use super::*;
     const H12: PxHeight = PxHeight::H12;
     const H: i32 = 12;
+    use crate::px::scene::Placed;
     use crate::px::{encode, PixelMode};
     use CelebrationKind::*;
 
@@ -325,5 +356,99 @@ mod tests {
     fn greeting_alternates_wave_and_cheer() {
         let pose = |now| fx_frame(Overlay::Celebration(Greeting), now, 60, &look("adult"), H12).pose;
         assert_eq!((pose(NOW - NOW % 2), pose(NOW - NOW % 2 + 1)), (Pose::Cheer, Pose::Wave));
+    }
+
+    // The band: celebrations sampled at 30 fps under `Tempo::BAND`.
+
+    const BAND_HEIGHTS: [PxHeight; 2] = [PxHeight::H10, PxHeight::H12];
+    const NOW_MS: u64 = NOW * 1000;
+
+    fn frame_times(secs: u64) -> impl Iterator<Item = u64> {
+        (0..secs * 30).map(|i| NOW_MS + i * 1000 / 30)
+    }
+
+    fn band(o: Overlay, ms: u64, w: usize, h: PxHeight) -> SceneFrame {
+        fx_frame_ms(o, ms, w, &look("adult"), h, &Tempo::BAND)
+    }
+
+    /// Each piece falls at most a px a frame and keeps its column until it
+    /// wraps back in at the top.
+    #[test]
+    fn band_confetti_falls_smoothly() {
+        for o in [Overlay::Celebration(MilestoneLegendary), Overlay::Celebration(MilestoneCenturion), Overlay::Birthday] {
+            for h in BAND_HEIGHTS {
+                for w in [60usize, 120] {
+                    let pieces = |ms| band(o, ms, w, h).props.into_iter().filter(|p| p.prop == Prop::Confetti).collect::<Vec<_>>();
+                    let frames: Vec<_> = frame_times(13).map(pieces).collect();
+                    for (i, f) in frames.windows(2).enumerate() {
+                        for (a, b) in f[0].iter().zip(&f[1]) {
+                            let wrapped = a.y == h.px() as i32 - 1 && b.y == 0;
+                            assert!(wrapped || (b.y - a.y, b.x) == (0, a.x) || (b.y - a.y, b.x) == (1, a.x), "{o:?} {h:?} {w} frame {i}: {a:?} -> {b:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn band_huge_now_does_not_panic() {
+        for o in overlays() {
+            for h in BAND_HEIGHTS {
+                for ms in [u64::MAX / 2, u64::MAX] {
+                    let _ = overlay_canvas_ms(o, ms, 60, &look("adult"), h, &Tempo::BAND);
+                }
+            }
+        }
+    }
+
+    /// The evolving flash (and with it the 2-frame props) flips every 250 ms.
+    #[test]
+    fn band_flash_period_250ms() {
+        assert_eq!(Tempo::BAND.flash_ms, 250);
+        let o = Overlay::Celebration(EvolvingAdult);
+        for h in BAND_HEIGHTS {
+            for ms in frame_times(3) {
+                let c = overlay_canvas_ms(o, ms, 60, &look("adult"), h, &Tempo::BAND);
+                let coat = (0..60).flat_map(|x| (0..h.px() as i32).map(move |y| (x, y))).filter_map(|(x, y)| c.get(x, y)).filter(|p| *p != paint::OUTLINE && *p != pixel::WHITE).count();
+                assert_eq!(coat == 0, ms / 250 % 2 == 1, "{h:?} {ms}");
+            }
+        }
+    }
+
+    /// Sparkles rise a px at a time at `fall_px_s`, and a side's two never
+    /// touch at either height.
+    #[test]
+    fn band_sparkles_rise_smoothly_apart() {
+        for h in BAND_HEIGHTS {
+            let frames: Vec<Vec<Placed>> = frame_times(12).map(|ms| band(Overlay::Celebration(LevelUp), ms, 60, h).props).collect();
+            for f in &frames {
+                for (i, a) in f.iter().enumerate() {
+                    for b in &f[i + 1..] {
+                        assert!(a.x != b.x || (a.y - b.y).abs() >= 4, "{h:?}: {a:?} touches {b:?}");
+                    }
+                }
+            }
+            let ys = |f: &Vec<Placed>| f.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>();
+            for p in frames.windows(2) {
+                if p[0].len() == p[1].len() {
+                    assert!(ys(&p[0]).iter().zip(ys(&p[1])).all(|(a, b)| a.0 == b.0 && (0..=1).contains(&(a.1 - b.1))), "{h:?}: {:?} -> {:?}", ys(&p[0]), ys(&p[1]));
+                }
+            }
+        }
+    }
+
+    /// The coin drops in about half a second, never more than 2 px a frame,
+    /// then rests on the ground glinting.
+    #[test]
+    fn band_coin_drops_then_rests() {
+        for h in BAND_HEIGHTS {
+            let base = NOW_MS - NOW_MS % 6000;
+            let ys: Vec<i32> = (0..180u64).map(|i| band(Overlay::Celebration(RandomDrop), base + i * 1000 / 30, 60, h).props[0].y).collect();
+            let ground = h.px() as i32 - 4;
+            assert_eq!(ys[0], 0);
+            assert!(ys.windows(2).all(|p| (p[1] - p[0]).abs() <= 2), "{h:?}: {ys:?}");
+            assert!(ys[30..].iter().all(|&y| y == ground), "{h:?}: {ys:?}");
+        }
     }
 }

@@ -297,9 +297,7 @@ fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now
     let (now, elapsed_ms) = (now_ms / 1000, sv.elapsed.saturating_mul(1000) + now_ms % 1000);
     let f = scene::scene_frame_ms(sv.kind, elapsed_ms, sv.duration, sv.seed, width, h, t);
     let mut c = scene::draw(&f, width, &cat_look(st, now), h);
-    if st.shiny && now.is_multiple_of(2) {
-        sparkle(&mut c, f.x, h.cat_max_w() as i32, (now / 2) ^ st.birth_time);
-    }
+    twinkle(&mut c, st, f.x, h.cat_max_w() as i32, now_ms, t);
     c
 }
 
@@ -311,9 +309,11 @@ fn life_canvas(st: &crate::state::State, mood: &str, now_ms: u64, width: usize, 
     let (w, top) = (cat.w as i32, (h.px() - cat.h) as i32);
     let mut c = PxCanvas::new(width, h);
     c.blit(&cat, f.x, (top - i32::from(f.lift)).max(0));
-    if let Some(k) = f.z {
+    if f.z.is_some() {
         // Drifts up and away from the tucked head (right end of the Curl
-        // map), mirrored when she faces left; the top one is the dim frame.
+        // map), a px every `z_ms`, mirrored when she faces left; the top one
+        // is the dim frame.
+        let k = (now_ms / t.z_ms % 3) as u8;
         let z = art::prop(art::Prop::Z, u8::from(k == 2));
         let (k, zw) = (i32::from(k), z.w as i32);
         let (zx, zy) = match (h, f.facing_right) {
@@ -325,16 +325,25 @@ fn life_canvas(st: &crate::state::State, mood: &str, now_ms: u64, width: usize, 
         };
         c.blit(&z, zx, zy);
     }
-    if st.shiny && now.is_multiple_of(2) {
-        sparkle(&mut c, f.x, w, (now / 2) ^ st.birth_time);
-    }
+    twinkle(&mut c, st, f.x, w, now_ms, t);
     c
 }
 
-/// A shiny cat twinkles: a sparkle on even seconds at a free spot near her,
-/// a new spot every 2 s. Skipped when no candidate is free.
-fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64) {
-    let s = art::prop(art::Prop::Sparkle, 0);
+/// A shiny cat twinkles: a sparkle for the first half of every
+/// `twinkle_ms` (even seconds at 1 fps), each at a new spot. In the band it
+/// opens from a dot and closes back to one.
+fn twinkle(c: &mut PxCanvas, st: &crate::state::State, x: i32, w: i32, now_ms: u64, t: &tempo::Tempo) {
+    let (on, k) = (t.twinkle_ms / 2, now_ms % t.twinkle_ms);
+    if st.shiny && k < on {
+        let dot = t.smooth && (k < on / 4 || k >= on * 3 / 4);
+        sparkle(c, x, w, (now_ms / t.twinkle_ms) ^ st.birth_time, u8::from(dot));
+    }
+}
+
+/// A sparkle (`frame` 1: just its dot) at a free spot near her, picked by
+/// `key`. Skipped when no candidate is free.
+fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64, frame: u8) {
+    let s = art::prop(art::Prop::Sparkle, frame);
     let (sw, sh) = (s.w as i32, s.h as i32);
     for i in 0..4 {
         let h = life::ihash(key ^ (i << 60));
@@ -664,6 +673,40 @@ mod tests {
         st.shiny = true;
         assert!((1_800_000_000..1_800_000_060u64).step_by(2).filter(|&t| has(&st, t)).count() > 20);
         assert!(!(1_800_000_001..1_800_000_060u64).step_by(2).any(|t| has(&st, t)));
+    }
+
+    /// In the band the Z steps up every `z_ms`, and a twinkle opens from a
+    /// dot to the full sparkle and back over the first half of `twinkle_ms`.
+    #[test]
+    fn band_z_and_twinkle_animate_at_ms() {
+        let t = &tempo::Tempo::BAND;
+        let mut st = crate::state::State::base(1_000);
+        st.breed = "Ginger".into();
+        let frames = |base: u64, n: u64| (0..n).map(move |i| base + i * 1000 / 30);
+        for h in [PxHeight::H10, H12] {
+            let z = |ms| {
+                let c = life_canvas(&st, "sleep", ms, 60, None, h, t);
+                let zs = [crate::pixel::NEON_CYAN, crate::pixel::mix(crate::pixel::NEON_CYAN, paint::OUTLINE, 0.5)];
+                (0..60).flat_map(|x| (0..h.px() as i32).map(move |y| (x, y))).filter(|&(x, y)| c.get(x, y).is_some_and(|p| zs.contains(&p))).collect::<Vec<_>>()
+            };
+            let base = 1_800_000_012_000 / (3 * t.z_ms) * (3 * t.z_ms) + 3 * t.z_ms;
+            let zs: Vec<_> = frames(base, 60).map(|ms| (ms / t.z_ms, z(ms))).collect();
+            for p in zs.windows(2) {
+                assert!(!p[0].1.is_empty());
+                assert_eq!(p[0].0 == p[1].0, p[0].1 == p[1].1, "{h:?}: the Z moves only every z_ms");
+            }
+            let white = |st: &crate::state::State, ms| {
+                let c = life_canvas(st, "calm", ms, 60, Some(life::Behaviour::Sit), h, t);
+                (0..60).flat_map(|x| (0..h.px() as i32).map(move |y| (x, y))).filter(|&(x, y)| c.get(x, y) == Some(crate::pixel::WHITE)).count()
+            };
+            let base = 1_800_000_000_000 / t.twinkle_ms * t.twinkle_ms;
+            let plain: Vec<usize> = frames(base, 42).map(|ms| white(&st, ms)).collect();
+            let mut shiny = st.clone();
+            shiny.shiny = true;
+            let extra: Vec<usize> = frames(base, 42).zip(&plain).map(|(ms, p)| white(&shiny, ms) - p).collect();
+            assert_eq!(extra.iter().copied().max(), Some(5), "{h:?}: {extra:?}");
+            assert_eq!((extra[0], extra[20], *extra.last().unwrap()), (1, 1, 0), "{h:?}: {extra:?}");
+        }
     }
 
     /// The statusline entry point, through a real `kitten_view`.
