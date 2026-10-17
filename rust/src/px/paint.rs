@@ -19,6 +19,11 @@ pub(crate) struct CatLook<'a> {
 /// near-black violet of the classic renderer.)
 pub(crate) const OUTLINE: Rgb = Rgb(0x5a, 0x3f, 0x8a);
 
+/// Rim light pixels, flat on every coat (blending turned light and orange coats
+/// olive). These are the cyan / magenta neons at 45% over the Tuxedo coat.
+const RIM_CYAN: Rgb = Rgb(0x18, 0x67, 0x72);
+const RIM_MAGENTA: Rgb = Rgb(0x7d, 0x12, 0x7a);
+
 /// Sprite width incl. outline, every pose and stage.
 pub(crate) const CAT_MAX_W: usize = 16;
 
@@ -77,6 +82,8 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
     let mut c = match s {
         b'.' => return None,
         b'h' | b'b' | b't' | b'r' | b'*' => b.base,
+        // Void keeps a plain muzzle: the nose pixel and eyes carry its face.
+        b'l' if b.pattern == Pattern::Void => b.base,
         b'l' | b'a' => light,
         b'i' if b.pattern == Pattern::Void => return Some(pixel::VOID_INNER_EAR),
         b'i' => return Some(pixel::INNER_EAR),
@@ -163,8 +170,8 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
         let coat: Vec<usize> = (0..w).filter(|&x| is_coat(slots[at(x, y)])).collect();
         if coat.len() >= 3 {
             let (l, r) = (at(coat[0], y), at(coat[coat.len() - 1], y));
-            out[l] = out[l].map(|c| pixel::mix(c, pixel::NEON_CYAN, 0.45));
-            out[r] = out[r].map(|c| pixel::mix(c, pixel::NEON_MAGENTA, 0.45));
+            out[l] = Some(RIM_CYAN);
+            out[r] = Some(RIM_MAGENTA);
         }
     }
 
