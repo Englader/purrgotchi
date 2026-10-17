@@ -20,7 +20,17 @@ pub fn home_dir() -> PathBuf {
 }
 
 pub fn state_dir() -> PathBuf {
-    home_dir().join(".claude").join("purrgotchi")
+    state_dir_from(env::var_os("PURR_STATE_DIR"), home_dir())
+}
+
+/// Pure twin of [`state_dir`]. A non-empty `PURR_STATE_DIR` replaces the whole
+/// `~/.claude/purrgotchi` path (dev/test backdoor — keep out of README), so
+/// tests and the mod's fixtures never have to fake HOME.
+pub(crate) fn state_dir_from(override_dir: Option<std::ffi::OsString>, home: PathBuf) -> PathBuf {
+    match override_dir {
+        Some(d) if !d.is_empty() => PathBuf::from(d),
+        _ => home.join(".claude").join("purrgotchi"),
+    }
 }
 
 pub fn state_file() -> PathBuf {
@@ -61,4 +71,34 @@ pub fn cost_sessions_file() -> PathBuf {
 
 pub fn quip_cache_file() -> PathBuf {
     state_dir().join("llm-quip.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn state_dir_defaults_under_home() {
+        assert_eq!(
+            state_dir_from(None, PathBuf::from("/h")),
+            PathBuf::from("/h").join(".claude").join("purrgotchi")
+        );
+    }
+
+    #[test]
+    fn state_dir_override_wins() {
+        assert_eq!(
+            state_dir_from(Some(OsString::from("/tmp/purr-x")), PathBuf::from("/h")),
+            PathBuf::from("/tmp/purr-x")
+        );
+    }
+
+    #[test]
+    fn state_dir_empty_override_is_ignored() {
+        assert_eq!(
+            state_dir_from(Some(OsString::new()), PathBuf::from("/h")),
+            PathBuf::from("/h").join(".claude").join("purrgotchi")
+        );
+    }
 }
