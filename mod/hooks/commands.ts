@@ -2,14 +2,15 @@
 // `/purr-hatch` (dev). Registered at session start, answered in `command.run`
 // by the binary's `--json` verbs. The model reads `text`, so it stays short.
 // The engine's module scan needs `$` passed only to plain functions.
-import type { EngineInterface, On } from 'claude-code'
+import type { EngineInterface, On, StateDollar } from 'claude-code'
 
-import { errText, isError, runJson, runRaw, TIMEOUT } from './binary'
+import { outputKey, writeOutput } from './atoms'
+import { errText, isError, okValue, runJson, runRaw, TIMEOUT } from './binary'
 import { kittenOf } from './celebrate'
 import type { CelebrateHost } from './celebrate'
 import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
-import type { ActionJson, BinaryStatus, FrameJson } from '../types'
+import type { ActionJson, BinaryStatus, FrameJson, LinesJson, Span } from '../types'
 
 export type CommandName =
   | 'purr-pet'
@@ -84,6 +85,9 @@ export function validateName(raw: string): { ok: true; name: string } | { ok: fa
   if (/\p{Cc}/u.test(name)) return { ok: false, text: "Names can't contain control characters." }
   return { ok: true, name }
 }
+
+/** `$` for handlers that also keep a printed row. */
+type Host = CelebrateHost & StateDollar
 
 type ActionOutcome = { text: string; isError: boolean; result?: ActionJson }
 
@@ -163,7 +167,7 @@ async function rename($: CelebrateHost, rt: Runtime, rawName: string) {
   return reply(o)
 }
 
-async function hatch($: CelebrateHost, rt: Runtime, rawArgs: string) {
+async function hatch($: Host, rt: Runtime, rawArgs: string) {
   const p = parseHatchArgs(rawArgs)
   if (!p.ok) return { text: p.text }
   const r = await rt.serial.run(() => runRaw($, rt.bin, ['hatch', ...p.argv], { timeoutMs: TIMEOUT.command }))
@@ -180,9 +184,63 @@ async function hatch($: CelebrateHost, rt: Runtime, rawArgs: string) {
   if (out.kind === 'json' && out.value.ok === true) {
     const f = out.value as FrameJson
     rt.kitten = kittenOf(f)
-    return { text: `Hatched ${f.name} — ${f.rarity} ${f.breed}.` }
+    const text = `Hatched ${f.name} — ${f.rarity} ${f.breed}.`
+    const card = okValue(await runJson<LinesJson>($, rt.bin, ['card', '--json'], { timeoutMs: TIMEOUT.command }))
+    await storeLines($, 'purr-hatch', text, card?.lines ?? null)
+    return { text }
   }
   return { text: 'Hatched a new kitten.' }
+}
+
+const NO_KITTEN = 'No kitten yet — it hatches on your first tool call.'
+
+/** `{name} — lv {level} {stage} {breed}, {coins}¢, bond {bond}, mood {mood}`; the numbers keep rows apart. */
+export function kittenSummary(f: FrameJson | null, fallback: string): string {
+  if (f === null) return fallback
+  return `${f.name} — lv ${f.level} ${f.stage} ${f.breed}, ${f.coins}¢, bond ${f.bond}, mood ${f.mood}`
+}
+
+type Fetched = { lines: Span[][] | null; frame: FrameJson | null; error?: { text: string; exitCode: 1 | undefined } }
+
+/** `card` or `stats` with `frame`, side by side (both read-only: no `serial`). */
+async function fetchLines($: Host, rt: Runtime, verb: 'card' | 'stats'): Promise<Fetched> {
+  const [out, fr] = await Promise.all([
+    runJson<LinesJson>($, rt.bin, [verb, '--json'], { timeoutMs: TIMEOUT.command }),
+    runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame }),
+  ])
+  const frame = okValue(fr)
+  const lines = okValue(out)
+  if (lines !== null) return { lines: lines.lines, frame }
+  if (out.kind === 'failed') {
+    debugLog($, `${verb} failed (${out.reason}): ${out.detail}`)
+    return { lines: null, frame, error: { text: UNREACHABLE, exitCode: 1 } }
+  }
+  const v = out.value
+  if (isError(v)) {
+    return v.error === 'no_kitten'
+      ? { lines: null, frame, error: { text: NO_KITTEN, exitCode: undefined } }
+      : { lines: null, frame, error: { text: v.message ?? v.detail ?? v.error, exitCode: 1 } }
+  }
+  return { lines: null, frame, error: { text: UNREACHABLE, exitCode: 1 } }
+}
+
+/** Keeps the coloured lines for the render hook. Never throws. */
+async function storeLines($: Host, command: string, text: string, lines: Span[][] | null): Promise<void> {
+  if (lines === null) return
+  try {
+    await writeOutput($, { key: outputKey(command, text), lines })
+  } catch (e) {
+    debugLog($, `${command} row not stored: ${errText(e)}`)
+  }
+}
+
+/** `/purr-card` and `/purr-stats`: a one-line summary for the model, the full thing drawn by `CommandOutput`. */
+async function showLines($: Host, rt: Runtime, verb: 'card' | 'stats') {
+  const r = await fetchLines($, rt, verb)
+  if (r.error !== undefined) return { text: r.error.text, ...(r.error.exitCode !== undefined && { exitCode: r.error.exitCode }) }
+  const text = kittenSummary(r.frame, verb === 'card' ? 'Purrgotchi card' : 'Purrgotchi stats')
+  await storeLines($, `purr-${verb}`, text, r.lines)
+  return { text }
 }
 
 /** The `.catch` of every command hook (a top-level function: the module scan needs one). */
@@ -190,7 +248,7 @@ function commandFailed() {
   return { text: UNREACHABLE, exitCode: 1 }
 }
 
-/** The `command.run` answers. `card` and `stats` arrive in Task 2.3. */
+/** The `command.run` answers. */
 export function registerCommands(on: On, rt: Runtime): void {
   const notReady = () => ({ text: NOT_READY_TEXT(rt.status), exitCode: 1 })
 
@@ -205,6 +263,12 @@ export function registerCommands(on: On, rt: Runtime): void {
   ).catch(commandFailed)
   on('command.run', { command: 'purr-rename' }, async ($, e) =>
     ready(rt) ? rename($, rt, e.args) : notReady(),
+  ).catch(commandFailed)
+  on('command.run', { command: 'purr-card' }, async $ =>
+    ready(rt) ? showLines($, rt, 'card') : notReady(),
+  ).catch(commandFailed)
+  on('command.run', { command: 'purr-stats' }, async $ =>
+    ready(rt) ? showLines($, rt, 'stats') : notReady(),
   ).catch(commandFailed)
   if (rt.options.devCommands) {
     on('command.run', { command: 'purr-hatch' }, async ($, e) =>

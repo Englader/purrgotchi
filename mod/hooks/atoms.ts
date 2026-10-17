@@ -5,13 +5,37 @@
 // string literals (not a shared const), and accepts `update` / `read` only
 // on an atom defined in the same file. So the writers (and later the readers)
 // live here too, and other modules call them instead of importing atoms.
-import { atom, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { StateDollar } from 'claude-code'
 
-import type { BinaryStatus } from '../types'
+import type { BinaryStatus, OutputEntry } from '../types'
 
 export const binaryAtom = atom({ plugin: 'purrgotchi', key: 'binary' } as const, { kind: 'unknown' } as BinaryStatus)
 
 export async function writeBinary($: StateDollar, status: BinaryStatus): Promise<void> {
   await update($, binaryAtom, () => status)
+}
+
+// Full-card rows of `/purr-card`, `/purr-stats` and `/purr-hatch`: the command's
+// one-line `text` stays what the model reads; the coloured lines are drawn by
+// the `CommandOutput` render hook, found again by `outputKey`.
+export const outputsAtom = atom({ plugin: 'purrgotchi', key: 'outputs' } as const, [] as OutputEntry[])
+
+/** The newest rows kept; older ones fall back to the engine's plain text. */
+export const OUTPUT_CAP = 20
+
+/** A row's identity: the summary carries the numbers, so a later run is a new row. */
+export function outputKey(command: string, text: string): string {
+  return `${command}\u0000${text}`
+}
+
+/** Stores a row (the newest of its key), keeping at most `OUTPUT_CAP`. */
+export async function writeOutput($: StateDollar, entry: OutputEntry): Promise<void> {
+  await update($, outputsAtom, list => [...list.filter(x => x.key !== entry.key), entry].slice(-OUTPUT_CAP))
+}
+
+/** The stored row for a command's printed `text`, or null. In a render, this subscribes it. */
+export async function readOutput($: StateDollar, command: string, text: string): Promise<OutputEntry | null> {
+  const key = outputKey(command, text)
+  return (await read($, outputsAtom)).find(x => x.key === key) ?? null
 }

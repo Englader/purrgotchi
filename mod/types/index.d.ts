@@ -117,10 +117,14 @@ export type BinaryStatus =
   | { kind: 'missing'; detail: string }
   | { kind: 'outdated'; version: string }
 
+/** One printed card/stats row: the coloured lines behind a command's summary text. */
+export type OutputEntry = { key: string; lines: Span[][] }
+
 declare module 'claude-code' {
   interface PluginState {
     purrgotchi: {
       binary: BinaryStatus
+      outputs: OutputEntry[]
     }
   }
 }

@@ -170,6 +170,11 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     spies.logs.push(e.text)
     return { value: undefined }
   })
+  // The engine's own row (what `next(e)` reaches): the command's plain text.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: [e.component === 'CommandOutput' ? e.props.text : ''] })
+  })
   on('settings.read', () =>
     o.settings === 'deny' ? { deny: 'settings unavailable' } : { value: { ...(o.settings ?? {}) } },
   )

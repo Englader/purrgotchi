@@ -4,6 +4,7 @@ import type { Register } from 'claude-code'
 import { registerCommands } from './commands'
 import { registerFeed } from './feed'
 import { gameEnabled, readOptions } from './options'
+import { registerOutputs } from './output'
 import { createRuntime } from './runtime'
 import { onSessionStart } from './session'
 import { registerTurn } from './turn'
@@ -25,6 +26,7 @@ export const register: Register = (on, raw) => {
   })
 
   registerCommands(on, rt)
+  registerOutputs(on)
   registerFeed(on, rt)
   registerTurn(on, rt)
 }
