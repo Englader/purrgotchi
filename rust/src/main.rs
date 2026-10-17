@@ -127,7 +127,7 @@ fn main() {
                 process::exit(0);
             }
             Some("sheet") => {
-                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
+                let (breed, _) = dev_look(&args);
                 println!("{}", px::sheet(breed, json));
                 process::exit(0);
             }
@@ -137,15 +137,13 @@ fn main() {
                     process::exit(2);
                 };
                 let width = dev_width(&args);
-                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
-                let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
+                let (breed, stage) = dev_look(&args);
                 println!("{}", px::scene_sheet(kind, width, breed, stage, json));
                 process::exit(0);
             }
             Some("celebrate") => {
                 let width = dev_width(&args);
-                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
-                let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
+                let (breed, stage) = dev_look(&args);
                 let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, json)) else {
                     eprintln!("usage: purrgotchi pixels celebrate levelup|young|adult|streak|centurion|veteran|master|legendary|greeting|drop|birthday [--width W] [--breed B] [--stage S] [--json]");
                     process::exit(2);
@@ -185,4 +183,9 @@ fn dev_width(args: &[String]) -> usize {
         eprintln!("--width must be at least {} (capped at {})", playground::MIN_STRIP, playground::MAX_STRIP);
         process::exit(2);
     })
+}
+
+/// `--breed` / `--stage` of the `pixels` dev verbs.
+fn dev_look(args: &[String]) -> (&str, &str) {
+    (cli::flag_value(args, "--breed").unwrap_or("Ginger"), cli::flag_value(args, "--stage").unwrap_or("adult"))
 }
