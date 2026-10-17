@@ -2,16 +2,8 @@
 //! `--advance` timers, and coexistence with the classic statusline.
 #![cfg(unix)]
 mod common;
-use common::{base_payload, base_state, keys, merge, run_json, strip_ansi, Sandbox, NOW};
+use common::{base_payload, keys, merge, run_json, strip_ansi, Sandbox, NOW};
 use serde_json::{json, Value};
-
-fn sandbox(tag: &str, patch: Value) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    let mut st = base_state();
-    merge(&mut st, patch);
-    sb.write_state(&st);
-    sb
-}
 
 fn at(sb: &Sandbox, args: &[&str], now: u64) -> std::process::Output {
     let n = now.to_string();
@@ -37,7 +29,7 @@ fn write_quip(sb: &Sandbox) {
 
 #[test]
 fn frame_json_contract() {
-    let sb = sandbox("frame_contract", json!({}));
+    let sb = Sandbox::with_state("frame_contract", json!({}));
     let (v, out) = run_json(&sb, &["frame", "--json", "--width", "60"], "");
     assert!(out.status.success());
     assert_eq!(keys(&v), ["bond", "breed", "celebration", "coins", "level", "mood", "name", "now", "ok",
@@ -59,7 +51,7 @@ fn frame_writes_nothing_and_never_locks() {
     // scheduler, and a fresh quip.
     let mut patch = levelup();
     merge(&mut patch, json!({ "scene_next_at": NOW - 1 }));
-    let sb = sandbox("frame_ro", patch);
+    let sb = Sandbox::with_state("frame_ro", patch);
     write_quip(&sb);
     let state_before = std::fs::read(sb.state.join("state.json")).unwrap();
     let before = sb.snapshot();
@@ -82,7 +74,7 @@ fn frame_without_kitten_does_not_hatch() {
 
 #[test]
 fn frame_sprite_and_speech_match_the_statusline() {
-    let sb = sandbox("frame_vs_statusline", json!({}));
+    let sb = Sandbox::with_state("frame_vs_statusline", json!({}));
     let payload = serde_json::to_string(&base_payload(sb.home.to_str().unwrap())).unwrap();
     let n = NOW.to_string();
     // statusline mutates nothing that matters here (no celebration, no quip, scene not due).
@@ -99,7 +91,7 @@ fn frame_sprite_and_speech_match_the_statusline() {
 
 #[test]
 fn frame_context_pct_drives_mood() {
-    let sb = sandbox("frame_ctx", json!({}));
+    let sb = Sandbox::with_state("frame_ctx", json!({}));
     for (pct, mood) in [("90", "panic"), ("50", "alert"), ("0", "calm"), ("250", "panic"), ("-5", "calm")] {
         let (v, _) = run_json(&sb, &["frame", "--json", "--context-pct", pct], "");
         assert_eq!(v["mood"], mood, "{pct}");
@@ -108,7 +100,7 @@ fn frame_context_pct_drives_mood() {
 
 #[test]
 fn frame_tick_controls_sprite_parity() {
-    let sb = sandbox("frame_tick", levelup());
+    let sb = Sandbox::with_state("frame_tick", levelup());
     let (a, _) = run_json(&sb, &["frame", "--json", "--tick", "0"], "");
     let (b, _) = run_json(&sb, &["frame", "--json", "--tick", "1"], "");
     assert_eq!((a["tick"].as_u64(), b["tick"].as_u64()), (Some(0), Some(1)));
@@ -121,7 +113,7 @@ fn frame_tick_controls_sprite_parity() {
 
 #[test]
 fn frame_reports_scene_only_when_it_fits() {
-    let sb = sandbox("frame_scene", json!({ "scene_kind": "BallChase", "scene_started_at": NOW - 5,
+    let sb = Sandbox::with_state("frame_scene", json!({ "scene_kind": "BallChase", "scene_started_at": NOW - 5,
                                             "scene_duration_secs": 30, "scene_seed": 7 }));
     let (v, _) = run_json(&sb, &["frame", "--json", "--width", "40"], "");
     let sc = &v["scene"];
@@ -142,7 +134,7 @@ fn frame_reports_scene_only_when_it_fits() {
 
 #[test]
 fn frame_rejects_bad_flags_with_exit_2() {
-    let sb = sandbox("frame_bad", json!({}));
+    let sb = Sandbox::with_state("frame_bad", json!({}));
     for bad in [vec!["--width", "abc"], vec!["--width"], vec!["--width", "-3"], vec!["--tick", "-1"],
                 vec!["--context-pct", "nan"], vec!["--context-pct", "inf"], vec!["--context-pct", "x"]] {
         let mut args = vec!["frame", "--json"];
@@ -158,7 +150,7 @@ fn frame_rejects_bad_flags_with_exit_2() {
 
 #[test]
 fn frame_advance_ticks_celebration_once_per_two_seconds() {
-    let sb = sandbox("frame_adv", levelup());
+    let sb = Sandbox::with_state("frame_adv", levelup());
     let remaining = |sb: &Sandbox| sb.read_state()["levelup_renders_remaining"].as_u64().unwrap();
     at(&sb, &["frame", "--json", "--advance"], NOW);
     assert_eq!(remaining(&sb), 2);
@@ -171,7 +163,7 @@ fn frame_advance_ticks_celebration_once_per_two_seconds() {
 
 #[test]
 fn statusline_and_frame_advance_in_the_same_second_tick_once() {
-    let sb = sandbox("coexist", levelup());
+    let sb = Sandbox::with_state("coexist", levelup());
     statusline_at(&sb, NOW);
     at(&sb, &["frame", "--json", "--advance"], NOW);
     assert_eq!(sb.read_state()["levelup_renders_remaining"], 2);
@@ -182,7 +174,7 @@ fn statusline_and_frame_advance_interleaved_never_double_tick() {
     // Two renderers at 1 Hz each (the classic statusline's refreshInterval and
     // the mod's pane timer), interleaved in both orders. The countdown must
     // follow wall time (one tick per CELEBRATION_TICK_SECS), not render count.
-    let sb = sandbox("coexist_interleaved", levelup());
+    let sb = Sandbox::with_state("coexist_interleaved", levelup());
     let remaining = |sb: &Sandbox| sb.read_state()["levelup_renders_remaining"].as_u64().unwrap();
     let mut seen = Vec::new();
     for dt in 0..6u64 {
@@ -205,7 +197,7 @@ fn statusline_and_frame_advance_interleaved_never_double_tick() {
 
 #[test]
 fn only_frame_advance_consumes_quips_and_runs_the_scheduler() {
-    let sb = sandbox("frame_quip", json!({ "scene_next_at": 0 }));
+    let sb = Sandbox::with_state("frame_quip", json!({ "scene_next_at": 0 }));
     write_quip(&sb);
     let (v, _) = run_json(&sb, &["frame", "--json"], "");
     assert_eq!((v["speech_source"].as_str(), v["speech"][0]["text"].as_str()), (Some("quip"), Some("hi")));
@@ -222,7 +214,7 @@ fn only_frame_advance_consumes_quips_and_runs_the_scheduler() {
 fn statusline_turn_anchor_follows_purr_now() {
     // cost.rs reads the PURR_NOW-aware clock, so renderer coexistence runs are
     // deterministic end to end (no real-clock timestamp in the turn anchor).
-    let sb = sandbox("anchor_clock", json!({}));
+    let sb = Sandbox::with_state("anchor_clock", json!({}));
     statusline_at(&sb, NOW);
     assert_eq!(std::fs::read_to_string(sb.state.join("turn-start-cost.txt")).unwrap(),
                format!("0\n{NOW}.000000\n"));

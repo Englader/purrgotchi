@@ -119,16 +119,7 @@ pub fn feed_cmd(count: u32, json: bool) -> i32 {
     if !json {
         return 0; // classic feed stays silent, success or not
     }
-    match res {
-        Ok(j) => {
-            crate::json::print(&j);
-            0
-        }
-        Err(e) => {
-            crate::json::print_error("state_unavailable", &format!("feed: {e}"));
-            1
-        }
-    }
+    crate::json::print_or_unavailable("feed", res)
 }
 
 fn apply_feed_dispatch(
@@ -197,21 +188,8 @@ pub fn turn_cmd(json: bool) -> i32 {
     if !json {
         return 0;
     }
-    match greeted {
-        Ok(celebration) => {
-            crate::json::print(&crate::json::TurnJson {
-                v: crate::json::V,
-                ok: true,
-                celebration,
-                react_spawned,
-            });
-            0
-        }
-        Err(e) => {
-            crate::json::print_error("state_unavailable", &format!("turn: {e}"));
-            1
-        }
-    }
+    let res = greeted.map(|celebration| crate::json::TurnJson { v: crate::json::V, ok: true, celebration, react_spawned });
+    crate::json::print_or_unavailable("turn", res)
 }
 
 fn maybe_spawn_react(payload: &crate::payload::Payload) -> bool {
@@ -250,23 +228,24 @@ fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) -> Option<Cele
     greeted
 }
 
-/// Returns the exit code: 1 under `--json` (ok:false), unchanged 0 for classic.
-fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) -> i32 {
-    let text = format!("{cmd}: could not update state: {e}");
+/// stderr line, plus an `ActionJson` with result "error" under `--json`.
+/// Print-only: callers differ on the exit code.
+fn action_error(text: &str, json: bool) {
     eprintln!("{text}");
     if json {
-        crate::json::print(&ActionJson::new(false, "error", &text));
+        crate::json::print(&ActionJson::new(false, "error", text));
     }
+}
+
+/// Returns the exit code: 1 under `--json` (ok:false), unchanged 0 for classic.
+fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) -> i32 {
+    action_error(&format!("{cmd}: could not update state: {e}"), json);
     i32::from(json)
 }
 
 pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
     if new_name.is_empty() {
-        let text = "rename: name cannot be empty";
-        eprintln!("{text}");
-        if json {
-            crate::json::print(&ActionJson::new(false, "error", text));
-        }
+        action_error("rename: name cannot be empty", json);
         return 1;
     }
     match state::locked_update(|s| s.name = new_name.to_string()) {
@@ -282,11 +261,7 @@ pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
             0
         }
         Err(e) => {
-            let text = format!("rename: failed to write state.json: {e}");
-            eprintln!("{text}");
-            if json {
-                crate::json::print(&ActionJson::new(false, "error", &text));
-            }
+            action_error(&format!("rename: failed to write state.json: {e}"), json);
             1
         }
     }
@@ -531,21 +506,17 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
     }
 }
 
-pub fn stats_cmd(json: bool) {
-    let s = match crate::state::load_for_read() {
-        Ok(s) => s,
-        Err(fail) => {
-            crate::json::state_read_error(fail, json);
-            std::process::exit(1);
-        }
-    };
+/// Exit code: 1 when the kitten could not be loaded.
+pub fn stats_cmd(json: bool) -> i32 {
+    let Some(s) = crate::json::load_for_read(json) else { return 1 };
     let text = format_stats_card(&s, state::now_secs());
     if json {
-        crate::json::print(&crate::json::LinesJson { v: crate::json::V, ok: true, lines: crate::span::lines_json(&text) });
+        crate::json::print_lines(&text);
     } else {
         // --plain is accepted and identical: the stats card has never had colour.
         print!("{text}");
     }
+    0
 }
 
 fn format_stats_card(s: &crate::state::State, now: u64) -> String {

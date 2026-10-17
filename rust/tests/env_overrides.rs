@@ -3,7 +3,7 @@
 #![cfg(unix)]
 mod common;
 use common::{base_state, Sandbox};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn real_now() -> u64 {
@@ -17,12 +17,8 @@ fn assert_real_clock(t: u64) {
 /// Run a bare command in the sandbox HOME with NO PURR_STATE_DIR / PURR_NOW
 /// unless `extra` supplies them.
 fn run_bare(sb: &Sandbox, args: &[&str], extra: &[(&str, &str)], cwd: &std::path::Path) {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_purrgotchi"));
-    c.args(args)
-        .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("HOME", &sb.home)
-        .env("USERPROFILE", &sb.home)
+    let mut c = sb.cmd(args);
+    c.env_remove("PURR_STATE_DIR")
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

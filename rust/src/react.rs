@@ -393,10 +393,7 @@ struct QuipPromptInput {
 }
 
 fn quip_bad_input(msg: &str, json: bool) -> i32 {
-    eprintln!("{msg}");
-    if json {
-        crate::json::print_error("bad_input", msg);
-    }
+    crate::json::report("bad_input", msg, json);
     2
 }
 
@@ -404,17 +401,11 @@ fn quip_bad_input(msg: &str, json: bool) -> i32 {
 /// file: the mod passes `{last_user,last_assistant}` on stdin (spec §4.6).
 pub fn quip_prompt_cmd(json: bool) -> i32 {
     use std::io::{IsTerminal, Read};
-    let s = match state::load_for_read() {
-        Ok(s) if !s.breed.is_empty() => s,
-        Ok(_) => {
-            crate::json::no_kitten(json);
-            return 1;
-        }
-        Err(fail) => {
-            crate::json::state_read_error(fail, json);
-            return 1;
-        }
-    };
+    let Some(s) = crate::json::load_for_read(json) else { return 1 };
+    if s.breed.is_empty() {
+        crate::json::no_kitten(json);
+        return 1;
+    }
     let mut bytes = Vec::new();
     if !std::io::stdin().is_terminal()
         && let Err(e) = std::io::stdin().take(1 << 20).read_to_end(&mut bytes)
@@ -458,11 +449,7 @@ pub fn quip_prompt_cmd(json: bool) -> i32 {
 pub fn quip_store_cmd(text: &str, json: bool) -> i32 {
     let q = sanitize_quip(text);
     if q.is_empty() {
-        let m = "quip-store: quip is empty after sanitizing";
-        eprintln!("{m}");
-        if json {
-            crate::json::print_error("empty_quip", m);
-        }
+        crate::json::report("empty_quip", "quip-store: quip is empty after sanitizing", json);
         return 1;
     }
     match quip_cache::write(&q) {
@@ -475,11 +462,7 @@ pub fn quip_store_cmd(text: &str, json: bool) -> i32 {
             0
         }
         Err(e) => {
-            let m = format!("quip-store: {e}");
-            eprintln!("{m}");
-            if json {
-                crate::json::print_error("write_failed", &m);
-            }
+            crate::json::report("write_failed", &format!("quip-store: {e}"), json);
             1
         }
     }

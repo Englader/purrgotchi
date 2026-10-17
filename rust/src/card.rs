@@ -14,26 +14,22 @@ fn stage_label(level: u64) -> &'static str {
     }
 }
 
-pub fn run_cmd(json: bool, plain: bool) {
-    // Deliberately uses `state::load()` rather than `hatch::load_or_hatch()`:
+/// Exit code: 1 when the kitten could not be loaded.
+pub fn run_cmd(json: bool, plain: bool) -> i32 {
+    // Deliberately a read-only load rather than `hatch::load_or_hatch()`:
     // `card` is a read-only inspection command, so a missing state should error
     // loudly instead of silently auto-hatching (which would feel surprising
     // from a command whose contract is "show me my cat").
-    let s = match crate::state::load_for_read() {
-        Ok(s) => s,
-        Err(fail) => {
-            crate::json::state_read_error(fail, json);
-            std::process::exit(1);
-        }
-    };
+    let Some(s) = crate::json::load_for_read(json) else { return 1 };
     let text = render(&s);
     if json {
-        crate::json::print(&crate::json::LinesJson { v: crate::json::V, ok: true, lines: crate::span::lines_json(&text) });
+        crate::json::print_lines(&text);
     } else if plain {
         print!("{}", crate::span::strip_ansi(&text));
     } else {
         print!("{text}");
     }
+    0
 }
 
 pub fn render(s: &State) -> String {

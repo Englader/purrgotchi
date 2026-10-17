@@ -43,51 +43,32 @@ fn main() {
 
     debug::log(&format!("invoke cmd={cmd}"));
 
+    let json = cli::has_flag(&args, "--json");
     match cmd {
         "statusline" => {
             statusline::run();
             process::exit(0);
         }
         "feed" => {
-            let json = cli::has_flag(&args, "--json");
-            let count = if cli::has_flag(&args, "--count") {
-                match cli::flag_value(&args, "--count").and_then(cli::parse_count) {
-                    Some(n) => n,
-                    None => {
-                        bad_args("feed", &format!("--count must be an integer in 1..={}", cli::MAX_FEED_COUNT), json);
-                        process::exit(2);
-                    }
+            let count = match cli::opt_value(&args, "--count").map(|v| v.map_or(Some(1), cli::parse_count)) {
+                Ok(Some(n)) => n,
+                _ => {
+                    bad_args("feed", &format!("--count must be an integer in 1..={}", cli::MAX_FEED_COUNT), json);
+                    process::exit(2);
                 }
-            } else {
-                1
             };
             process::exit(hooks::feed_cmd(count, json));
         }
-        "turn" => {
-            process::exit(hooks::turn_cmd(cli::has_flag(&args, "--json")));
-        }
+        "turn" => process::exit(hooks::turn_cmd(json)),
         "rename" => {
-            let json = cli::has_flag(&args, "--json");
             let name = cli::positionals(&args, &["--json"], &[]).first().copied().unwrap_or("");
             process::exit(hooks::rename_cmd(name, json));
         }
-        "card" => {
-            card::run_cmd(cli::has_flag(&args, "--json"), cli::has_flag(&args, "--plain"));
-            process::exit(0);
-        }
-        "pet" => {
-            process::exit(hooks::pet_cmd(cli::has_flag(&args, "--json")));
-        }
-        "play" => {
-            process::exit(hooks::play_cmd(cli::has_flag(&args, "--json")));
-        }
-        "treat" => {
-            process::exit(hooks::treat_cmd(cli::has_flag(&args, "--json")));
-        }
-        "stats" => {
-            hooks::stats_cmd(cli::has_flag(&args, "--json"));
-            process::exit(0);
-        }
+        "card" => process::exit(card::run_cmd(json, cli::has_flag(&args, "--plain"))),
+        "pet" => process::exit(hooks::pet_cmd(json)),
+        "play" => process::exit(hooks::play_cmd(json)),
+        "treat" => process::exit(hooks::treat_cmd(json)),
+        "stats" => process::exit(hooks::stats_cmd(json)),
         "react" => {
             let transcript_path = args.get(2).map(String::as_str).unwrap_or("");
             react::run(transcript_path);
@@ -133,13 +114,12 @@ fn main() {
         "frame" => match frame::parse_opts(&args) {
             Ok(opts) => process::exit(frame::run(&opts)),
             Err(msg) => {
-                bad_args("frame", &msg, cli::has_flag(&args, "--json"));
+                bad_args("frame", &msg, json);
                 eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance]");
                 process::exit(2);
             }
         },
         "cost" => {
-            let json = cli::has_flag(&args, "--json");
             let session = cli::flag_value(&args, "--session").unwrap_or("");
             let total = cli::flag_value(&args, "--total")
                 .and_then(|v| v.trim().parse::<f64>().ok())
@@ -158,9 +138,8 @@ fn main() {
                 }
             }
         }
-        "quip-prompt" => process::exit(react::quip_prompt_cmd(cli::has_flag(&args, "--json"))),
+        "quip-prompt" => process::exit(react::quip_prompt_cmd(json)),
         "quip-store" => {
-            let json = cli::has_flag(&args, "--json");
             let text = cli::positionals(&args, &["--json"], &[]).join(" ");
             process::exit(react::quip_store_cmd(&text, json));
         }

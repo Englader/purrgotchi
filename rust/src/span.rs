@@ -41,14 +41,14 @@ pub fn width(spans: &[Span]) -> usize {
     spans.iter().map(Span::width).sum()
 }
 
-// Consumed by the --json printers (Task 4+); test-only until then.
-#[allow(dead_code)]
 pub fn to_plain(spans: &[Span]) -> String {
     spans.iter().map(|s| s.text.as_str()).collect()
 }
 
 pub fn attrs_ansi(attrs: &[Attr]) -> String {
-    attrs.iter().map(|a| a.ansi()).collect()
+    let mut out = String::new();
+    attrs.iter().for_each(|a| a.write_ansi(&mut out));
+    out
 }
 
 /// ANSI printer. Unstyled → raw text. Styled → attrs (in order) + text +
@@ -60,7 +60,7 @@ pub fn to_ansi(spans: &[Span]) -> String {
             out.push_str(&s.text);
             continue;
         }
-        out.push_str(&attrs_ansi(&s.attrs));
+        s.attrs.iter().for_each(|a| a.write_ansi(&mut out));
         out.push_str(&s.text);
         out.push_str(C_RESET);
     }
@@ -68,8 +68,6 @@ pub fn to_ansi(spans: &[Span]) -> String {
 }
 
 /// JSON wire form (spec §3.1): `{ "text", "fg"?: "#rrggbb", "bold"?: true, "dim"?: true }`.
-/// Consumed by the --json printers (Task 4+); test-only until then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonSpan {
     pub text: String,
@@ -96,7 +94,6 @@ impl From<&Span> for JsonSpan {
 }
 
 /// JSON printer.
-#[allow(dead_code)]
 pub fn to_json(spans: &[Span]) -> Vec<JsonSpan> {
     spans.iter().map(JsonSpan::from).collect()
 }

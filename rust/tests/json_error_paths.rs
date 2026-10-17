@@ -7,18 +7,6 @@ use common::{base_state, run_json, Sandbox};
 use serde_json::{json, Value};
 
 /// state.json as a directory: read() fails with something other than NotFound.
-fn unreadable(tag: &str) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    std::fs::create_dir_all(sb.state.join("state.json")).unwrap();
-    sb
-}
-
-fn corrupt(tag: &str) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    std::fs::write(sb.state.join("state.json"), "{not json").unwrap();
-    sb
-}
-
 const READ_ONLY: [&[&str]; 5] = [
     &["frame", "--json"],
     &["stats", "--json"],
@@ -30,7 +18,7 @@ const READ_ONLY: [&[&str]; 5] = [
 #[test]
 fn read_only_commands_report_unreadable_state_as_state_unavailable() {
     for args in READ_ONLY {
-        let sb = unreadable("ro_unreadable");
+        let sb = Sandbox::unreadable("ro_unreadable");
         let (v, out) = run_json(&sb, args, "");
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         assert_eq!((v["ok"].as_bool(), v["error"].as_str()), (Some(false), Some("state_unavailable")), "{args:?}");
@@ -41,7 +29,7 @@ fn read_only_commands_report_unreadable_state_as_state_unavailable() {
 #[test]
 fn read_only_commands_report_corrupt_state_as_state_corrupt() {
     for args in READ_ONLY {
-        let sb = corrupt("ro_corrupt");
+        let sb = Sandbox::corrupt("ro_corrupt");
         let (v, out) = run_json(&sb, args, "");
         assert_eq!(out.status.code(), Some(1), "{args:?}");
         assert_eq!(v["error"], "state_corrupt", "{args:?}");
@@ -63,7 +51,7 @@ fn read_only_commands_keep_no_kitten_for_genuinely_missing_state() {
 #[test]
 fn classic_stats_and_card_still_exit_1_on_unreadable_state() {
     for cmd in ["stats", "card"] {
-        let sb = unreadable("classic_unreadable");
+        let sb = Sandbox::unreadable("classic_unreadable");
         let out = sb.run(&[cmd], "", &[]);
         assert_eq!(out.status.code(), Some(1), "{cmd}");
         assert!(out.stdout.is_empty(), "{cmd}");
@@ -120,12 +108,12 @@ fn quip_prompt_rejects_invalid_utf8_stdin() {
 #[test]
 fn json_error_results_exit_1_for_every_command_but_classic_hooks_stay_0() {
     for cmd in ["feed", "turn", "pet", "play", "treat"] {
-        let sb = unreadable("exit_json");
+        let sb = Sandbox::unreadable("exit_json");
         let (v, out) = run_json(&sb, &[cmd, "--json"], "{}");
         assert_eq!(v["ok"], false, "{cmd}");
         assert_eq!(out.status.code(), Some(1), "{cmd} --json");
 
-        let sb = unreadable("exit_classic");
+        let sb = Sandbox::unreadable("exit_classic");
         let out = sb.run(&[cmd], "{}", &[]);
         assert_eq!(out.status.code(), Some(0), "{cmd} classic keeps exit 0");
     }

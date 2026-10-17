@@ -20,12 +20,7 @@ pub struct FrameOpts {
 }
 
 pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
-    fn value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
-        if !crate::cli::has_flag(args, flag) {
-            return Ok(None);
-        }
-        crate::cli::flag_value(args, flag).map(Some).ok_or_else(|| format!("{flag} needs a value"))
-    }
+    use crate::cli::opt_value as value;
     let width = value(args, "--width")?
         .map(|v| v.trim().parse::<usize>().map_err(|_| format!("--width must be a non-negative integer, got {v:?}")))
         .transpose()?;
@@ -47,13 +42,7 @@ pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
 
 pub fn run(opts: &FrameOpts) -> i32 {
     // Read-only: never load_or_hatch (it would create state.json).
-    let st = match state::load_for_read() {
-        Ok(st) => st,
-        Err(fail) => {
-            crate::json::state_read_error(fail, true);
-            return 1;
-        }
-    };
+    let Some(st) = crate::json::load_for_read(true) else { return 1 };
     let now = state::now_secs();
     let tick = opts.tick.unwrap_or(now);
     let forced_scene = crate::playground::force_scene();

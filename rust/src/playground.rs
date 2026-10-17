@@ -276,7 +276,7 @@ impl Canvas {
             let mut cur: Option<u8> = None;
             for &(ch, col) in &self.cells[y * self.w..(y + 1) * self.w] {
                 if cur != Some(col) {
-                    row.push(Span::new(String::new(), &attrs_for(col)));
+                    row.push(Span { text: String::new(), attrs: attrs_for(col) });
                     cur = Some(col);
                 }
                 row.last_mut().expect("pushed above").text.push(ch);

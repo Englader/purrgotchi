@@ -1,14 +1,6 @@
 mod common;
-use common::{base_state, merge, run_json, strip_ansi, Sandbox, NOW};
+use common::{run_json, strip_ansi, Sandbox, NOW};
 use serde_json::{json, Value};
-
-fn sandbox(tag: &str, patch: Value) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    let mut st = base_state();
-    merge(&mut st, patch);
-    sb.write_state(&st);
-    sb
-}
 
 fn line_text(line: &Value) -> String {
     line.as_array().unwrap().iter().map(|s| s["text"].as_str().unwrap()).collect()
@@ -21,7 +13,7 @@ fn classic(sb: &Sandbox, args: &[&str]) -> String {
 
 #[test]
 fn stats_json_lines_match_the_text_card_and_are_unstyled() {
-    let sb = sandbox("stats", json!({}));
+    let sb = Sandbox::with_state("stats", json!({}));
     let text = classic(&sb, &["stats"]);
     let (v, _) = run_json(&sb, &["stats", "--json"], "");
     let lines = v["lines"].as_array().unwrap();
@@ -37,7 +29,7 @@ fn stats_json_lines_match_the_text_card_and_are_unstyled() {
 
 #[test]
 fn card_json_colours_the_name_by_rarity() {
-    let sb = sandbox("card", json!({}));
+    let sb = Sandbox::with_state("card", json!({}));
     let text = classic(&sb, &["card"]);
     let (v, _) = run_json(&sb, &["card", "--json"], "");
     let lines = v["lines"].as_array().unwrap();
@@ -52,7 +44,7 @@ fn card_json_colours_the_name_by_rarity() {
 
 #[test]
 fn card_plain_is_the_card_without_escapes() {
-    let sb = sandbox("card_plain", json!({}));
+    let sb = Sandbox::with_state("card_plain", json!({}));
     let text = classic(&sb, &["card"]);
     let plain = classic(&sb, &["card", "--plain"]);
     assert!(!plain.contains('\x1b'));
@@ -73,7 +65,7 @@ fn stats_and_card_json_without_kitten_exit_1_with_error() {
 
 #[test]
 fn hostile_name_survives_stats_json() {
-    let sb = sandbox("stats_hostile", json!({ "name": "Zoë \"the\" \\ ✦ \u{1b}[31m" }));
+    let sb = Sandbox::with_state("stats_hostile", json!({ "name": "Zoë \"the\" \\ ✦ \u{1b}[31m" }));
     let (v, _) = run_json(&sb, &["stats", "--json"], "");
     assert!(line_text(&v["lines"][0]).contains("Zoë \"the\" \\ ✦"));
 }

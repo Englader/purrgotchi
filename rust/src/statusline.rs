@@ -556,12 +556,16 @@ fn read_git_branch(cwd: &str) -> String {
     }
 }
 
-#[cfg(windows)]
 fn local_hour() -> u32 {
-    if let Some(n) = state::now_override() {
+    match state::now_override() {
         // Deterministic PEAK label under PURR_NOW (tests): UTC hour, no `date` spawn.
-        return ((n / 3600) % 24) as u32;
+        Some(n) => ((n / 3600) % 24) as u32,
+        None => os_local_hour(),
     }
+}
+
+#[cfg(windows)]
+fn os_local_hour() -> u32 {
     // Win32 type name — intentional upper-case for FFI fidelity.
     #[allow(clippy::upper_case_acronyms)]
     #[repr(C)]
@@ -578,11 +582,7 @@ fn local_hour() -> u32 {
 }
 
 #[cfg(not(windows))]
-fn local_hour() -> u32 {
-    if let Some(n) = state::now_override() {
-        // Deterministic PEAK label under PURR_NOW (tests): UTC hour, no `date` spawn.
-        return ((n / 3600) % 24) as u32;
-    }
+fn os_local_hour() -> u32 {
     // std has no timezone database; ask the system. Falls back to UTC (the
     // old code hardcoded UTC+1, which was wrong everywhere else).
     if let Ok(out) = std::process::Command::new("date").arg("+%H").output()

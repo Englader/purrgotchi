@@ -28,6 +28,21 @@ pub fn print_error(code: &str, message: &str) {
     print(&ErrorJson { v: V, ok: false, error: code.to_string(), message: message.to_string() });
 }
 
+/// Hook commands under `--json`: print the result (exit 0), or a
+/// `state_unavailable` error prefixed with `cmd` (exit 1).
+pub fn print_or_unavailable<T: Serialize, E: std::fmt::Display>(cmd: &str, res: Result<T, E>) -> i32 {
+    match res {
+        Ok(j) => {
+            print(&j);
+            0
+        }
+        Err(e) => {
+            print_error("state_unavailable", &format!("{cmd}: {e}"));
+            1
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LinesJson {
     pub v: u32,
@@ -35,14 +50,25 @@ pub struct LinesJson {
     pub lines: Vec<Vec<crate::span::JsonSpan>>,
 }
 
-pub const NO_KITTEN: &str = "No kitten hatched yet. Run: purrgotchi hatch";
+/// The classic `{v,ok,lines}` print for multi-line text renderers (card, stats).
+pub fn print_lines(text: &str) {
+    print(&LinesJson { v: V, ok: true, lines: crate::span::lines_json(text) });
+}
 
-/// Classic stderr line, plus the error JSON in --json mode. Caller exits 1.
-pub fn no_kitten(json: bool) {
-    eprintln!("{NO_KITTEN}");
+/// Classic stderr line, plus the error JSON in --json mode. Print-only: each
+/// caller keeps its own exit code.
+pub fn report(code: &str, message: &str, json: bool) {
+    eprintln!("{message}");
     if json {
-        print_error("no_kitten", NO_KITTEN);
+        print_error(code, message);
     }
+}
+
+const NO_KITTEN: &str = "No kitten hatched yet. Run: purrgotchi hatch";
+
+/// Caller exits 1.
+pub fn no_kitten(json: bool) {
+    report("no_kitten", NO_KITTEN, json);
 }
 
 /// Read-only commands (frame/stats/card/cost/quip-prompt) when the kitten
@@ -56,10 +82,13 @@ pub fn state_read_error(fail: crate::state::ReadFail, json: bool) {
         ReadFail::Unreadable => ("state_unavailable", "state.json is temporarily unreadable; try again"),
         ReadFail::Corrupt => ("state_corrupt", "state.json is corrupt (not valid v2 state)"),
     };
-    eprintln!("{msg}");
-    if json {
-        print_error(code, msg);
-    }
+    report(code, msg, json);
+}
+
+/// `state::load_for_read`, reporting the failure via [`state_read_error`].
+/// None → the caller exits 1.
+pub fn load_for_read(json: bool) -> Option<crate::state::State> {
+    crate::state::load_for_read().map_err(|fail| state_read_error(fail, json)).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

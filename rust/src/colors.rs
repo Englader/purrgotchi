@@ -1,17 +1,26 @@
+// ANSI twins of the `Rgb` palette below. Runtime code prints through `Rgb`/`Attr`;
+// the twins nothing else uses any more are kept test-only as byte pins.
+#[cfg(test)]
 pub const C_CYAN: &str = "\x1b[38;2;10;189;198m";
 pub const C_PINK: &str = "\x1b[38;2;234;0;217m";
 pub const C_MAGENTA: &str = "\x1b[38;2;113;28;145m";
 pub const C_YELLOW: &str = "\x1b[38;2;243;243;27m";
+#[cfg(test)]
 pub const C_GREEN: &str = "\x1b[38;2;87;236;166m";
+#[cfg(test)]
 pub const C_RED: &str = "\x1b[38;2;255;84;104m";
 pub const C_DIM: &str = "\x1b[2m";
 pub const C_BOLD: &str = "\x1b[1m";
 pub const C_RESET: &str = "\x1b[0m";
 
+#[cfg(test)]
 pub const C_PURPLE: &str = "\x1b[38;2;170;100;255m";
+#[cfg(test)]
 pub const C_GOLD:   &str = "\x1b[38;2;255;200;60m";
+#[cfg(test)]
 pub const C_BLUE:   &str = "\x1b[38;2;80;150;255m";
 
+#[cfg(test)]
 pub const RAINBOW_HUES: [&str; 6] = [
     C_RED,
     C_YELLOW,
@@ -26,13 +35,12 @@ pub const RAINBOW_HUES: [&str; 6] = [
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 impl Rgb {
-    // Consumed by the --json printers (Task 4+); test-only until then.
-    #[allow(dead_code)]
     pub fn hex(self) -> String {
         format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
     }
+    #[cfg(test)]
     pub fn ansi(self) -> String {
-        format!("\x1b[38;2;{};{};{}m", self.0, self.1, self.2)
+        Attr::Fg(self).ansi()
     }
 }
 
@@ -56,11 +64,22 @@ pub enum Attr {
 }
 
 impl Attr {
+    #[cfg(test)]
     pub fn ansi(self) -> String {
+        let mut s = String::new();
+        self.write_ansi(&mut s);
+        s
+    }
+
+    /// Append this attribute's SGR escape (hot path: no temporary String).
+    pub fn write_ansi(self, out: &mut String) {
+        use std::fmt::Write;
         match self {
-            Attr::Fg(c) => c.ansi(),
-            Attr::Bold => C_BOLD.to_string(),
-            Attr::Dim => C_DIM.to_string(),
+            Attr::Fg(Rgb(r, g, b)) => {
+                let _ = write!(out, "\x1b[38;2;{r};{g};{b}m");
+            }
+            Attr::Bold => out.push_str(C_BOLD),
+            Attr::Dim => out.push_str(C_DIM),
         }
     }
 }
@@ -76,7 +95,7 @@ pub fn rarity_rgb(rarity: &str, now: i64) -> Rgb {
     }
 }
 
-/// Span-attribute twin of [`rarity_color`]; prints byte-identically (tested).
+/// Rarity colour as span attributes; [`rarity_color`] is its ANSI print.
 pub fn rarity_attrs(rarity: &str, shiny: bool, now: i64) -> Vec<Attr> {
     let base = Attr::Fg(rarity_rgb(rarity, now));
     if shiny {
@@ -89,24 +108,11 @@ pub fn rarity_attrs(rarity: &str, shiny: bool, now: i64) -> Vec<Attr> {
 
 /// Return an ANSI prefix for the kitten's name / sprite based on rarity.
 ///
-/// Legendary cycles through `RAINBOW_HUES` by `now % 6`.
+/// Legendary cycles through the rainbow hues by `now % 6`.
 /// When `shiny`, the prefix is preceded by `C_BOLD` (even `now`) or `C_DIM` (odd `now`).
 /// Unknown rarity falls back to `C_CYAN`.
 pub fn rarity_color(rarity: &str, shiny: bool, now: i64) -> String {
-    let base = match rarity {
-        "common"    => C_CYAN,
-        "uncommon"  => C_GREEN,
-        "rare"      => C_PURPLE,
-        "epic"      => C_GOLD,
-        "legendary" => RAINBOW_HUES[now.rem_euclid(6) as usize],
-        _           => C_CYAN,
-    };
-    if shiny {
-        let shimmer = if now.rem_euclid(2) == 0 { C_BOLD } else { C_DIM };
-        format!("{shimmer}{base}")
-    } else {
-        base.to_string()
-    }
+    crate::span::attrs_ansi(&rarity_attrs(rarity, shiny, now))
 }
 
 #[cfg(test)]
@@ -221,12 +227,23 @@ mod tests {
     }
 
     #[test]
-    fn rarity_attrs_print_exactly_like_rarity_color() {
+    fn rarity_color_prints_exactly_like_the_c_constant_table() {
         for r in ["common", "uncommon", "rare", "epic", "legendary", "", "garbage"] {
             for shiny in [false, true] {
                 for now in -7i64..14 {
-                    let printed: String = rarity_attrs(r, shiny, now).into_iter().map(Attr::ansi).collect();
-                    assert_eq!(printed, rarity_color(r, shiny, now), "{r} shiny={shiny} now={now}");
+                    let base = match r {
+                        "uncommon" => C_GREEN,
+                        "rare" => C_PURPLE,
+                        "epic" => C_GOLD,
+                        "legendary" => RAINBOW_HUES[now.rem_euclid(6) as usize],
+                        _ => C_CYAN,
+                    };
+                    let shimmer = match (shiny, now.rem_euclid(2)) {
+                        (false, _) => "",
+                        (true, 0) => C_BOLD,
+                        (true, _) => C_DIM,
+                    };
+                    assert_eq!(rarity_color(r, shiny, now), format!("{shimmer}{base}"), "{r} shiny={shiny} now={now}");
                 }
             }
         }

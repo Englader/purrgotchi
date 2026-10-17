@@ -13,6 +13,14 @@ pub fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.get(i + 1).map(String::as_str)
 }
 
+/// `Ok(None)` when `flag` is absent, `Err` when it is present without a value.
+pub fn opt_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    if !has_flag(args, flag) {
+        return Ok(None);
+    }
+    flag_value(args, flag).map(Some).ok_or_else(|| format!("{flag} needs a value"))
+}
+
 /// Positional args after the subcommand. Only the listed flags count as flags
 /// (value flags also swallow the next arg); any other dash-word stays
 /// positional, so `rename -Kitty` keeps working as it always has.

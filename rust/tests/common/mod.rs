@@ -34,6 +34,29 @@ impl Sandbox {
         Sandbox { root, home, state }
     }
 
+    /// A sandbox holding `base_state()` with `patch` merged over it.
+    pub fn with_state(tag: &str, patch: Value) -> Self {
+        let sb = Sandbox::new(tag);
+        let mut st = base_state();
+        merge(&mut st, patch);
+        sb.write_state(&st);
+        sb
+    }
+
+    /// state.json is a directory: reads fail with something other than NotFound.
+    pub fn unreadable(tag: &str) -> Self {
+        let sb = Sandbox::new(tag);
+        std::fs::create_dir_all(sb.state.join("state.json")).unwrap();
+        sb
+    }
+
+    /// state.json exists but is not valid JSON.
+    pub fn corrupt(tag: &str) -> Self {
+        let sb = Sandbox::new(tag);
+        std::fs::write(sb.state.join("state.json"), "{not json").unwrap();
+        sb
+    }
+
     pub fn cmd(&self, args: &[&str]) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_purrgotchi"));
         c.args(args)

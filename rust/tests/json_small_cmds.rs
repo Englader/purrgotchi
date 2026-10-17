@@ -1,15 +1,7 @@
 #![cfg(unix)]
 mod common;
-use common::{base_payload, base_state, keys, merge, run_json, strip_ansi, Sandbox, NOW};
+use common::{base_payload, keys, run_json, strip_ansi, Sandbox, NOW};
 use serde_json::{json, Value};
-
-fn sandbox(tag: &str, patch: Value) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    let mut st = base_state();
-    merge(&mut st, patch);
-    sb.write_state(&st);
-    sb
-}
 
 fn approx(v: &Value, want: f64) {
     let got = v.as_f64().unwrap();
@@ -18,7 +10,7 @@ fn approx(v: &Value, want: f64) {
 
 #[test]
 fn cost_credits_only_new_spend_per_session() {
-    let sb = sandbox("cost", json!({}));
+    let sb = Sandbox::with_state("cost", json!({}));
     let (v, _) = run_json(&sb, &["cost", "--session", "s1", "--total", "0.5", "--json"], "");
     assert_eq!(keys(&v), ["credit", "lifetime_cost_usd", "ok", "v"]);
     approx(&v["credit"], 0.5);
@@ -34,7 +26,7 @@ fn cost_credits_only_new_spend_per_session() {
 
 #[test]
 fn cost_rejects_bad_arguments() {
-    let sb = sandbox("cost_bad", json!({}));
+    let sb = Sandbox::with_state("cost_bad", json!({}));
     for args in [
         vec!["cost", "--total", "1"], vec!["cost", "--session", "s1"],
         vec!["cost", "--session", "s1", "--total", "-1"], vec!["cost", "--session", "s1", "--total", "nan"],
@@ -55,7 +47,7 @@ fn cost_without_kitten_exits_1_and_writes_nothing() {
 
 #[test]
 fn quip_prompt_builds_from_stdin_context() {
-    let sb = sandbox("qp", json!({}));
+    let sb = Sandbox::with_state("qp", json!({}));
     let (v, _) = run_json(&sb, &["quip-prompt", "--json"], r#"{"last_user":"fix the build","last_assistant":"done"}"#);
     assert_eq!(keys(&v), ["max_tokens", "mood", "ok", "system", "user", "v"]);
     let system = v["system"].as_str().unwrap();
@@ -67,14 +59,14 @@ fn quip_prompt_builds_from_stdin_context() {
 
 #[test]
 fn quip_prompt_with_empty_stdin_still_works() {
-    let sb = sandbox("qp_empty", json!({}));
+    let sb = Sandbox::with_state("qp_empty", json!({}));
     let (v, _) = run_json(&sb, &["quip-prompt", "--json"], "");
     assert_eq!(v["user"], "Here's what just happened:\n\nMood signal: calm");
 }
 
 #[test]
 fn quip_prompt_bad_stdin_is_exit_2() {
-    let sb = sandbox("qp_bad", json!({}));
+    let sb = Sandbox::with_state("qp_bad", json!({}));
     let (v, out) = run_json(&sb, &["quip-prompt", "--json"], "{not json");
     assert_eq!(out.status.code(), Some(2));
     assert_eq!(v["error"], "bad_input");
@@ -82,7 +74,7 @@ fn quip_prompt_bad_stdin_is_exit_2() {
 
 #[test]
 fn quip_store_sanitizes_and_the_statusline_shows_it() {
-    let sb = sandbox("qs", json!({}));
+    let sb = Sandbox::with_state("qs", json!({}));
     let (v, out) = run_json(&sb, &["quip-store", "--json", "\x1b]0;pwned\x07hi there"], "");
     assert!(out.status.success());
     let stored = v["stored"].as_str().unwrap();
@@ -97,7 +89,7 @@ fn quip_store_sanitizes_and_the_statusline_shows_it() {
 
 #[test]
 fn quip_store_rejects_empty_text() {
-    let sb = sandbox("qs_empty", json!({}));
+    let sb = Sandbox::with_state("qs_empty", json!({}));
     let out = sb.run(&["quip-store", "   "], "", &[]);
     assert_eq!(out.status.code(), Some(1));
     assert!(!sb.state.join("llm-quip.json").exists());

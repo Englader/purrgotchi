@@ -1,18 +1,10 @@
 mod common;
-use common::{base_state, keys, merge, run_json, Sandbox, NOW};
-use serde_json::{json, Value};
-
-fn sandbox(tag: &str, patch: Value) -> Sandbox {
-    let sb = Sandbox::new(tag);
-    let mut st = base_state();
-    merge(&mut st, patch);
-    sb.write_state(&st);
-    sb
-}
+use common::{keys, run_json, Sandbox, NOW};
+use serde_json::json;
 
 #[test]
 fn pet_json_applied_then_cooldown() {
-    let sb = sandbox("pet", json!({}));
+    let sb = Sandbox::with_state("pet", json!({}));
     let (v, out) = run_json(&sb, &["pet", "--json"], "");
     assert!(out.status.success());
     assert_eq!(keys(&v), ["bond_new", "bond_old", "capped", "message", "ok", "result", "v"]);
@@ -26,7 +18,7 @@ fn pet_json_applied_then_cooldown() {
 
 #[test]
 fn classic_pet_output_is_unchanged_ansi_prose() {
-    let sb = sandbox("pet_classic", json!({}));
+    let sb = Sandbox::with_state("pet_classic", json!({}));
     let now = NOW.to_string();
     let out = sb.run(&["pet"], "", &[("PURR_NOW", &now)]);
     let s = String::from_utf8(out.stdout).unwrap();
@@ -35,13 +27,13 @@ fn classic_pet_output_is_unchanged_ansi_prose() {
 
 #[test]
 fn play_json_applied_and_insufficient_coins_both_start_a_scene() {
-    let sb = sandbox("play_ok", json!({}));
+    let sb = Sandbox::with_state("play_ok", json!({}));
     let (v, _) = run_json(&sb, &["play", "--json"], "");
     assert_eq!(v["result"], "applied");
     assert_eq!((v["cost"].as_u64(), v["bond_new"].as_u64()), (Some(50), Some(70)));
     assert!(v["scene"].is_string());
 
-    let sb = sandbox("play_broke", json!({ "coins": 10 }));
+    let sb = Sandbox::with_state("play_broke", json!({ "coins": 10 }));
     let (v, _) = run_json(&sb, &["play", "--json"], "");
     assert_eq!(v["result"], "insufficient_coins");
     assert_eq!((v["need"].as_u64(), v["have"].as_u64()), (Some(50), Some(10)));
@@ -51,7 +43,7 @@ fn play_json_applied_and_insufficient_coins_both_start_a_scene() {
 
 #[test]
 fn treat_json_hungry() {
-    let sb = sandbox("treat", json!({ "last_fed_at": NOW - 4000 }));
+    let sb = Sandbox::with_state("treat", json!({ "last_fed_at": NOW - 4000 }));
     let (v, _) = run_json(&sb, &["treat", "--json"], "");
     assert_eq!(v["result"], "applied");
     assert_eq!(v["was_hungry"], true);
@@ -61,7 +53,7 @@ fn treat_json_hungry() {
 #[test]
 fn rename_json_round_trips_hostile_names() {
     for name in ["Nyx", "Zoë \"the\" \\ ✦ 🐈", "\x1b[31mRed"] {
-        let sb = sandbox("rename", json!({}));
+        let sb = Sandbox::with_state("rename", json!({}));
         let (v, out) = run_json(&sb, &["rename", name, "--json"], "");
         assert_eq!(out.status.code(), Some(0));
         assert_eq!(v["result"], "renamed");
@@ -72,7 +64,7 @@ fn rename_json_round_trips_hostile_names() {
 
 #[test]
 fn rename_json_empty_name_keeps_exit_1() {
-    let sb = sandbox("rename_empty", json!({}));
+    let sb = Sandbox::with_state("rename_empty", json!({}));
     let (v, out) = run_json(&sb, &["rename", "", "--json"], "");
     assert_eq!(out.status.code(), Some(1));
     assert_eq!((v["ok"].as_bool(), v["result"].as_str()), (Some(false), Some("error")));
@@ -81,7 +73,7 @@ fn rename_json_empty_name_keeps_exit_1() {
 
 #[test]
 fn rename_dash_name_is_still_a_name() {
-    let sb = sandbox("rename_dash", json!({}));
+    let sb = Sandbox::with_state("rename_dash", json!({}));
     let out = sb.run(&["rename", "-Kitty"], "", &[]);
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(sb.read_state()["name"], "-Kitty");
@@ -89,8 +81,7 @@ fn rename_dash_name_is_still_a_name() {
 
 #[test]
 fn pet_json_on_unreadable_state_reports_error_with_exit_1() {
-    let sb = Sandbox::new("pet_unreadable");
-    std::fs::create_dir_all(sb.state.join("state.json")).unwrap();
+    let sb = Sandbox::unreadable("pet_unreadable");
     let (v, out) = run_json(&sb, &["pet", "--json"], "");
     assert_eq!(out.status.code(), Some(1));
     assert_eq!((v["ok"].as_bool(), v["result"].as_str()), (Some(false), Some("error")));

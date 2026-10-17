@@ -92,8 +92,7 @@ pub fn consume() -> Option<String> {
     let lock = crate::state::acquire_lock();
     let mut q = read_inner(&path)?;
     let now = crate::state::now_secs();
-    let stale = now.saturating_sub(q.generated_at) > QUIP_STALE_SECS;
-    if stale || q.renders_remaining == 0 {
+    if !is_live(&q, now) {
         if lock.is_some() {
             let _ = fs::remove_file(&path);
         }
@@ -125,11 +124,12 @@ pub fn peek() -> Option<String> {
 
 pub(crate) fn peek_at(path: &Path, now: u64) -> Option<String> {
     let q = read_inner(path)?;
-    let stale = now.saturating_sub(q.generated_at) > QUIP_STALE_SECS;
-    if stale || q.renders_remaining == 0 {
-        return None;
-    }
-    Some(q.quip)
+    is_live(&q, now).then_some(q.quip)
+}
+
+/// Fresh and with renders left — the shared rule for consume and peek.
+fn is_live(q: &Quip, now: u64) -> bool {
+    now.saturating_sub(q.generated_at) <= QUIP_STALE_SECS && q.renders_remaining > 0
 }
 
 #[cfg(test)]
