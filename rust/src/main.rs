@@ -6,6 +6,7 @@ mod cost;
 mod cost_acc;
 mod debug;
 mod events;
+mod frame;
 mod hatch;
 mod hooks;
 mod identity;
@@ -134,12 +135,20 @@ fn main() {
             hatch::run(&opts);
             process::exit(0);
         }
+        "frame" => match frame::parse_opts(&args) {
+            Ok(opts) => process::exit(frame::run(&opts)),
+            Err(msg) => {
+                eprintln!("frame: {msg}");
+                eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance]");
+                process::exit(2);
+            }
+        },
         "--version" | "-V" => {
             println!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet|play|treat|stats|react>");
+            eprintln!("usage: purrgotchi <statusline|frame|feed|turn|rename|hatch|card|pet|play|treat|stats|react>");
             process::exit(2);
         }
     }

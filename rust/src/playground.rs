@@ -67,6 +67,11 @@ pub(crate) fn strip_width_from(
     } else {
         DEFAULT_STRIP
     };
+    clamp_strip(w)
+}
+
+/// MAX_STRIP cap; below MIN_STRIP there is no room to stage a scene.
+pub(crate) fn clamp_strip(w: usize) -> Option<usize> {
     let w = w.min(MAX_STRIP);
     if w < MIN_STRIP { None } else { Some(w) }
 }
@@ -248,6 +253,38 @@ impl Canvas {
         }
         rows
     }
+
+    /// JSON twin of `emit`: one span per run of same-colour cells. Plain text
+    /// per row == the ANSI row stripped. (Not used for ANSI output — `emit`'s
+    /// reset-on-every-change byte pattern is what the statusline goldens pin.)
+    pub fn emit_spans(&self, cat_attrs: &[crate::colors::Attr]) -> Vec<Vec<crate::span::Span>> {
+        use crate::colors::{Attr, MAGENTA, PINK, YELLOW};
+        use crate::span::Span;
+        let attrs_for = |col: u8| -> Vec<Attr> {
+            match col {
+                COL_CAT => cat_attrs.to_vec(),
+                COL_YELLOW => vec![Attr::Fg(YELLOW)],
+                COL_MAGENTA => vec![Attr::Fg(MAGENTA)],
+                COL_PINK => vec![Attr::Fg(PINK)],
+                COL_DIM => vec![Attr::Dim],
+                _ => vec![], // COL_BG and unknown ids are unstyled, as in emit()
+            }
+        };
+        let mut rows = Vec::with_capacity(ROWS);
+        for y in 0..ROWS {
+            let mut row: Vec<Span> = Vec::new();
+            let mut cur: Option<u8> = None;
+            for &(ch, col) in &self.cells[y * self.w..(y + 1) * self.w] {
+                if cur != Some(col) {
+                    row.push(Span::new(String::new(), &attrs_for(col)));
+                    cur = Some(col);
+                }
+                row.last_mut().expect("pushed above").text.push(ch);
+            }
+            rows.push(row);
+        }
+        rows
+    }
 }
 
 /// One rendered frame: exactly ROWS ANSI strings, plain width == strip width.
@@ -405,16 +442,7 @@ fn yarn_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     }
 }
 
-/// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
-pub fn render_scene(
-    kind: PlaygroundScene,
-    elapsed: u64,
-    duration: u64,
-    seed: u64,
-    strip_width: usize,
-    blink: u8,
-    cat_color: &str,
-) -> SceneFrame {
+fn compose(kind: PlaygroundScene, elapsed: u64, duration: u64, seed: u64, strip_width: usize, blink: u8) -> Canvas {
     let mut canvas = Canvas::new(strip_width);
     match kind {
         PlaygroundScene::None => {}
@@ -425,7 +453,33 @@ pub fn render_scene(
         PlaygroundScene::Roll => roll_scene(&mut canvas, elapsed, seed, blink),
         PlaygroundScene::YarnPush => yarn_scene(&mut canvas, elapsed, seed, blink),
     }
-    SceneFrame { rows: canvas.emit(cat_color) }
+    canvas
+}
+
+/// Pure frame renderer. `blink` = (now % 2), same parity the home sprite uses.
+pub fn render_scene(
+    kind: PlaygroundScene,
+    elapsed: u64,
+    duration: u64,
+    seed: u64,
+    strip_width: usize,
+    blink: u8,
+    cat_color: &str,
+) -> SceneFrame {
+    SceneFrame { rows: compose(kind, elapsed, duration, seed, strip_width, blink).emit(cat_color) }
+}
+
+/// Span twin of [`render_scene`] for `frame --json`.
+pub fn render_scene_spans(
+    kind: PlaygroundScene,
+    elapsed: u64,
+    duration: u64,
+    seed: u64,
+    strip_width: usize,
+    blink: u8,
+    cat_attrs: &[crate::colors::Attr],
+) -> Vec<Vec<crate::span::Span>> {
+    compose(kind, elapsed, duration, seed, strip_width, blink).emit_spans(cat_attrs)
 }
 
 #[cfg(test)]
@@ -784,5 +838,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn clamp_strip_bounds() {
+        assert_eq!(clamp_strip(MIN_STRIP - 1), None);
+        assert_eq!(clamp_strip(MIN_STRIP), Some(MIN_STRIP));
+        assert_eq!(clamp_strip(500), Some(MAX_STRIP));
+    }
+
+    #[test]
+    fn emit_spans_carries_the_same_text_as_emit() {
+        use crate::colors::{Attr, CYAN};
+        for kind in ACTIVE_SCENES {
+            for t in [0u64, 7, 27] {
+                let ansi = render_scene(kind, t, 30, 11, 64, (t % 2) as u8, crate::colors::C_CYAN);
+                let spans = render_scene_spans(kind, t, 30, 11, 64, (t % 2) as u8, &[Attr::Fg(CYAN)]);
+                assert_eq!(spans.len(), ROWS);
+                for (a, s) in ansi.rows.iter().zip(&spans) {
+                    assert_eq!(crate::span::to_plain(s), crate::span::strip_ansi(a), "{kind:?} t={t}");
+                    assert_eq!(crate::span::width(s), 64);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn emit_spans_colours_cat_and_props() {
+        use crate::colors::{Attr, CYAN, YELLOW};
+        let rows = render_scene_spans(PlaygroundScene::BallChase, 5, 30, 7, 80, 0, &[Attr::Fg(CYAN)]);
+        let all: Vec<_> = rows.iter().flatten().collect();
+        assert!(all.iter().any(|s| s.attrs == vec![Attr::Fg(YELLOW)]), "ball is yellow");
+        assert!(all.iter().any(|s| s.attrs == vec![Attr::Fg(CYAN)]), "cat carries the rarity tint");
     }
 }

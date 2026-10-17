@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::span::JsonSpan;
 use crate::state::{CelebrationKind, PlaygroundScene};
 
 pub const V: u32 = 1;
@@ -111,6 +112,56 @@ impl ActionJson {
     }
 }
 
+/// `frame --json` (spec §3.1/§4.3). Phase 3b adds `pixels` (32×32 of
+/// "#rrggbb" | null) as an additive field — `v` stays 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrameJson {
+    pub v: u32,
+    pub ok: bool,
+    pub now: u64,
+    /// Animation tick used for sprite parity (`--tick`, default = now).
+    pub tick: u64,
+    pub name: String,
+    pub breed: String,
+    pub rarity: String,
+    pub shiny: bool,
+    pub level: u64,
+    pub stage: String,
+    pub coins: u64,
+    /// Effective (decayed) bond, as the HUD shows it.
+    pub bond: u8,
+    pub mood: String,
+    /// Exactly 6 rows, one span each, coloured like the statusline sprite
+    /// column. Unpadded (the statusline pads to 16).
+    pub sprite: Vec<Vec<JsonSpan>>,
+    /// Speech text WITHOUT the quotes the statusline wraps it in.
+    pub speech: Vec<JsonSpan>,
+    /// "celebration" | "birthday" | "scene" | "quip" | "mood"
+    pub speech_source: String,
+    pub scene: Option<SceneJson>,
+    pub celebration: Option<CelebrationJson>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SceneJson {
+    pub kind: PlaygroundScene,
+    pub elapsed: u64,
+    pub duration: u64,
+    pub finale: bool,
+    pub width: usize,
+    /// 6 rows; plain width of each == `width`.
+    pub rows: Vec<Vec<JsonSpan>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CelebrationJson {
+    pub kind: CelebrationKind,
+    /// Countdown ticks left; one tick per `tick_secs` of wall time while some
+    /// renderer advances (statusline or `frame --advance`).
+    pub remaining_ticks: u8,
+    pub tick_secs: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +216,30 @@ mod tests {
             r#"{"v":1,"ok":true,"result":"cooldown","message":"Thalia is already purring at you.","wait_secs":600}"#
         );
         assert_eq!(serde_json::from_str::<ActionJson>(&s).unwrap(), j);
+    }
+
+    #[test]
+    fn frame_json_round_trips_with_null_scene_and_celebration() {
+        use crate::span::JsonSpan;
+        let span = |t: &str| JsonSpan { text: t.into(), fg: Some("#0abdc6".into()), bold: false, dim: false };
+        let j = FrameJson {
+            v: V, ok: true, now: 1, tick: 1, name: "Thalia".into(), breed: "Maine Coon".into(),
+            rarity: "common".into(), shiny: false, level: 5, stage: "kitten".into(), coins: 340,
+            bond: 50, mood: "calm".into(), sprite: vec![vec![span(" /\\_/\\ ")]; 6],
+            speech: vec![span("mrow")], speech_source: "mood".into(), scene: None, celebration: None,
+        };
+        let s = serde_json::to_string(&j).unwrap();
+        assert!(s.contains(r#""scene":null"#) && s.contains(r#""celebration":null"#), "{s}");
+        assert_eq!(serde_json::from_str::<FrameJson>(&s).unwrap(), j);
+    }
+
+    #[test]
+    fn scene_and_celebration_json_round_trip() {
+        let sc = SceneJson { kind: crate::state::PlaygroundScene::Roll, elapsed: 3, duration: 30, finale: false, width: 40, rows: vec![vec![]; 6] };
+        let s = serde_json::to_string(&sc).unwrap();
+        assert!(s.contains(r#""kind":"Roll""#));
+        assert_eq!(serde_json::from_str::<SceneJson>(&s).unwrap(), sc);
+        let c = CelebrationJson { kind: CelebrationKind::LevelUp, remaining_ticks: 2, tick_secs: 2 };
+        assert_eq!(serde_json::from_str::<CelebrationJson>(&serde_json::to_string(&c).unwrap()).unwrap(), c);
     }
 }

@@ -117,6 +117,21 @@ pub fn consume() -> Option<String> {
     Some(text)
 }
 
+/// Read-only twin of [`consume`] for `frame` (no lock, no decrement, no
+/// delete). Same freshness rules.
+pub fn peek() -> Option<String> {
+    peek_at(&paths::quip_cache_file(), crate::state::now_secs())
+}
+
+pub(crate) fn peek_at(path: &Path, now: u64) -> Option<String> {
+    let q = read_inner(path)?;
+    let stale = now.saturating_sub(q.generated_at) > QUIP_STALE_SECS;
+    if stale || q.renders_remaining == 0 {
+        return None;
+    }
+    Some(q.quip)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +255,30 @@ mod tests {
         // Locks the pacing constant: 6 renders x 5s = a quip lives >= 30s
         // under a 1s refresh interval.
         assert_eq!(QUIP_MIN_SECS_PER_RENDER, 5);
+    }
+
+    #[test]
+    fn peek_returns_fresh_quip_without_touching_the_file() {
+        let p = std::env::temp_dir().join(format!("purrgotchi-test-peek-{}.json", std::process::id()));
+        let q = Quip { quip: "mrow.".into(), generated_at: 1000, renders_remaining: 3, last_render_at: 0 };
+        std::fs::write(&p, serde_json::to_string(&q).unwrap()).unwrap();
+        let before = std::fs::read(&p).unwrap();
+        assert_eq!(peek_at(&p, 1010), Some("mrow.".to_string()));
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn peek_ignores_stale_exhausted_and_missing() {
+        let p = std::env::temp_dir().join(format!("purrgotchi-test-peek-stale-{}.json", std::process::id()));
+        let stale = Quip { quip: "x".into(), generated_at: 1000, renders_remaining: 3, last_render_at: 0 };
+        std::fs::write(&p, serde_json::to_string(&stale).unwrap()).unwrap();
+        assert_eq!(peek_at(&p, 1000 + QUIP_STALE_SECS + 1), None);
+        let spent = Quip { renders_remaining: 0, ..stale };
+        std::fs::write(&p, serde_json::to_string(&spent).unwrap()).unwrap();
+        assert_eq!(peek_at(&p, 1001), None);
+        assert!(p.exists(), "peek never deletes");
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(peek_at(&p, 1001), None);
     }
 }

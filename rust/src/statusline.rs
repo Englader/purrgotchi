@@ -27,7 +27,224 @@ const SW: usize = 16;
 /// Minimum seconds between celebration-countdown decrements. With statusLine
 /// refreshInterval=1 renders arrive every second; ungated, a 3-render
 /// celebration would flash by in 3 seconds.
-const CELEBRATION_TICK_SECS: u64 = 2;
+pub(crate) const CELEBRATION_TICK_SECS: u64 = 2;
+
+pub(crate) struct ViewInput<'a> {
+    pub st: &'a crate::state::State,
+    pub now: i64,
+    /// Sprite animation parity. statusline: now % 2; frame: tick % 2.
+    pub frame: u8,
+    pub ctx_pct: f64,
+    pub forced_scene: Option<PlaygroundScene>,
+    pub playground_enabled: bool,
+    pub strip_width: Option<usize>,
+}
+
+pub(crate) struct SceneView {
+    pub kind: PlaygroundScene,
+    pub elapsed: u64,
+    pub duration: u64,
+    pub seed: u64,
+    pub width: usize,
+    pub finale: bool,
+}
+
+pub(crate) struct KittenView {
+    pub mood: &'static str,
+    pub frame: u8,
+    pub is_birthday: bool,
+    pub last_fed_delta: i64,
+    pub speech_source: SpeechSource,
+    pub speech: String,
+    pub speech_attrs: Vec<Attr>,
+    pub sprite_lines: Vec<String>,
+    pub sprite_attrs: Vec<Attr>,
+    /// The cat's rarity/shiny tint — used for scene cells even under a quip.
+    pub rarity_attrs: Vec<Attr>,
+    pub scene: Option<SceneView>,
+}
+
+/// Pure "what does the kitten look like right now". `quip` is only called when
+/// a quip could actually be shown (celebration, birthday and a visible scene
+/// outrank it in select_speech_source — consuming behind them burned the
+/// quip's renders without it ever appearing).
+pub(crate) fn kitten_view(inp: &ViewInput, quip: impl FnOnce() -> Option<String>) -> KittenView {
+    let st = inp.st;
+    let now = inp.now;
+    let celebration_kind = st.celebration_kind;
+    let last_fed_delta: i64 = if st.last_fed_at > 0 { now - st.last_fed_at as i64 } else { 999_999 };
+    let since = |t: u64| -> i64 { if t > 0 { now - t as i64 } else { -1 } };
+    let mood = compute_mood(
+        inp.ctx_pct,
+        last_fed_delta,
+        since(st.last_pet_at),
+        since(st.last_played_at),
+        since(st.last_treated_at),
+    );
+    let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
+
+    // Playground scene visibility — resolved before the quip guard so quips
+    // are not consumed (burned) behind a running scene.
+    // PURR_FORCE_SCENE loops a scene on a 30 s cycle without touching state.
+    let (scene_kind, scene_started_at, scene_duration_secs, scene_seed) = match inp.forced_scene {
+        Some(k) => (k, (now as u64) - (now as u64) % 30, 30, 42),
+        None => (st.scene_kind, st.scene_started_at, st.scene_duration_secs, st.scene_seed),
+    };
+    let scene_eligible = scene_kind != PlaygroundScene::None
+        && celebration_kind == CelebrationKind::None
+        && !is_birthday
+        && inp.playground_enabled;
+    // Caption context: only when the scene is actually visible. `finale` pins
+    // the catch-beat line for scenes that have one.
+    let scene = if scene_eligible { inp.strip_width } else { None }.map(|w| {
+        let elapsed = (now as u64).saturating_sub(scene_started_at);
+        let finale = scene_duration_secs > 0
+            && elapsed >= scene_duration_secs.saturating_sub(crate::playground::FINALE_SECS);
+        SceneView { kind: scene_kind, elapsed, duration: scene_duration_secs, seed: scene_seed, width: w, finale }
+    });
+
+    let quip = if celebration_kind == CelebrationKind::None && !is_birthday && scene.is_none() {
+        quip()
+    } else {
+        None
+    };
+    let (speech_source, speech) = select_speech_source(
+        celebration_kind,
+        is_birthday,
+        scene.as_ref().map(|s| (s.kind, s.finale)),
+        quip,
+        mood,
+        now,
+    );
+
+    let sprite_lines = if celebration_kind != CelebrationKind::None {
+        get_celebration_sprite(celebration_kind, inp.frame)
+    } else if is_birthday {
+        // Birthday day-long mode reuses the levelup celebration sprite; no new art.
+        get_celebration_sprite(CelebrationKind::LevelUp, inp.frame)
+    } else {
+        get_sprite_lines(state::life_stage(st.level), &st.rarity, mood, inp.frame)
+    };
+    let speech_attrs: Vec<Attr> = if matches!(
+        speech_source,
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip | SpeechSource::Scene
+    ) {
+        // Celebration, birthday, scene and LLM-quip speech: pink for warmth.
+        vec![Attr::Fg(PINK)]
+    } else {
+        match mood {
+            "panic" => vec![Attr::Fg(RED)],
+            "alert" => vec![Attr::Fg(YELLOW)],
+            "happy" => vec![Attr::Fg(GREEN)],
+            "sleep" => vec![Attr::Fg(MAGENTA)],
+            "hungry" => vec![Attr::Dim, Attr::Fg(CYAN)],
+            _ => vec![Attr::Fg(CYAN)],
+        }
+    };
+
+    // Sprite colour is rarity-driven outside celebrations / overlays; during
+    // celebration, birthday or quip it mirrors the speech colour.
+    let rarity_attrs = crate::colors::rarity_attrs(&st.rarity, st.shiny, now);
+    let sprite_attrs: Vec<Attr> = if matches!(
+        speech_source,
+        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
+    ) {
+        speech_attrs.clone()
+    } else {
+        rarity_attrs.clone()
+    };
+
+    KittenView {
+        mood,
+        frame: inp.frame,
+        is_birthday,
+        last_fed_delta,
+        speech_source,
+        speech,
+        speech_attrs,
+        sprite_lines,
+        sprite_attrs,
+        rarity_attrs,
+        scene,
+    }
+}
+
+/// Timers that move on wall-clock time: the celebration countdown (at most one
+/// decrement per CELEBRATION_TICK_SECS, gated on the SHARED
+/// last_celebration_tick_at so the statusline and `frame --advance` together
+/// still tick once) and the playground scheduler. Both re-check on a fresh
+/// copy inside locked_update. Moved verbatim from run().
+pub(crate) fn advance(
+    st: &crate::state::State,
+    now_u: u64,
+    is_birthday: bool,
+    forced_scene: Option<PlaygroundScene>,
+    playground_enabled: bool,
+) {
+    // Celebration counter: decrement at most once per CELEBRATION_TICK_SECS,
+    // clear kind when done. The write goes through locked_update on a FRESH
+    // copy of state — saving the render-start snapshot here used to silently
+    // revert any feed/pet/play increment that landed mid-render.
+    if st.levelup_renders_remaining > 0
+        && now_u >= st.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
+    {
+        let _ = state::locked_update(|fresh| {
+            if fresh.levelup_renders_remaining > 0
+                && now_u >= fresh.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
+            {
+                fresh.levelup_renders_remaining -= 1;
+                fresh.last_celebration_tick_at = now_u;
+                if fresh.levelup_renders_remaining == 0 {
+                    fresh.celebration_kind = CelebrationKind::None;
+                }
+            }
+        });
+    }
+
+    // Playground scheduler — same locked_update-on-fresh-state discipline as
+    // the celebration tick above. Forced scenes bypass state entirely.
+    if forced_scene.is_none() && playground_enabled {
+        let planned = crate::playground::plan_transition(
+            st.scene_kind,
+            st.scene_started_at,
+            st.scene_duration_secs,
+            st.scene_next_at,
+            st.scene_last_kind,
+            st.celebration_kind != CelebrationKind::None || is_birthday,
+            now_u,
+        );
+        if planned != crate::playground::SceneTransition::None {
+            let _ = state::locked_update(|fresh| {
+                // Re-plan on the FRESH copy — the snapshot may be stale.
+                match crate::playground::plan_transition(
+                    fresh.scene_kind,
+                    fresh.scene_started_at,
+                    fresh.scene_duration_secs,
+                    fresh.scene_next_at,
+                    fresh.scene_last_kind,
+                    fresh.celebration_kind != CelebrationKind::None || is_birthday,
+                    now_u,
+                ) {
+                    crate::playground::SceneTransition::None => {}
+                    crate::playground::SceneTransition::Bootstrap { next_at } => {
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::End { last_kind, next_at } => {
+                        fresh.scene_last_kind = last_kind;
+                        fresh.scene_kind = PlaygroundScene::None;
+                        fresh.scene_next_at = next_at;
+                    }
+                    crate::playground::SceneTransition::Start { kind, duration_secs, seed } => {
+                        fresh.scene_kind = kind;
+                        fresh.scene_started_at = now_u;
+                        fresh.scene_duration_secs = duration_secs;
+                        fresh.scene_seed = seed;
+                    }
+                }
+            });
+        }
+    }
+}
 
 pub fn run() {
     let t_start = SystemTime::now();
@@ -66,100 +283,31 @@ pub fn run() {
     let cwd = normalize_windows_path(&cwd_raw);
 
     let st = crate::hatch::load_or_hatch();
-    let (coins, level, last_fed_at, kitten_name, rarity, shiny) =
-        (st.coins, st.level, st.last_fed_at, st.name.clone(), st.rarity.clone(), st.shiny);
-    let celebration_kind = st.celebration_kind;
-
+    let (coins, level, kitten_name, rarity, shiny) =
+        (st.coins, st.level, st.name.clone(), st.rarity.clone(), st.shiny);
     let now = state::now_secs() as i64;
-
-    let last_fed_delta: i64 = if last_fed_at > 0 {
-        now - last_fed_at as i64
-    } else {
-        999_999
-    };
-
-    let last_pet_delta: i64 = if st.last_pet_at > 0 {
-        now - st.last_pet_at as i64
-    } else {
-        -1
-    };
-    let last_played_delta: i64 = if st.last_played_at > 0 {
-        now - st.last_played_at as i64
-    } else {
-        -1
-    };
-    let last_treated_delta: i64 = if st.last_treated_at > 0 {
-        now - st.last_treated_at as i64
-    } else {
-        -1
-    };
-    let mood = compute_mood(
-        payload.context_window.used_percentage,
-        last_fed_delta,
-        last_pet_delta,
-        last_played_delta,
-        last_treated_delta,
-    );
-    // One frame flip per second — visible as animation now that the host
-    // re-renders on a 1s refreshInterval instead of only on events.
-    let frame = (now % 2) as u8;
 
     let reset_5h_str = time_until_reset(payload.rate_limits.five_hour.resets_at, now);
     let reset_7d_str = time_until_reset(payload.rate_limits.seven_day.resets_at, now);
-    let is_birthday = crate::events::is_birthday(st.birth_time, now as u64);
 
-    // Playground scene visibility — resolved before the quip guard so Phase 2
-    // can stop quips from being consumed (burned) behind a running scene.
-    // PURR_FORCE_SCENE loops a scene on a 30 s cycle without touching state.
     let forced_scene = crate::playground::force_scene();
-    let (scene_kind, scene_started_at, scene_duration_secs, scene_seed) =
-        match forced_scene {
-            Some(k) => (k, (now as u64) - (now as u64) % 30, 30, 42),
-            None => (
-                st.scene_kind,
-                st.scene_started_at,
-                st.scene_duration_secs,
-                st.scene_seed,
-            ),
-        };
-    let scene_eligible = scene_kind != PlaygroundScene::None
-        && celebration_kind == CelebrationKind::None
-        && !is_birthday
-        && crate::playground::enabled();
-    let scene_strip = if scene_eligible {
-        crate::playground::strip_width()
-    } else {
-        None
-    };
-
-    // Caption context: only when the scene is actually visible. `finale` pins
-    // the catch-beat line for scenes that have one.
-    let scene_overlay = scene_strip.map(|_| {
-        let elapsed = (now as u64).saturating_sub(scene_started_at);
-        let finale = scene_duration_secs > 0
-            && elapsed >= scene_duration_secs.saturating_sub(crate::playground::FINALE_SECS);
-        (scene_kind, finale)
-    });
-
-    // Only consume the quip when it would actually be displayed — celebration,
-    // birthday, and scene overlays outrank it in select_speech_source, and
-    // consuming behind them burned the quip's renders without it ever appearing.
-    let quip = if celebration_kind == CelebrationKind::None
-        && !is_birthday
-        && scene_strip.is_none()
-    {
-        crate::quip_cache::consume()
-    } else {
-        None
-    };
-    let (speech_source, speech) = select_speech_source(
-        celebration_kind,
-        is_birthday,
-        scene_overlay,
-        quip,
-        mood,
-        now,
+    let playground_enabled = crate::playground::enabled();
+    let view = kitten_view(
+        &ViewInput {
+            st: &st,
+            now,
+            // One frame flip per second — visible as animation now that the
+            // host re-renders on a 1s refreshInterval instead of only on events.
+            frame: (now % 2) as u8,
+            ctx_pct: payload.context_window.used_percentage,
+            forced_scene,
+            playground_enabled,
+            strip_width: crate::playground::strip_width(),
+        },
+        crate::quip_cache::consume,
     );
+    let mood = view.mood;
+    let last_fed_delta = view.last_fed_delta;
 
     // Truncate the branch so `GIT: {branch}` fits its W3 column exactly, the
     // same way short_cwd shortens the DIR path. `pad_spans` only pads — it never
@@ -196,56 +344,19 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
-    let sprite_lines = if celebration_kind != CelebrationKind::None {
-        get_celebration_sprite(celebration_kind, frame)
-    } else if is_birthday {
-        // Birthday day-long mode reuses the levelup celebration sprite; no new art.
-        get_celebration_sprite(CelebrationKind::LevelUp, frame)
-    } else {
-        let stage = state::life_stage(level);
-        get_sprite_lines(stage, &rarity, mood, frame)
-    };
-    let speech_attrs: Vec<Attr> = if matches!(
-        speech_source,
-        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip | SpeechSource::Scene
-    ) {
-        // Celebration, birthday, scene and LLM-quip speech: pink for warmth.
-        vec![Attr::Fg(PINK)]
-    } else {
-        match mood {
-            "panic" => vec![Attr::Fg(RED)],
-            "alert" => vec![Attr::Fg(YELLOW)],
-            "happy" => vec![Attr::Fg(GREEN)],
-            "sleep" => vec![Attr::Fg(MAGENTA)],
-            "hungry" => vec![Attr::Dim, Attr::Fg(CYAN)],
-            _ => vec![Attr::Fg(CYAN)],
-        }
-    };
-
-    // Sprite colour is rarity-driven outside celebrations / overlays; during
-    // celebration, birthday or quip it mirrors the speech colour.
-    let sprite_attrs: Vec<Attr> = if matches!(
-        speech_source,
-        SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
-    ) {
-        speech_attrs.clone()
-    } else {
-        crate::colors::rarity_attrs(&rarity, shiny, now)
-    };
-
     // During a scene the cat keeps her rarity/shiny tint even if a quip is
     // active (quips normally re-tint the home sprite pink; there is no home
-    // sprite on screen while she plays).
-    let scene_frame = scene_strip.map(|w| {
-        let rarity_tint = crate::colors::rarity_color(&rarity, shiny, now);
+    // sprite on screen while she plays). attrs_ansi(rarity_attrs) prints
+    // exactly like rarity_color (pinned in colors.rs).
+    let scene_frame = view.scene.as_ref().map(|sv| {
         crate::playground::render_scene(
-            scene_kind,
-            (now as u64).saturating_sub(scene_started_at),
-            scene_duration_secs,
-            scene_seed,
-            w,
-            frame,
-            &rarity_tint,
+            sv.kind,
+            sv.elapsed,
+            sv.duration,
+            sv.seed,
+            sv.width,
+            view.frame,
+            &crate::span::attrs_ansi(&view.rarity_attrs),
         )
     });
 
@@ -381,84 +492,21 @@ pub fn run() {
     for (i, row) in rows.iter().enumerate() {
         let row = to_ansi(row);
         if i == 6 {
-            let bubble = to_ansi(&[Span::new(format!("\"{speech}\""), &speech_attrs)]);
+            let bubble = to_ansi(&[Span::new(format!("\"{}\"", view.speech), &view.speech_attrs)]);
             buf.push_str(&format!("{row}   {bubble}\n"));
         } else if let Some(sf) = &scene_frame {
             // Scene rows carry their own colours + trailing reset (Canvas::emit).
             buf.push_str(&format!("{row}   {}\n", sf.rows[i]));
         } else {
-            let line = sprite_lines.get(i).map(String::as_str).unwrap_or("");
-            let sprite = to_ansi(&[Span::new(pad_sprite(line, SW), &sprite_attrs)]);
+            let line = view.sprite_lines.get(i).map(String::as_str).unwrap_or("");
+            let sprite = to_ansi(&[Span::new(pad_sprite(line, SW), &view.sprite_attrs)]);
             buf.push_str(&format!("{row}   {sprite}\n"));
         }
     }
 
     let _ = out.write_all(buf.as_bytes());
 
-    // Celebration counter: decrement at most once per CELEBRATION_TICK_SECS,
-    // clear kind when done. The write goes through locked_update on a FRESH
-    // copy of state — saving the render-start snapshot here used to silently
-    // revert any feed/pet/play increment that landed mid-render.
-    let now_u = now as u64;
-    if st.levelup_renders_remaining > 0
-        && now_u >= st.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
-    {
-        let _ = state::locked_update(|fresh| {
-            if fresh.levelup_renders_remaining > 0
-                && now_u >= fresh.last_celebration_tick_at.saturating_add(CELEBRATION_TICK_SECS)
-            {
-                fresh.levelup_renders_remaining -= 1;
-                fresh.last_celebration_tick_at = now_u;
-                if fresh.levelup_renders_remaining == 0 {
-                    fresh.celebration_kind = CelebrationKind::None;
-                }
-            }
-        });
-    }
-
-    // Playground scheduler — same locked_update-on-fresh-state discipline as
-    // the celebration tick above. Forced scenes bypass state entirely.
-    if forced_scene.is_none() && crate::playground::enabled() {
-        let planned = crate::playground::plan_transition(
-            st.scene_kind,
-            st.scene_started_at,
-            st.scene_duration_secs,
-            st.scene_next_at,
-            st.scene_last_kind,
-            st.celebration_kind != CelebrationKind::None || is_birthday,
-            now_u,
-        );
-        if planned != crate::playground::SceneTransition::None {
-            let _ = state::locked_update(|fresh| {
-                // Re-plan on the FRESH copy — the snapshot may be stale.
-                match crate::playground::plan_transition(
-                    fresh.scene_kind,
-                    fresh.scene_started_at,
-                    fresh.scene_duration_secs,
-                    fresh.scene_next_at,
-                    fresh.scene_last_kind,
-                    fresh.celebration_kind != CelebrationKind::None || is_birthday,
-                    now_u,
-                ) {
-                    crate::playground::SceneTransition::None => {}
-                    crate::playground::SceneTransition::Bootstrap { next_at } => {
-                        fresh.scene_next_at = next_at;
-                    }
-                    crate::playground::SceneTransition::End { last_kind, next_at } => {
-                        fresh.scene_last_kind = last_kind;
-                        fresh.scene_kind = PlaygroundScene::None;
-                        fresh.scene_next_at = next_at;
-                    }
-                    crate::playground::SceneTransition::Start { kind, duration_secs, seed } => {
-                        fresh.scene_kind = kind;
-                        fresh.scene_started_at = now_u;
-                        fresh.scene_duration_secs = duration_secs;
-                        fresh.scene_seed = seed;
-                    }
-                }
-            });
-        }
-    }
+    advance(&st, now as u64, view.is_birthday, forced_scene, playground_enabled);
 
     if debug::enabled() {
         let elapsed_us = SystemTime::now()
@@ -590,6 +638,18 @@ pub(crate) enum SpeechSource {
     Scene,
     Quip,
     Mood,
+}
+
+impl SpeechSource {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            SpeechSource::Celebration => "celebration",
+            SpeechSource::Birthday => "birthday",
+            SpeechSource::Scene => "scene",
+            SpeechSource::Quip => "quip",
+            SpeechSource::Mood => "mood",
+        }
+    }
 }
 
 pub(crate) fn select_speech_source(
@@ -800,5 +860,67 @@ mod tests {
             0,
         );
         assert_eq!(text, "gotcha!!");
+    }
+
+    fn view_input(st: &crate::state::State, now: i64) -> ViewInput<'_> {
+        ViewInput {
+            st, now, frame: (now % 2) as u8, ctx_pct: 10.0,
+            forced_scene: None, playground_enabled: true, strip_width: Some(60),
+        }
+    }
+
+    #[test]
+    fn kitten_view_never_calls_quip_behind_a_celebration() {
+        let mut st = crate::state::State::base(1_000);
+        st.celebration_kind = CelebrationKind::LevelUp;
+        st.levelup_renders_remaining = 2;
+        let called = std::cell::Cell::new(false);
+        let v = kitten_view(&view_input(&st, 1_800_000_000), || { called.set(true); Some("q".into()) });
+        assert!(!called.get());
+        assert_eq!(v.speech_source, SpeechSource::Celebration);
+    }
+
+    #[test]
+    fn kitten_view_uses_quip_when_idle_and_tints_sprite_pink() {
+        let st = crate::state::State::base(1_000);
+        let v = kitten_view(&view_input(&st, 1_800_000_000), || Some("the cat watches".into()));
+        assert_eq!((v.speech_source, v.speech.as_str()), (SpeechSource::Quip, "the cat watches"));
+        assert_eq!(v.sprite_attrs, vec![Attr::Fg(PINK)]);
+    }
+
+    #[test]
+    fn kitten_view_scene_needs_a_strip() {
+        let mut st = crate::state::State::base(1_000);
+        st.scene_kind = PlaygroundScene::BallChase;
+        st.scene_started_at = 1_800_000_000 - 5;
+        st.scene_duration_secs = 30;
+        let v = kitten_view(&ViewInput { strip_width: Some(40), ..view_input(&st, 1_800_000_000) }, || None);
+        let sv = v.scene.expect("scene visible");
+        assert_eq!((sv.elapsed, sv.width, sv.finale), (5, 40, false));
+        let called = std::cell::Cell::new(false);
+        let v = kitten_view(&ViewInput { strip_width: None, ..view_input(&st, 1_800_000_000) }, || { called.set(true); None });
+        assert!(v.scene.is_none());
+        assert!(called.get(), "no strip → no scene → quip may show");
+    }
+
+    #[test]
+    fn kitten_view_forced_scene_loops_on_30s() {
+        let st = crate::state::State::base(1_000);
+        let v = kitten_view(&ViewInput { forced_scene: Some(PlaygroundScene::Run), ..view_input(&st, 1_800_000_017) }, || None);
+        let sv = v.scene.unwrap();
+        assert_eq!((sv.kind, sv.elapsed, sv.duration, sv.seed), (PlaygroundScene::Run, 17, 30, 42));
+    }
+
+    #[test]
+    fn kitten_view_frame_comes_from_input() {
+        let st = crate::state::State::base(1_000);
+        let v = kitten_view(&ViewInput { frame: 1, ..view_input(&st, 1_800_000_000) }, || None);
+        assert_eq!(v.frame, 1);
+    }
+
+    #[test]
+    fn speech_source_names() {
+        assert_eq!(SpeechSource::Celebration.as_str(), "celebration");
+        assert_eq!(SpeechSource::Mood.as_str(), "mood");
     }
 }
