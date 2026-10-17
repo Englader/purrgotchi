@@ -414,7 +414,8 @@ pub(super) fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 
 /// A prop, already coloured. `frame` toggles the 2-frame flaps and flickers
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
-/// No outline: props are drawn over the cat's ground and sky.
+/// No outline: props are drawn over the cat's ground and sky. The 8-px band
+/// keeps these; 6 px swaps the tall ones for `art_small::prop_small`.
 pub(crate) fn prop(p: Prop, frame: u8, h: PxHeight) -> PxSprite {
     if h == PxHeight::H6 {
         return super::art_small::prop_small(p, frame);

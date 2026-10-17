@@ -16,9 +16,10 @@ pub(crate) fn snap(c: Rgb) -> u32 {
     s(c.0) << 16 | s(c.1) << 8 | s(c.2)
 }
 
-/// `rows * width` cells, row-major; terminal row `r` carries pixel rows
+/// `c.h.rows() * width` cells, row-major; terminal row `r` carries pixel rows
 /// `2r` (top) and `2r + 1` (bottom).
-pub(crate) fn pack_cells(c: &PxCanvas, rows: usize) -> Vec<u8> {
+pub(crate) fn pack_cells(c: &PxCanvas) -> Vec<u8> {
+    let rows = c.h.rows();
     let mut out = Vec::with_capacity(rows * c.width() * 12);
     for r in 0..rows {
         for x in 0..c.width() as i32 {
@@ -79,19 +80,19 @@ mod tests {
     #[test]
     fn pack_cells_rules() {
         let (a, b) = (Rgb(0x10, 0x20, 0x30), Rgb(255, 0, 0));
-        let mut c = PxCanvas::new(2, PxHeight::H12);
+        let mut c = PxCanvas::new(2, PxHeight::H6);
         c.set(0, 0, a);
         c.set(1, 1, b);
-        let out = pack_cells(&c, 1);
-        assert_eq!(out.len(), 24);
-        assert_eq!(cells(&out), [0x2580, snap(a), DEFAULT_COLOR, 0x2584, snap(b), DEFAULT_COLOR]);
+        let out = pack_cells(&c);
+        assert_eq!(out.len(), 3 * 24);
+        assert_eq!(cells(&out)[..6], [0x2580, snap(a), DEFAULT_COLOR, 0x2584, snap(b), DEFAULT_COLOR]);
         c.set(0, 1, b);
-        assert_eq!(cells(&pack_cells(&c, 1))[..3], [0x2580, snap(a), snap(b)]);
+        assert_eq!(cells(&pack_cells(&c))[..3], [0x2580, snap(a), snap(b)]);
     }
 
     #[test]
     fn empty_canvas_is_terminal_default() {
-        let out = pack_cells(&PxCanvas::new(3, PxHeight::H12), 6);
+        let out = pack_cells(&PxCanvas::new(3, PxHeight::H12));
         assert_eq!(out.len(), 3 * 6 * 12);
         assert!(cells(&out).chunks(3).all(|c| c == [0x20, DEFAULT_COLOR, DEFAULT_COLOR]));
     }

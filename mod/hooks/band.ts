@@ -10,19 +10,18 @@ import type { EngineInterface } from 'claude-code'
 
 import { locateBinary } from './locate'
 import { readOptions } from './options'
-import type { BandOptions } from './options'
-import { newStream, startStream, stopStream, streamWants } from './stream'
+import type { BandOptions, Rows } from './options'
+import { errText, newStream, startStream, stopStream, streamWants } from './stream'
 import type { BandStream, StreamHost } from './stream'
 import type { BandLine } from '../types'
 
 export const KEY = 'purr-band'
 /** The narrowest band the cat is drawn in. */
 export const MIN_COLS = 24
-const MAX_COLS = 512
+/** The widest band (`purrgotchi band --cols` caps there too). */
+export const MAX_COLS = 512
 const DEFAULT_COLOR = 0x0100_0000
 const SPACE = 0x20
-
-export type Rows = 3 | 4 | 6
 
 /** The `$` a blit runs on (the session start's, as the stream's lines arrive there). */
 export type BlitHost = {
@@ -45,7 +44,6 @@ type BandState = {
   helloRows: number
   cells: string | null
   lastOkAt: number
-  lastLineAt: number
   stateDir: string | null
   ctxPct: number
   stream: BandStream | null
@@ -62,7 +60,6 @@ const fresh = (): BandState => ({
   helloRows: 0,
   cells: null,
   lastOkAt: 0,
-  lastLineAt: 0,
   stateDir: null,
   ctxPct: 0,
   stream: null,
@@ -134,7 +131,7 @@ async function blitCells($: BlitHost, cells: string): Promise<void> {
     B.stats.ok++
     B.lastOkAt = await $.clock.now()
   } catch (e) {
-    countDeny(`throw: ${e instanceof Error ? e.message : String(e)}`)
+    countDeny(`throw: ${errText(e)}`)
   }
 }
 
@@ -168,11 +165,6 @@ export function onBandLines($: BlitHost, lines: readonly string[]): void {
   B.stats.frames++
   B.cells = frame
   void blitCells($, frame)
-}
-
-/** One line (the chunk form is `onBandLines`). */
-export function onBandLine($: BlitHost, line: string): void {
-  onBandLines($, [line])
 }
 
 /**

@@ -1,7 +1,7 @@
 //! Pixel playground scenes: the six `playground.rs` scenes drawn with the
 //! pixel poses and props. Scheduling, timing and speech stay in
 //! `playground.rs` / `kitten_view`; this only decides what each second looks
-//! like, as a pure function of `(kind, elapsed, duration, seed, width)`.
+//! like, as a pure function of `(kind, elapsed, duration, seed, width, h)`.
 //!
 //! Run, zoomies, roll and yarn mirror the ASCII paths (same speeds and
 //! phases; a `Turn` or a dizzy `Sit` marks each wall bounce). The two chase
@@ -21,10 +21,12 @@ use crate::playground::{
 };
 use crate::state::PlaygroundScene;
 
+/// Canvas height in px, for the signed geometry.
 pub(super) fn ph(h: PxHeight) -> i32 {
     h.px() as i32
 }
 
+/// Widest cat sprite in px, for the signed geometry.
 fn cat_w(h: PxHeight) -> i32 {
     h.cat_max_w() as i32
 }
@@ -85,7 +87,7 @@ impl SceneFrame {
     }
 
     /// Add a prop, clamped so it never clips the canvas.
-    fn put(&mut self, (w, h): (usize, PxHeight), prop: Prop, frame: u8, x: i32, y: i32, front: bool) {
+    pub(super) fn put(&mut self, (w, h): (usize, PxHeight), prop: Prop, frame: u8, x: i32, y: i32, front: bool) {
         let s = art::prop(prop, frame, h);
         let (x, y) = (x.clamp(0, (w as i32 - s.w as i32).max(0)), y.clamp(0, ph(h) - s.h as i32));
         self.props.push(Placed { prop, frame, x, y, front });

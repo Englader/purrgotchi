@@ -128,7 +128,9 @@ pub fn run(o: &BandOpts) -> i32 {
     let mut cells: Vec<u8> = Vec::new();
     let mut cells_key: Option<(u64, u64)> = None; // (second, state generation)
     let mut generation = 0u64;
-    let mut last_sent: Option<(Vec<u8>, u64)> = None;
+    // `cells` differ from the last frame sent (or none was sent yet).
+    let mut dirty = false;
+    let mut last_sent_at: Option<u64> = None;
 
     let mut i = 0u64;
     loop {
@@ -177,16 +179,20 @@ pub fn run(o: &BandOpts) -> i32 {
                     || None,
                 );
                 let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced, o.height);
-                cells = pack_cells(&canvas, o.height.rows());
+                let packed = pack_cells(&canvas);
+                if packed != cells {
+                    cells = packed;
+                    dirty = true;
+                }
             }
-            let due = last_sent.as_ref().is_none_or(|(c, at)| *c != cells || t.saturating_sub(*at) >= KEEPALIVE_MS);
-            if due {
+            if dirty || last_sent_at.is_none_or(|at| t.saturating_sub(at) >= KEEPALIVE_MS) {
                 let c = base64(&cells);
                 let line = serde_json::to_string(&Frame { v: 1, f: i, t, c: &c }).unwrap_or_default();
                 if !emit(&line) {
                     return 0;
                 }
-                last_sent = Some((cells.clone(), t));
+                dirty = false;
+                last_sent_at = Some(t);
             }
         }
 

@@ -1,10 +1,13 @@
 // Band options from env: the cat's height and the stream's frame rate.
 import type { EngineInterface } from 'claude-code'
 
-export type BandOptions = { rows: 3 | 4 | 6; fps: number }
+/** Band heights in terminal rows (6, 8 or 12 px). */
+export type Rows = 3 | 4 | 6
+
+export type BandOptions = { rows: Rows; fps: number }
 
 /** `PURR_BAND_ROWS`: 3, 4 or 6; anything else (or unset) is 4. */
-export function parseRows(v: string | undefined): 3 | 4 | 6 {
+export function parseRows(v: string | undefined): Rows {
   const n = Number(v?.trim())
   return n === 3 || n === 6 ? n : 4
 }

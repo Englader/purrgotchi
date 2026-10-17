@@ -1,14 +1,14 @@
 //! Pixel celebrations and the birthday: the cat cheers, centred, with a prop
 //! effect per `CelebrationKind`. Triggers, timing and speech stay with
 //! `kitten_view` and the celebration counter; this only decides what each
-//! second looks like, as a pure function of `(overlay, now, width, look)`
+//! second looks like, as a pure function of `(overlay, now, width, look, h)`
 //! (nothing persisted: `f = now % 2` drives the 2-frame props, `k = now % 6`
 //! the rising / falling motion, `now / 6` re-rolls the confetti).
 //!
 //! Geometry first (`fx_frame`, a `SceneFrame` the scene drawer can paint),
 //! then `overlay_canvas` draws it. Props sit in the stage margins or on the
-//! cat's own empty corners and never clip: the cat is 16 px wide and the
-//! narrowest stage is 24, so a side prop is at most 4 px wide.
+//! cat's own empty corners and never clip: the 12-px cat is 16 px wide and
+//! the narrowest stage is 24, so a side prop is at most 4 px wide.
 
 use super::art::{self, Pose, Prop};
 use super::life::ihash;
@@ -21,7 +21,7 @@ use crate::state::CelebrationKind;
 /// Seconds per rising / falling cycle (`k = now % CYCLE`).
 const CYCLE: u64 = 6;
 /// Px per second for rising sparkles and falling confetti: one cycle spans
-/// exactly the 12 px canvas, so the wrap is seamless.
+/// exactly the 12-px canvas, so the wrap is seamless there.
 const SPEED: i32 = 2;
 const BIRTHDAY_CONFETTI: usize = 10;
 
@@ -56,10 +56,7 @@ fn confetti_count(k: CelebrationKind) -> usize {
 fn put(f: &mut SceneFrame, w: usize, prop: Prop, frame: u8, x: i32, y: i32, h: PxHeight) {
     // Never clipped by the canvas. Behind the cat, except the hat and heart
     // that sit on her.
-    let front = matches!(prop, Prop::Hat | Prop::Heart);
-    let s = art::prop(prop, frame, h);
-    let (x, y) = (x.clamp(0, (w as i32 - s.w as i32).max(0)), y.clamp(0, scene::ph(h) - s.h as i32));
-    f.props.push(scene::Placed { prop, frame, x, y, front });
+    f.put((w, h), prop, frame, x, y, matches!(prop, Prop::Hat | Prop::Heart));
 }
 
 /// Falling confetti: piece `i` of this 6 s block, wrapping top to bottom.

@@ -1,4 +1,4 @@
-//! Half-block pixel renderer for the statusline sprite column.
+//! Half-block pixel renderer for the statusline sprite column and the cat band.
 //!
 //! A `PxCanvas` is `width x h.px()` pixels. Each terminal cell shows two
 //! vertically stacked pixels as `▀` (fg = top, bg = bottom), so `h.rows()`
@@ -86,6 +86,11 @@ impl PxCanvas {
             return None;
         }
         Some(y as usize * self.w + x as usize)
+    }
+
+    /// The whole canvas as a sprite (sheet cells).
+    fn into_sprite(self) -> PxSprite {
+        PxSprite { w: self.w, h: self.h.px(), px: self.px }
     }
 
     /// Clipped write.
@@ -251,7 +256,7 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
-/// The 6 sprite-column rows, in `kitten_view` priority: a celebration, the
+/// The `h.rows()` sprite-column rows, in `kitten_view` priority: a celebration, the
 /// birthday, a visible playground scene, else idle life. (`view.scene` is
 /// already `None` behind the first two, `PURR_PLAYGROUND=0` or a too-narrow
 /// strip.)
@@ -396,7 +401,7 @@ pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, bre
     let cells = (0..30u64)
         .map(|e| {
             let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width, h), width, &look, h);
-            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: h.px(), px: c.px })
+            (format!("{kind:?} {stage} t={e}"), c.into_sprite())
         })
         .collect();
     render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
@@ -428,8 +433,7 @@ pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str
     let start = 1_800_000_000u64 / 6 * 6;
     let cells = (0..12u64)
         .map(|s| {
-            let c = fx::overlay_canvas(o, start + s, width, &look, h);
-            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: h.px(), px: c.px })
+            (format!("{name} {stage} +{s}"), fx::overlay_canvas(o, start + s, width, &look, h).into_sprite())
         })
         .collect();
     Some(render_sheet(&format!("{name} ({breed} {stage}, {width} px)"), cells, 6, json))

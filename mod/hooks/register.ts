@@ -1,7 +1,7 @@
 // Composition root: the cat band above the prompt.
 import type { EngineInterface, Register } from 'claude-code'
 
-import { B, KEY, MIN_COLS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
+import { B, KEY, MAX_COLS, MIN_COLS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
 import type { BandHost } from './band'
 
 const RECONCILE_MS = 100
@@ -43,9 +43,9 @@ export const register: Register = on => {
     B.rows = rows
     if (rows === 0) return next(e)
     B.requestId = e.requestId
-    B.cols = Math.min(512, e.props.bodyColumns)
-    const fits = B.cells !== null && B.helloCols === B.cols && B.helloRows === rows
+    B.cols = Math.min(MAX_COLS, e.props.bodyColumns)
+    const cells = B.cells !== null && B.helloCols === B.cols && B.helloRows === rows ? B.cells : blankCells(B.cols, rows)
     const { Raster } = $.ui.resolve(e)
-    return Raster({ key: KEY, columns: B.cols, rows, cells: fits && B.cells !== null ? B.cells : blankCells(B.cols, rows) })
+    return Raster({ key: KEY, columns: B.cols, rows, cells })
   })
 }

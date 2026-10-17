@@ -520,7 +520,7 @@ pub(crate) fn prop_small(p: Prop, frame: u8) -> PxSprite {
         (Prop::Flame, true) => grid(&["O..", "OYO", "OOO"], &[('O', ORANGE), ('Y', colors::YELLOW)]),
         (Prop::Z, false) => grid(&["ZZ", ".Z"], &[('Z', pixel::NEON_CYAN)]),
         (Prop::Z, true) => grid(&["ZZ", ".Z"], &[('Z', pixel::mix(pixel::NEON_CYAN, OUTLINE, 0.5))]),
-        _ => art::prop(p, frame, PxHeight::H8),
+        _ => art::prop(p, frame, PxHeight::H12),
     }
 }
 

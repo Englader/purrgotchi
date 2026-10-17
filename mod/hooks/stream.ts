@@ -63,15 +63,11 @@ export function debugLog($: { readonly ui: Pick<EngineInterface['ui'], 'log'> },
   }
 }
 
-/**
- * Complete lines of `rest + text`: the non-empty ones, and the partial tail to
- * carry. `last` is the last of them, or null when none is complete.
- */
-export function splitLines(rest: string, text: string): { rest: string; lines: string[]; last: string | null } {
+/** Complete lines of `rest + text`: the non-empty ones, and the partial tail to carry. */
+export function splitLines(rest: string, text: string): { rest: string; lines: string[] } {
   const parts = (rest + text).split('\n')
   const tail = parts.pop() ?? ''
-  const lines = parts.filter(l => l.trim() !== '')
-  return { rest: tail, lines, last: lines[lines.length - 1] ?? null }
+  return { rest: tail, lines: parts.filter(l => l.trim() !== '') }
 }
 
 export function newStream(argv: readonly string[], onLines: (lines: string[]) => void): BandStream {
