@@ -87,11 +87,12 @@ pub(crate) fn mode_from(pixels: Option<&str>, no_color: Option<&str>, default: P
     if no_color.is_some_and(|v| !v.is_empty()) {
         return PixelMode::Off;
     }
-    match pixels.map(str::trim) {
-        Some("0") => PixelMode::Off,
-        Some("1") => PixelMode::Full,
-        Some("fg") => PixelMode::FgOnly,
-        Some("test") => PixelMode::Test,
+    let Some(v) = pixels.map(|v| v.trim().to_ascii_lowercase()) else { return default };
+    match v.as_str() {
+        "0" | "off" | "false" | "no" => PixelMode::Off,
+        "1" => PixelMode::Full,
+        "fg" => PixelMode::FgOnly,
+        "test" => PixelMode::Test,
         _ => default,
     }
 }
@@ -417,6 +418,12 @@ mod tests {
         assert_eq!(mode_from(Some("1"), Some("1"), Full), Off); // NO_COLOR wins
         assert_eq!(mode_from(None, Some(""), Full), Full); // empty NO_COLOR ignored
         assert_eq!(mode_from(Some("junk"), None, Full), Full);
+        assert_eq!(mode_from(Some("junk"), None, Off), Off);
+        for off in ["OFF", " Off ", "false", "FALSE", "no", "No", "0"] {
+            assert_eq!(mode_from(Some(off), None, Full), Off, "{off:?}");
+        }
+        assert_eq!(mode_from(Some("FG"), None, Full), FgOnly);
+        assert_eq!(mode_from(Some("Test"), None, Full), Test);
     }
 
     #[test]
