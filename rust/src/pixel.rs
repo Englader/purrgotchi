@@ -378,7 +378,6 @@ fn eye_rows(mood: Mood, blink: bool) -> [&'static str; 3] {
 
 // ── render ──────────────────────────────────────────────────────────────────
 
-#[cfg_attr(not(test), allow(dead_code))] // wired into `frame --pixels` in 3b.2
 pub(crate) fn render(o: &PixelOpts) -> Grid {
     use Region::*;
 
@@ -796,7 +795,6 @@ pub(crate) fn render(o: &PixelOpts) -> Grid {
 }
 
 /// JSON wire form for `frame --pixels`: `pixels[y][x]` is `"#rrggbb"` or null.
-#[cfg_attr(not(test), allow(dead_code))] // used by `frame --pixels` in 3b.2
 pub(crate) fn grid_hex(g: &Grid) -> Vec<Vec<Option<String>>> {
     g.iter().map(|row| row.iter().map(|p| p.map(|c| c.hex())).collect()).collect()
 }

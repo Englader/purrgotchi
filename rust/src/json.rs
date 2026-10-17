@@ -203,6 +203,9 @@ pub struct FrameJson {
     pub celebration: Option<CelebrationJson>,
     /// Additive HUD data (xp, stars, name colour, peak window, last feed).
     pub hud: HudJson,
+    /// `--pixels` only: 32 rows of 32 `"#rrggbb"` | null (`pixels[y][x]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pixels: Option<Vec<Vec<Option<String>>>>,
 }
 
 /// Everything the pane shows that is not already a top-level `frame` field,
@@ -344,6 +347,7 @@ mod tests {
                 name_fg: "#0abdc6".into(),
                 peak: PeakJson { label: "OFF PEAK".into(), range: "8PM-2PM".into(), is_peak: false },
             },
+            pixels: None,
         };
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains(r#""scene":null"#) && s.contains(r#""celebration":null"#), "{s}");

@@ -18,6 +18,8 @@ pub struct FrameOpts {
     /// Also run the wall-clock timers (celebration countdown, scene
     /// scheduler) and consume the quip — for pane-only setups.
     pub advance: bool,
+    /// Also emit the generated 32x32 pixel sprite as `pixels`.
+    pub pixels: bool,
 }
 
 pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
@@ -38,7 +40,11 @@ pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
             p.clamp(0.0, 100.0)
         }
     };
-    Ok(FrameOpts { width, tick, context_pct, advance: crate::cli::has_flag(args, "--advance") })
+    Ok(FrameOpts {
+        width, tick, context_pct,
+        advance: crate::cli::has_flag(args, "--advance"),
+        pixels: crate::cli::has_flag(args, "--pixels"),
+    })
 }
 
 pub fn run(opts: &FrameOpts) -> i32 {
@@ -64,14 +70,14 @@ pub fn run(opts: &FrameOpts) -> i32 {
         },
         || if opts.advance { crate::quip_cache::consume() } else { crate::quip_cache::peek() },
     );
-    crate::json::print(&build(&st, now, tick, &view));
+    crate::json::print(&build(&st, now, tick, &view, opts.pixels));
     if opts.advance {
         advance(&st, now, view.is_birthday, forced_scene, playground_enabled);
     }
     0
 }
 
-pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView) -> FrameJson {
+pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: bool) -> FrameJson {
     let sprite = (0..crate::playground::ROWS)
         .map(|i| {
             let line = view.sprite_lines.get(i).cloned().unwrap_or_default();
@@ -116,6 +122,17 @@ pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView) -> Frame
         scene,
         celebration,
         hud: hud(st, now),
+        pixels: pixels.then(|| {
+            crate::pixel::grid_hex(&crate::pixel::render(&crate::pixel::PixelOpts {
+                breed: &st.breed,
+                rarity: &st.rarity,
+                stage: state::life_stage(st.level),
+                mood: view.mood,
+                frame: view.frame,
+                shiny: st.shiny,
+                tick,
+            }))
+        }),
     }
 }
 
@@ -169,6 +186,12 @@ mod tests {
                 assert!(fg.len() == 7 && fg.starts_with('#') && fg[1..].chars().all(|c| c.is_ascii_hexdigit()), "{r}: {fg}");
             }
         }
+    }
+
+    #[test]
+    fn parse_opts_pixels_flag() {
+        assert!(!parse_opts(&a(&["p", "frame", "--json"])).unwrap().pixels);
+        assert!(parse_opts(&a(&["p", "frame", "--json", "--pixels"])).unwrap().pixels);
     }
 
     #[test]

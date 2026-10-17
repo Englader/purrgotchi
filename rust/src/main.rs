@@ -116,7 +116,7 @@ fn main() {
             Ok(opts) => process::exit(frame::run(&opts)),
             Err(msg) => {
                 bad_args("frame", &msg, json);
-                eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance]");
+                eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance] [--pixels]");
                 process::exit(2);
             }
         },
