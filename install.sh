@@ -27,7 +27,7 @@ esac
 RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi${BIN_EXT}"
 
 usage() {
-    echo "usage: bash install.sh                    # wire statusLine + feed/turn hooks (classic)"
+    echo "usage: bash install.sh                    # wire statusLine + feed/turn hooks"
     echo "       bash install.sh --uninstall-hooks  # remove purrgotchi feed/turn hooks, keep statusLine"
 }
 

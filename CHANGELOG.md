@@ -31,14 +31,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   uses foreground colours only; `PURR_PIXELS=test` (or
   `purrgotchi pixels test`) prints a background-colour test card.
 - **Binary `--json` surface** (versioned): `feed`, `turn`, `pet`, `play`,
-  `treat`, `rename`, `stats` and `card`, plus `frame` (read-only snapshot for
-  scripting and debugging, `--pixels` for the 32x32 sprite grid). `feed
+  `treat`, `rename`, `stats` and `card`, plus `frame` (JSON snapshot for
+  scripting and debugging; it does not write state unless `--advance` is passed). `feed
   --count N` batches tool calls.
 - `purrgotchi pixels sheet|scene|celebrate` art preview tools.
 - **`PURR_STATE_DIR`** override for the state directory (sandboxed runs and
   tests).
 - **`install.sh --uninstall-hooks`** removes the feed/turn hooks and keeps the
-  statusline. The installer also writes `statusLine.refreshInterval: 1`.
+  statusline.
 - The README documents a `purr` shell wrapper so commands run as `! purr <verb>`
   inside Claude Code.
 

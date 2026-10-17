@@ -185,7 +185,7 @@ A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, tr
 | `purrgotchi treat` | 25 coins, +5 bond, 4h cooldown, 120s happy; resets hunger |
 | `purrgotchi hatch [--rarity R]` | Hatches the kitten explicitly (normally automatic on first run) |
 | `purrgotchi rename <name>` | Renames the kitten in `state.json` (personality re-templates at render time) |
-| `purrgotchi frame [--json] [--width N] [--advance] [--pixels]` | Read-only JSON snapshot of the kitten (scripting/debug; `--pixels` adds the 32x32 sprite grid) |
+| `purrgotchi frame [--json] [--width N] [--advance]` | JSON snapshot of the kitten (scripting/debug; reads state without writing it unless `--advance`, which also runs the timers) |
 | `purrgotchi pixels test\|sheet\|scene\|celebrate` | Pixel cat tools: `test` prints the background-colour test card; `sheet`, `scene` and `celebrate` preview art (add `--json` for a machine-readable dump) |
 | `purrgotchi --version` | Prints the crate version |
 
@@ -234,7 +234,7 @@ row), and `purr play` starts one immediately.
 - **Add static phrases:** edit the per-mood arrays in `rust/src/speech.rs`, rebuild.
 - **Tweak colors:** edit the constants at the top of `rust/src/colors.rs`.
 - **Pixel cat mode:** `PURR_PIXELS=0` restores the classic ASCII cat; `PURR_PIXELS=fg` uses foreground colours only (no background colour, for terminals that mangle it); `PURR_PIXELS=1` forces full pixel mode; `PURR_PIXELS=test` shows a colour test card. A non-empty `NO_COLOR` always forces the ASCII cat. Put these in `~/.claude/purrgotchi/.env` or export them in your shell.
-- **Playground:** `PURR_PLAYGROUND=0` disables scenes; `PURR_PLAYGROUND_WIDTH=<columns>` overrides the detected terminal width for hosts that do not report one.
+- **Playground:** `PURR_PLAYGROUND=0` disables scenes; `PURR_PLAYGROUND_WIDTH=<columns>` sets the width of the cat/playground column itself (clamped to 24..120, nothing subtracted for the HUD box), for hosts that do not report `COLUMNS`. It also lets the pixel cat draw when `COLUMNS` is missing; without either, you get the ASCII cat.
 - **Debug logging:** set `PURR_DEBUG=1` (or pass `--debug`) to write timestamped lines to `~/.claude/purrgotchi/debug.log` — covers LLM call latency, token counts, react worker outcomes, watchdog events, and statusline render timing. Enable system-wide by appending `--debug` to the `statusLine.command` in `~/.claude/settings.json` and restarting Claude Code.
 
 ---
