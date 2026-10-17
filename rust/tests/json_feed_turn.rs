@@ -61,7 +61,10 @@ fn feed_count_rejects_bad_values_without_touching_state() {
         args.extend(bad.iter().copied());
         let out = sb.run(&args, "", &[]);
         assert_eq!(out.status.code(), Some(2), "{bad:?}");
-        assert!(out.stdout.is_empty(), "{bad:?}");
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!((v["ok"].as_bool(), v["error"].as_str()), (Some(false), Some("bad_args")), "{bad:?}");
+        assert!(v["detail"].as_str().unwrap().starts_with("feed: "), "{bad:?}");
+        assert!(String::from_utf8_lossy(&out.stderr).starts_with("feed: "), "{bad:?}");
         assert_eq!(sb.snapshot(), before, "{bad:?}");
     }
 }
@@ -79,7 +82,7 @@ fn feed_json_on_unreadable_state_prints_one_error_line() {
     let sb = Sandbox::new("feed_unreadable");
     std::fs::create_dir_all(sb.state.join("state.json")).unwrap(); // a directory -> read fails, not NotFound
     let (v, out) = run_json(&sb, &["feed", "--json"], "");
-    assert_eq!(out.status.code(), Some(0), "classic exit code is 0");
+    assert_eq!(out.status.code(), Some(1), "--json ok:false exits 1");
     assert_eq!(keys(&v), ["error", "message", "ok", "v"]);
     assert_eq!(v["ok"], false);
     assert_eq!(v["error"], "state_unavailable");

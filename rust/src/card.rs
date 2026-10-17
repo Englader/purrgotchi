@@ -19,10 +19,10 @@ pub fn run_cmd(json: bool, plain: bool) {
     // `card` is a read-only inspection command, so a missing state should error
     // loudly instead of silently auto-hatching (which would feel surprising
     // from a command whose contract is "show me my cat").
-    let s = match crate::state::load() {
-        Some(s) => s,
-        None => {
-            crate::json::no_kitten(json);
+    let s = match crate::state::load_for_read() {
+        Ok(s) => s,
+        Err(fail) => {
+            crate::json::state_read_error(fail, json);
             std::process::exit(1);
         }
     };

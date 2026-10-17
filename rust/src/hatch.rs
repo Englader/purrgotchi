@@ -107,15 +107,7 @@ pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State
 /// recoverable.
 pub fn load_or_hatch() -> state::State {
     use crate::state::LoadOutcome;
-    let mut outcome = state::load_outcome();
-    for _ in 0..2 {
-        if !matches!(outcome, LoadOutcome::Unreadable) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(15));
-        outcome = state::load_outcome();
-    }
-    match outcome {
+    match state::load_outcome_retry() {
         LoadOutcome::Loaded(s) => s,
         LoadOutcome::Unreadable => {
             crate::debug::log("state.json unreadable — serving placeholder, NOT saving");

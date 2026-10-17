@@ -47,9 +47,12 @@ pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
 
 pub fn run(opts: &FrameOpts) -> i32 {
     // Read-only: never load_or_hatch (it would create state.json).
-    let Some(st) = state::load() else {
-        crate::json::no_kitten(true);
-        return 1;
+    let st = match state::load_for_read() {
+        Ok(st) => st,
+        Err(fail) => {
+            crate::json::state_read_error(fail, true);
+            return 1;
+        }
     };
     let now = state::now_secs();
     let tick = opts.tick.unwrap_or(now);

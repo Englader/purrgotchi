@@ -54,19 +54,17 @@ fn main() {
                 match cli::flag_value(&args, "--count").and_then(cli::parse_count) {
                     Some(n) => n,
                     None => {
-                        eprintln!("feed: --count must be an integer in 1..={}", cli::MAX_FEED_COUNT);
+                        bad_args("feed", &format!("--count must be an integer in 1..={}", cli::MAX_FEED_COUNT), json);
                         process::exit(2);
                     }
                 }
             } else {
                 1
             };
-            hooks::feed_cmd(count, json);
-            process::exit(0);
+            process::exit(hooks::feed_cmd(count, json));
         }
         "turn" => {
-            hooks::turn_cmd(cli::has_flag(&args, "--json"));
-            process::exit(0);
+            process::exit(hooks::turn_cmd(cli::has_flag(&args, "--json")));
         }
         "rename" => {
             let json = cli::has_flag(&args, "--json");
@@ -78,16 +76,13 @@ fn main() {
             process::exit(0);
         }
         "pet" => {
-            hooks::pet_cmd(cli::has_flag(&args, "--json"));
-            process::exit(0);
+            process::exit(hooks::pet_cmd(cli::has_flag(&args, "--json")));
         }
         "play" => {
-            hooks::play_cmd(cli::has_flag(&args, "--json"));
-            process::exit(0);
+            process::exit(hooks::play_cmd(cli::has_flag(&args, "--json")));
         }
         "treat" => {
-            hooks::treat_cmd(cli::has_flag(&args, "--json"));
-            process::exit(0);
+            process::exit(hooks::treat_cmd(cli::has_flag(&args, "--json")));
         }
         "stats" => {
             hooks::stats_cmd(cli::has_flag(&args, "--json"));
@@ -138,7 +133,7 @@ fn main() {
         "frame" => match frame::parse_opts(&args) {
             Ok(opts) => process::exit(frame::run(&opts)),
             Err(msg) => {
-                eprintln!("frame: {msg}");
+                bad_args("frame", &msg, cli::has_flag(&args, "--json"));
                 eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance]");
                 process::exit(2);
             }
@@ -154,7 +149,11 @@ fn main() {
                     process::exit(cost_acc::run_cmd(session, t, json))
                 }
                 _ => {
-                    eprintln!("usage: purrgotchi cost --session <id> --total <usd> [--json]");
+                    let usage = "usage: purrgotchi cost --session <id> --total <usd> [--json]";
+                    eprintln!("{usage}");
+                    if json {
+                        json::print_bad_args(usage);
+                    }
                     process::exit(2);
                 }
             }
@@ -173,5 +172,14 @@ fn main() {
             eprintln!("usage: purrgotchi <statusline|frame|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
             process::exit(2);
         }
+    }
+}
+
+/// Bad CLI arguments: the classic `<cmd>: <detail>` line on stderr, plus a
+/// `bad_args` error object on stdout under `--json`. Caller exits 2.
+fn bad_args(cmd: &str, detail: &str, json: bool) {
+    eprintln!("{cmd}: {detail}");
+    if json {
+        json::print_bad_args(&format!("{cmd}: {detail}"));
     }
 }

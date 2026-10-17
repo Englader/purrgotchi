@@ -220,6 +220,42 @@ pub fn load_outcome() -> LoadOutcome {
     }
 }
 
+/// Why a read-only command could not show the kitten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadFail {
+    /// No state.json — genuinely nothing hatched yet.
+    Missing,
+    /// Still unreadable after the retries (e.g. a Windows sharing violation).
+    Unreadable,
+    /// state.json exists but is not valid v2 state.
+    Corrupt,
+}
+
+/// `load_outcome()` with a short retry for transient `Unreadable` results
+/// (2 x 15ms), shared by `hatch::load_or_hatch` and the read-only commands.
+pub fn load_outcome_retry() -> LoadOutcome {
+    let mut outcome = load_outcome();
+    for _ in 0..2 {
+        if !matches!(outcome, LoadOutcome::Unreadable) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        outcome = load_outcome();
+    }
+    outcome
+}
+
+/// For read-only commands: the kitten, or exactly why it could not be shown.
+/// Never writes. A transient lock error must not look like "no kitten".
+pub fn load_for_read() -> Result<State, ReadFail> {
+    match load_outcome_retry() {
+        LoadOutcome::Loaded(s) => Ok(s),
+        LoadOutcome::Missing => Err(ReadFail::Missing),
+        LoadOutcome::Unreadable => Err(ReadFail::Unreadable),
+        LoadOutcome::Corrupt => Err(ReadFail::Corrupt),
+    }
+}
+
 pub fn load() -> Option<State> {
     match load_outcome() {
         LoadOutcome::Loaded(s) => Some(s),

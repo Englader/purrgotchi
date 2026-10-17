@@ -392,33 +392,46 @@ struct QuipPromptInput {
     last_assistant: String,
 }
 
+fn quip_bad_input(msg: &str, json: bool) -> i32 {
+    eprintln!("{msg}");
+    if json {
+        crate::json::print_error("bad_input", msg);
+    }
+    2
+}
+
 /// `purrgotchi quip-prompt [--json]` — the react prompt without a transcript
 /// file: the mod passes `{last_user,last_assistant}` on stdin (spec §4.6).
 pub fn quip_prompt_cmd(json: bool) -> i32 {
     use std::io::{IsTerminal, Read};
-    let s = match state::load() {
-        Some(s) if !s.breed.is_empty() => s,
-        _ => {
+    let s = match state::load_for_read() {
+        Ok(s) if !s.breed.is_empty() => s,
+        Ok(_) => {
             crate::json::no_kitten(json);
             return 1;
         }
+        Err(fail) => {
+            crate::json::state_read_error(fail, json);
+            return 1;
+        }
     };
-    let mut input = String::new();
-    if !std::io::stdin().is_terminal() {
-        let _ = std::io::stdin().read_to_string(&mut input);
+    let mut bytes = Vec::new();
+    if !std::io::stdin().is_terminal()
+        && let Err(e) = std::io::stdin().take(1 << 20).read_to_end(&mut bytes)
+    {
+        return quip_bad_input(&format!("quip-prompt: could not read stdin: {e}"), json);
     }
+    let input = match String::from_utf8(bytes) {
+        Ok(t) => t,
+        Err(_) => return quip_bad_input("quip-prompt: stdin is not valid UTF-8", json),
+    };
     let inp: QuipPromptInput = if input.trim().is_empty() {
         QuipPromptInput::default()
     } else {
         match serde_json::from_str(&input) {
             Ok(v) => v,
             Err(e) => {
-                let m = format!("quip-prompt: stdin is not valid JSON: {e}");
-                eprintln!("{m}");
-                if json {
-                    crate::json::print_error("bad_input", &m);
-                }
-                return 2;
+                return quip_bad_input(&format!("quip-prompt: stdin is not valid JSON: {e}"), json);
             }
         }
     };

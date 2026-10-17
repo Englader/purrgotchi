@@ -185,8 +185,8 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) -> f64 {
 pub fn run_cmd(session_id: &str, total: f64, json: bool) -> i32 {
     // Check first: accumulate_from_payload would take the lock (creating the
     // lock file) before discovering there is no kitten.
-    if crate::state::load().is_none() {
-        crate::json::no_kitten(json);
+    if let Err(fail) = crate::state::load_for_read() {
+        crate::json::state_read_error(fail, json);
         return 1;
     }
     let credit = accumulate_from_payload(session_id, total);

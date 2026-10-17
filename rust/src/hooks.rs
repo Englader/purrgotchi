@@ -98,7 +98,9 @@ pub(crate) fn apply_feed_batch(s: &mut crate::state::State, count: u32, now: u64
     FeedBatch { celebration: best.map(|(k, _)| k), dropped }
 }
 
-pub fn feed_cmd(count: u32, json: bool) {
+/// Exit code: 0 always for classic (a Claude Code hook must never fail); under
+/// `--json` an error line means exit 1.
+pub fn feed_cmd(count: u32, json: bool) -> i32 {
     let now = state::now_secs();
     let res = state::locked_update(|s| {
         let b = apply_feed_batch(s, count, now);
@@ -115,11 +117,17 @@ pub fn feed_cmd(count: u32, json: bool) {
         }
     });
     if !json {
-        return; // classic feed stays silent, success or not
+        return 0; // classic feed stays silent, success or not
     }
     match res {
-        Ok(j) => crate::json::print(&j),
-        Err(e) => crate::json::print_error("state_unavailable", &format!("feed: {e}")),
+        Ok(j) => {
+            crate::json::print(&j);
+            0
+        }
+        Err(e) => {
+            crate::json::print_error("state_unavailable", &format!("feed: {e}"));
+            1
+        }
     }
 }
 
@@ -171,7 +179,7 @@ fn apply_feed_dispatch(
     FeedTick { detected, dropped }
 }
 
-pub fn turn_cmd(json: bool) {
+pub fn turn_cmd(json: bool) -> i32 {
     use std::io::Read;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
@@ -187,16 +195,22 @@ pub fn turn_cmd(json: bool) {
     state::sweep_stale_files();
     let react_spawned = maybe_spawn_react(&payload);
     if !json {
-        return;
+        return 0;
     }
     match greeted {
-        Ok(celebration) => crate::json::print(&crate::json::TurnJson {
-            v: crate::json::V,
-            ok: true,
-            celebration,
-            react_spawned,
-        }),
-        Err(e) => crate::json::print_error("state_unavailable", &format!("turn: {e}")),
+        Ok(celebration) => {
+            crate::json::print(&crate::json::TurnJson {
+                v: crate::json::V,
+                ok: true,
+                celebration,
+                react_spawned,
+            });
+            0
+        }
+        Err(e) => {
+            crate::json::print_error("state_unavailable", &format!("turn: {e}"));
+            1
+        }
     }
 }
 
@@ -236,12 +250,14 @@ fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) -> Option<Cele
     greeted
 }
 
-fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) {
+/// Returns the exit code: 1 under `--json` (ok:false), unchanged 0 for classic.
+fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) -> i32 {
     let text = format!("{cmd}: could not update state: {e}");
     eprintln!("{text}");
     if json {
         crate::json::print(&ActionJson::new(false, "error", &text));
     }
+    i32::from(json)
 }
 
 pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
@@ -276,15 +292,16 @@ pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
     }
 }
 
-pub fn pet_cmd(json: bool) {
+pub fn pet_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     match state::locked_update(|s| (s.name.clone(), bond::try_pet(s, now))) {
         Ok((name, result)) => {
             let msg = format_pet_message(&name, &result);
             if json { crate::json::print(&pet_json(&msg, &result)); } else { println!("{msg}"); }
         }
-        Err(e) => report_action_error("pet", &e, json),
+        Err(e) => return report_action_error("pet", &e, json),
     }
+    0
 }
 
 pub(crate) fn pet_json(msg: &str, r: &PetResult) -> ActionJson {
@@ -326,7 +343,7 @@ fn format_pet_message(name: &str, result: &PetResult) -> String {
     }
 }
 
-pub fn play_cmd(json: bool) {
+pub fn play_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_play(s, now);
@@ -341,8 +358,9 @@ pub fn play_cmd(json: bool) {
             let msg = format_play_message(&name, &result, last_played_at);
             if json { crate::json::print(&play_json(&msg, &result, scene)); } else { println!("{msg}"); }
         }
-        Err(e) => report_action_error("play", &e, json),
+        Err(e) => return report_action_error("play", &e, json),
     }
+    0
 }
 
 pub(crate) fn play_json(msg: &str, r: &crate::bond::PlayResult, scene: crate::state::PlaygroundScene) -> ActionJson {
@@ -410,7 +428,7 @@ fn play_applied_variant(name: &str, last_played_at: u64) -> String {
     }
 }
 
-pub fn treat_cmd(json: bool) {
+pub fn treat_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_treat(s, now);
@@ -421,8 +439,9 @@ pub fn treat_cmd(json: bool) {
             let msg = format_treat_message(&name, &result, last_treated_at);
             if json { crate::json::print(&treat_json(&msg, &result)); } else { println!("{msg}"); }
         }
-        Err(e) => report_action_error("treat", &e, json),
+        Err(e) => return report_action_error("treat", &e, json),
     }
+    0
 }
 
 pub(crate) fn treat_json(msg: &str, r: &crate::bond::TreatResult) -> ActionJson {
@@ -513,10 +532,10 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
 }
 
 pub fn stats_cmd(json: bool) {
-    let s = match crate::state::load() {
-        Some(s) => s,
-        None => {
-            crate::json::no_kitten(json);
+    let s = match crate::state::load_for_read() {
+        Ok(s) => s,
+        Err(fail) => {
+            crate::json::state_read_error(fail, json);
             std::process::exit(1);
         }
     };

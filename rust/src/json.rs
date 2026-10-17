@@ -45,6 +45,38 @@ pub fn no_kitten(json: bool) {
     }
 }
 
+/// Read-only commands (frame/stats/card/cost/quip-prompt) when the kitten
+/// could not be loaded. Missing keeps the classic `no_kitten` output; a
+/// transient or corrupt state gets its own code so the mod does not mistake
+/// a lock error for "not hatched". Caller exits 1.
+pub fn state_read_error(fail: crate::state::ReadFail, json: bool) {
+    use crate::state::ReadFail;
+    let (code, msg) = match fail {
+        ReadFail::Missing => return no_kitten(json),
+        ReadFail::Unreadable => ("state_unavailable", "state.json is temporarily unreadable; try again"),
+        ReadFail::Corrupt => ("state_corrupt", "state.json is corrupt (not valid v2 state)"),
+    };
+    eprintln!("{msg}");
+    if json {
+        print_error(code, msg);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BadArgsJson {
+    pub v: u32,
+    pub ok: bool,
+    pub error: String,
+    pub detail: String,
+}
+
+/// Bad command-line arguments. The stderr line stays (the caller prints it);
+/// under `--json` stdout also gets `{"v":1,"ok":false,"error":"bad_args",...}`.
+/// Caller exits 2.
+pub fn print_bad_args(detail: &str) {
+    print(&BadArgsJson { v: V, ok: false, error: "bad_args".to_string(), detail: detail.to_string() });
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedJson {
     pub v: u32,

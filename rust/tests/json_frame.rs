@@ -149,7 +149,9 @@ fn frame_rejects_bad_flags_with_exit_2() {
         args.extend(bad.iter().copied());
         let out = sb.run(&args, "", &[]);
         assert_eq!(out.status.code(), Some(2), "{bad:?}");
-        assert!(out.stdout.is_empty(), "{bad:?}");
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!((v["ok"].as_bool(), v["error"].as_str()), (Some(false), Some("bad_args")), "{bad:?}");
+        assert!(v["detail"].as_str().unwrap().starts_with("frame: "), "{bad:?}");
         assert!(String::from_utf8_lossy(&out.stderr).starts_with("frame: "), "{bad:?}");
     }
 }

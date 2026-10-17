@@ -88,10 +88,10 @@ fn rename_dash_name_is_still_a_name() {
 }
 
 #[test]
-fn pet_json_on_unreadable_state_reports_error_with_exit_0() {
+fn pet_json_on_unreadable_state_reports_error_with_exit_1() {
     let sb = Sandbox::new("pet_unreadable");
     std::fs::create_dir_all(sb.state.join("state.json")).unwrap();
     let (v, out) = run_json(&sb, &["pet", "--json"], "");
-    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.status.code(), Some(1));
     assert_eq!((v["ok"].as_bool(), v["result"].as_str()), (Some(false), Some("error")));
 }
