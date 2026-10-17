@@ -20,12 +20,13 @@ struct Case {
     quip: Option<Value>,
     env: &'static [(&'static str, &'static str)],
     must_contain: &'static [&'static str], // checked on the ANSI-stripped output
+    raw_contain: &'static [&'static str],  // checked on the raw bytes (colour escapes)
 }
 
 fn case(name: &'static str) -> Case {
     Case {
         name, now: NOW, state: json!({}), payload: Some(json!({})), branch: Some("main"),
-        cwd_outside_home: false, anchor: None, quip: None, env: &[], must_contain: &[],
+        cwd_outside_home: false, anchor: None, quip: None, env: &[], must_contain: &[], raw_contain: &[],
     }
 }
 
@@ -86,6 +87,69 @@ fn cases() -> Vec<Case> {
         Case { state: json!({ "name": "Princess Thalia Bartholomew Fluffington-Whiskerby III" }),
                ..case("long_name_overflows_rail") },
     ]
+    .into_iter()
+    .chain(extra_cases())
+    .collect()
+}
+
+fn legendary() -> Value {
+    json!({ "rarity": "legendary", "shiny": true, "level": 60,
+            "total_tool_calls": 2950, "last_milestone_celebrated": 2000 })
+}
+
+fn celebration(kind: &str) -> Value {
+    json!({ "celebration_kind": kind, "levelup_renders_remaining": 2, "last_celebration_tick_at": NOW })
+}
+
+/// Added after the first 20, still recorded from the pre-refactor binary.
+fn extra_cases() -> Vec<Case> {
+    // Mid-scene state for the scenes not covered by the BallChase cases.
+    let scene = |kind: &str, ago: u64| json!({ "scene_kind": kind, "scene_started_at": NOW - ago,
+                                              "scene_duration_secs": 30, "scene_seed": 7 });
+    let wide: &'static [(&'static str, &'static str)] = &[("COLUMNS", "160")];
+    vec![
+        // Legendary rainbow hues 1, 2, 4, 5 (0 and 3 are covered above). RAINBOW_HUES order:
+        // red, yellow, green, cyan, blue, magenta.
+        Case { now: NOW + 1, state: legendary(),
+               raw_contain: &["\x1b[38;2;243;243;27m"], ..case("legendary_shiny_hue1_yellow") },
+        Case { now: NOW + 2, state: legendary(),
+               raw_contain: &["\x1b[38;2;87;236;166m"], ..case("legendary_shiny_hue2_green") },
+        Case { now: NOW + 4, state: legendary(),
+               raw_contain: &["\x1b[38;2;80;150;255m"], ..case("legendary_shiny_hue4_blue") },
+        Case { now: NOW + 5, state: legendary(),
+               raw_contain: &["\x1b[38;2;113;28;145m"], ..case("legendary_shiny_hue5_magenta") },
+        // Celebration kinds (LevelUp and EvolvingYoung are covered above).
+        Case { state: { let mut s = celebration("EvolvingAdult"); merge(&mut s, json!({ "level": 30, "total_tool_calls": 1500 })); s },
+               ..case("celebration_evolving_adult") },
+        Case { state: celebration("Streak"), ..case("celebration_streak") },
+        Case { state: celebration("MilestoneCenturion"), ..case("celebration_milestone_centurion") },
+        Case { state: celebration("MilestoneVeteran"), ..case("celebration_milestone_veteran") },
+        Case { state: celebration("MilestoneMaster"), ..case("celebration_milestone_master") },
+        Case { state: celebration("MilestoneLegendary"), ..case("celebration_milestone_legendary") },
+        Case { state: celebration("Greeting"), ..case("celebration_greeting") },
+        Case { state: celebration("RandomDrop"), ..case("celebration_random_drop") },
+        // Playground scenes mid-flight (BallChase is covered above) + the butterfly finale.
+        Case { state: scene("Zoomies", 9), env: wide, ..case("scene_zoomies_mid") },
+        Case { state: scene("ButterflyChase", 9), env: wide, ..case("scene_butterfly_mid") },
+        Case { state: scene("ButterflyChase", 27), env: wide, ..case("scene_butterfly_finale") },
+        Case { state: scene("Roll", 9), env: wide, ..case("scene_roll_mid") },
+        Case { state: scene("YarnPush", 9), env: wide, ..case("scene_yarn_mid") },
+        // Non-ASCII names: pins the current chars().count()-based padding, whatever it is.
+        Case { state: json!({ "name": "Zoë Élan" }), must_contain: &["Zoë Élan"], ..case("name_accented_latin") },
+        Case { state: json!({ "name": "猫ちゃん🐱" }), must_contain: &["猫ちゃん🐱"], ..case("name_cjk_emoji") },
+        // Speech longer than the bubble, ctx >= 100 %, M-range tokens, >= 1 h duration.
+        Case { quip: Some(json!({ "quip": "the cat has a great many thoughts about this refactor and she intends to share every single one of them with you right now, at length, whether or not the bubble can hold them all",
+                                  "generated_at": NOW - 10, "renders_remaining": 6, "last_render_at": 0 })),
+               ..case("quip_longer_than_bubble") },
+        Case { payload: Some(json!({ "context_window": { "used_percentage": 104.0 } })),
+               must_contain: &["MOOD: panic"], ..case("ctx_over_100") },
+        Case { payload: Some(json!({ "context_window": { "used_percentage": 100.0,
+                   "current_usage": { "input_tokens": 1_150_000, "output_tokens": 62_000,
+                                      "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0 } } })),
+               ..case("ctx_100_tokens_millions") },
+        Case { payload: Some(json!({ "cost": { "total_duration_ms": 5_025_000 } })),
+               must_contain: &["1h 23m 45s"], ..case("duration_over_one_hour") },
+    ]
 }
 
 fn run_case(c: &Case) -> (Vec<u8>, Sandbox) {
@@ -139,6 +203,9 @@ fn statusline_goldens() {
         }
         assert!(lines[6].starts_with(&format!("{PINK}╚")), "{}: row 6", c.name);
         let plain = strip_ansi(&text);
+        for needle in c.raw_contain {
+            assert!(text.contains(needle), "{}: missing raw {needle:?}", c.name);
+        }
         for needle in c.must_contain {
             assert!(plain.contains(needle), "{}: missing {needle:?} in\n{plain}", c.name);
         }
@@ -147,6 +214,18 @@ fn statusline_goldens() {
             assert_eq!(q["renders_remaining"], 6, "quip must not burn behind a celebration");
         }
         assert_golden(&format!("statusline/{}.ansi", c.name), &bytes);
+    }
+}
+
+/// One-off recorder for NEW statusline goldens. Never overwrites an existing
+/// file, so it cannot paper over a regression. Usage (pre-change binary only!):
+///   cargo test --test golden_statusline -- --ignored record_missing_statusline_goldens
+#[test]
+#[ignore = "recorder: writes golden files that do not exist yet; run by hand"]
+fn record_missing_statusline_goldens() {
+    for c in cases() {
+        let (bytes, _sb) = run_case(&c);
+        common::record_missing_golden(&format!("statusline/{}.ansi", c.name), &bytes);
     }
 }
 

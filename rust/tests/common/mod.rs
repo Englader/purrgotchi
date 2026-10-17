@@ -81,6 +81,11 @@ impl Sandbox {
 
 impl Drop for Sandbox {
     fn drop(&mut self) {
+        // Keep the sandbox for post-mortem when a test is failing.
+        if std::thread::panicking() {
+            eprintln!("sandbox kept for inspection: {}", self.root.display());
+            return;
+        }
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
@@ -159,16 +164,29 @@ pub fn strip_ansi(s: &str) -> String {
     out
 }
 
-/// Compare `actual` to `rust/tests/golden/<rel>`. `UPDATE_GOLDEN=1` (re)writes
-/// the file — allowed in Task 2 ONLY; afterwards a diff is always a bug.
-pub fn assert_golden(rel: &str, actual: &[u8]) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden").join(rel);
-    if std::env::var("UPDATE_GOLDEN").as_deref() == Ok("1") {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, actual).unwrap();
+fn golden_path(rel: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden").join(rel)
+}
+
+/// Used only by the `#[ignore]`d recorder tests: writes `rust/tests/golden/<rel>`
+/// if (and only if) it does not exist yet. Existing goldens are never touched,
+/// so recording can never turn a regression into a pass.
+pub fn record_missing_golden(rel: &str, actual: &[u8]) {
+    let path = golden_path(rel);
+    if path.exists() {
         return;
     }
-    let expected = std::fs::read(&path).unwrap_or_else(|_| panic!("missing golden {path:?} — record it in Task 2"));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, actual).unwrap();
+    eprintln!("recorded new golden {path:?}");
+}
+
+/// Compare `actual` to `rust/tests/golden/<rel>`, byte for byte. There is no
+/// update switch: a diff is always a bug (or a deliberate, reviewed re-record
+/// by deleting the file and running the recorder).
+pub fn assert_golden(rel: &str, actual: &[u8]) {
+    let path = golden_path(rel);
+    let expected = std::fs::read(&path).unwrap_or_else(|_| panic!("missing golden {path:?} — record it with the ignored recorder test"));
     if expected != actual {
         let e = String::from_utf8_lossy(&expected);
         let a = String::from_utf8_lossy(actual);
