@@ -9,6 +9,7 @@ use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
+pub(crate) mod band;
 pub(crate) mod fx;
 pub(crate) mod life;
 pub(crate) mod paint;
