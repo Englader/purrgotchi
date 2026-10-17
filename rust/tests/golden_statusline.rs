@@ -95,7 +95,9 @@ fn cases() -> Vec<Case> {
 
 /// Opt-in pixel-cat cases (goldens under `statusline_px/`).
 fn px_cases() -> Vec<Case> {
-    let px = |name| Case { dir: "statusline_px", env: &[("PURR_PIXELS", "1")], ..case(name) };
+    // COLUMNS=161 leaves a 60-column cat stage; the pixel cat never guesses a width.
+    const W: (&str, &str) = ("COLUMNS", "161");
+    let px = |name| Case { dir: "statusline_px", env: &[("PURR_PIXELS", "1"), W], ..case(name) };
     vec![
         Case { env: &[("PURR_PIXELS", "test"), ("COLUMNS", "160")], ..px("pixel_test_card") },
         // Idle life. Times are picked to show distinct poses: walking (block start),
@@ -110,8 +112,8 @@ fn px_cases() -> Vec<Case> {
                payload: Some(json!({ "context_window": { "used_percentage": 55.0 } })),
                branch: Some("feat/v4.0.0-claude-code-mod-json-surface"),
                must_contain: &["MOOD: alert"], ..px("px_life_young_rare_frame1") },
-        Case { now: NOW + 20, env: &[("PURR_PIXELS", "fg")], ..px("px_life_fg_mode") },
-        Case { now: NOW + 9, env: &[("PURR_PIXELS", "1"), ("PURR_FORCE_POSE", "groom")], ..px("px_life_forced_groom") },
+        Case { now: NOW + 20, env: &[("PURR_PIXELS", "fg"), W], ..px("px_life_fg_mode") },
+        Case { now: NOW + 9, env: &[("PURR_PIXELS", "1"), ("PURR_FORCE_POSE", "groom"), W], ..px("px_life_forced_groom") },
         // Too narrow for a stage: the classic sprite, byte for byte (checked below).
         Case { anchor: Some("1.25\n1000.000000\n"), env: &[("PURR_PIXELS", "1"), ("COLUMNS", "120")],
                ..px("px_life_narrow_is_ascii") },
@@ -368,5 +370,22 @@ fn statusline_pixels_off_is_classic() {
             }
             assert_golden(&format!("{CLASSIC_DIR}/{}.ansi", c.name), &bytes);
         }
+    }
+}
+
+/// Pixel mode with an unknown terminal width must fall back to the classic
+/// ASCII cat (v3.8.0's bytes), never guess a width that wraps every row.
+#[test]
+fn pixel_mode_unknown_columns_is_ascii() {
+    let envs: [&[(&str, &str)]; 4] = [
+        &[("PURR_PIXELS", "1")],
+        &[("PURR_PIXELS", "1"), ("COLUMNS", "wat")],
+        &[("PURR_PIXELS", "1"), ("COLUMNS", "-5")],
+        &[("PURR_PIXELS", "1"), ("COLUMNS", "99999999999999999999999")],
+    ];
+    for env in envs {
+        let c = Case { anchor: Some("1.25\n1000.000000\n"), env, ..case("calm_common_offpeak") };
+        let (bytes, _sb) = run_case(&c);
+        assert_golden(&format!("{CLASSIC_DIR}/calm_common_offpeak.ansi"), &bytes);
     }
 }

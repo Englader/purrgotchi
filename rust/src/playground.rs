@@ -56,18 +56,32 @@ pub fn strip_width() -> Option<usize> {
     )
 }
 
+/// Width from the override or COLUMNS, before clamping. None = neither is
+/// usable (unset, garbage, negative or overflowing).
+fn detected_width(columns: Option<&str>, override_w: Option<&str>) -> Option<usize> {
+    let num = |v: Option<&str>| v.and_then(|v| v.trim().parse::<usize>().ok());
+    num(override_w).or_else(|| num(columns).map(|c| c.saturating_sub(STRIP_OVERHEAD)))
+}
+
+/// ASCII scenes guess DEFAULT_STRIP when the width is unknown (v3.8.0 behaviour).
 pub(crate) fn strip_width_from(
     columns: Option<&str>,
     override_w: Option<&str>,
 ) -> Option<usize> {
-    let w = if let Some(o) = override_w.and_then(|v| v.trim().parse::<usize>().ok()) {
-        o
-    } else if let Some(c) = columns.and_then(|v| v.trim().parse::<usize>().ok()) {
-        c.saturating_sub(STRIP_OVERHEAD)
-    } else {
-        DEFAULT_STRIP
-    };
-    clamp_strip(w)
+    clamp_strip(detected_width(columns, override_w).unwrap_or(DEFAULT_STRIP))
+}
+
+/// Pixel cat column width. Never guesses: an unknown terminal width means the
+/// ASCII cat, since a wrong guess would wrap every row.
+pub fn pixel_width() -> Option<usize> {
+    pixel_width_from(
+        std::env::var("COLUMNS").ok().as_deref(),
+        std::env::var("PURR_PLAYGROUND_WIDTH").ok().as_deref(),
+    )
+}
+
+pub(crate) fn pixel_width_from(columns: Option<&str>, override_w: Option<&str>) -> Option<usize> {
+    detected_width(columns, override_w).and_then(clamp_strip)
 }
 
 /// MAX_STRIP cap; below MIN_STRIP there is no room to stage a scene.
@@ -506,6 +520,18 @@ mod tests {
         assert_eq!(strip_width_from(Some("wat"), None), Some(DEFAULT_STRIP));
         // absent COLUMNS -> DEFAULT_STRIP
         assert_eq!(strip_width_from(None, None), Some(DEFAULT_STRIP));
+    }
+
+    #[test]
+    fn pixel_width_never_guesses() {
+        assert_eq!(pixel_width_from(Some("200"), None), Some(99));
+        for bad in [None, Some("wat"), Some("-5"), Some("99999999999999999999999")] {
+            assert_eq!(pixel_width_from(bad, None), None, "{bad:?}");
+        }
+        assert_eq!(pixel_width_from(Some("120"), None), None);
+        assert_eq!(pixel_width_from(None, Some("40")), Some(40));
+        // the ASCII scene path keeps v3.8.0's guess
+        assert_eq!(strip_width_from(Some("-5"), None), Some(DEFAULT_STRIP));
     }
 
     #[test]

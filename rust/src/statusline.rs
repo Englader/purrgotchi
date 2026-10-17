@@ -489,7 +489,7 @@ pub fn run() {
     let mut out = stdout.lock();
     let mut buf = String::with_capacity(4096);
 
-    let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::strip_width()) {
+    let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::pixel_width()) {
         (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
         (m @ (crate::px::PixelMode::Full | crate::px::PixelMode::FgOnly), Some(w)) => {
             Some(crate::px::cat_area(&view, &st, now.max(0) as u64, w, m, crate::px::life::forced()))
