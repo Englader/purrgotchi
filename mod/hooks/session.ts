@@ -12,11 +12,23 @@ import type { FrameJson } from '../types'
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 const mentions = (v: unknown): boolean => typeof v === 'string' && v.toLowerCase().includes('purrgotchi')
 
-/** Any `hooks.<event>[*].hooks[*].command` naming purrgotchi. */
-function eventHasPurr(hooks: Record<string, unknown>, event: string): boolean {
+// install.sh's BIN_RE (what --uninstall-hooks removes): `"<dir>/purrgotchi[.exe]"`,
+// quoted or bare, or the `purr` wrapper, then the verb. A hook that merely
+// mentions purrgotchi is not double feeding, and the uninstaller would not
+// remove it, so the toast could never be cleared.
+const BIN_RE = String.raw`^\s*("([^"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?"|([^\s"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?)\s+`
+const runsVerb = (verb: string): RegExp => new RegExp(`${BIN_RE}${verb}(\\s|$)`, 'i')
+const FEED_HOOK = runsVerb('feed')
+const TURN_HOOK = runsVerb('turn')
+
+/** Any `hooks.<event>[*].hooks[*].command` running the purrgotchi binary as `re` says. */
+function eventRuns(hooks: Record<string, unknown>, event: string, re: RegExp): boolean {
   const groups = hooks[event]
   if (!Array.isArray(groups)) return false
-  return groups.some(g => isObj(g) && Array.isArray(g.hooks) && g.hooks.some(h => isObj(h) && mentions(h.command)))
+  return groups.some(
+    g =>
+      isObj(g) && Array.isArray(g.hooks) && g.hooks.some(h => isObj(h) && typeof h.command === 'string' && re.test(h.command)),
+  )
 }
 
 /** Pure scan of the user settings for classic Purrgotchi wiring. Never throws. */
@@ -24,7 +36,7 @@ export function scanSettings(s: unknown): SettingsScan {
   const hooks = isObj(s) && isObj(s.hooks) ? s.hooks : {}
   const statusLine = isObj(s) && isObj(s.statusLine) ? s.statusLine : {}
   return {
-    classicHooks: eventHasPurr(hooks, 'PostToolUse') || eventHasPurr(hooks, 'UserPromptSubmit'),
+    classicHooks: eventRuns(hooks, 'PostToolUse', FEED_HOOK) || eventRuns(hooks, 'UserPromptSubmit', TURN_HOOK),
     classicStatusline: mentions(statusLine.command),
   }
 }

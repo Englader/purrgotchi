@@ -101,6 +101,8 @@ export type Spies = {
   notifies: string[]
   statuses: (string | undefined)[]
   runs: string[][]
+  /** The engine's own `session.end` step, each time it ran (its `reason`). */
+  ends: string[]
   /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
   clock: MockClock
 }
@@ -115,7 +117,7 @@ export type EngineOptions = {
 export const settingsFx = {
   /** `hooks.<event>` with one command hook, as install.sh writes it. */
   hook: (event: string, command: string): object => ({
-    hooks: { [event]: [{ matcher: '', hooks: [{ type: 'command', command }] }] },
+    hooks: { [event]: [{ matcher: '*', hooks: [{ type: 'command', command }] }] },
   }),
 }
 
@@ -128,9 +130,12 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], clock: mock.clock(on) }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+  on('session.end', ($, e) => {
+    spies.ends.push(e.reason)
+    return { sessionId: e.sessionId }
+  })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('ui.toast', ($, e) => {
     spies.toasts.push(e.text)

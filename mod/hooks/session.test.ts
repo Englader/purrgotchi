@@ -20,6 +20,17 @@ test('scanSettings table', () => {
   expect(scanSettings(settingsFx.hook('UserPromptSubmit', 'purrgotchi turn')).classicHooks).toBe(true)
   expect(scanSettings(settingsFx.hook('PostToolUse', 'other feed')).classicHooks).toBe(false)
   expect(scanSettings(settingsFx.hook('Stop', 'purrgotchi feed')).classicHooks).toBe(false)
+  // What install.sh writes (and --uninstall-hooks removes): `"<bin>" feed|turn`.
+  expect(scanSettings(settingsFx.hook('PostToolUse', '"/r/rust/target/release/purrgotchi" feed')).classicHooks).toBe(true)
+  expect(scanSettings(settingsFx.hook('UserPromptSubmit', '"C:\\p\\purrgotchi.exe" turn')).classicHooks).toBe(true)
+  expect(scanSettings(settingsFx.hook('PostToolUse', 'purr feed')).classicHooks).toBe(true)
+  // A hook that merely mentions purrgotchi is not double feeding.
+  expect(scanSettings(settingsFx.hook('PostToolUse', '/home/x/purrgotchi/scripts/notify.sh')).classicHooks).toBe(false)
+  expect(scanSettings(settingsFx.hook('PostToolUse', 'bash /home/x/purrgotchi/feed.sh')).classicHooks).toBe(false)
+  expect(scanSettings(settingsFx.hook('PostToolUse', '"/x/purrgotchi" statusline')).classicHooks).toBe(false)
+  expect(scanSettings(settingsFx.hook('PostToolUse', '"/x/purrgotchi" turn')).classicHooks).toBe(false)
+  expect(scanSettings(settingsFx.hook('UserPromptSubmit', '"/x/purrgotchi" feed')).classicHooks).toBe(false)
+  expect(scanSettings(settingsFx.hook('PostToolUse', '"/x/purrgotchi" feeder')).classicHooks).toBe(false)
   expect(scanSettings({ hooks: 'garbage' })).toEqual(none)
   expect(scanSettings({ hooks: { PostToolUse: [null, { hooks: [{}] }] } })).toEqual(none)
   expect(scanSettings({ hooks: { PostToolUse: 'x', UserPromptSubmit: [{ hooks: 'y' }] } })).toEqual(none)

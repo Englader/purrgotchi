@@ -111,21 +111,27 @@ function log($: FeedHost, text: string): void {
   }
 }
 
-/** Counts every tool call (subagents' too, as classic PostToolUse does). */
+/**
+ * Counts every tool call that ran (subagents' too, as classic PostToolUse
+ * does). A `deny` (permission refused, or a result withheld) is not counted.
+ */
 export function registerFeed(on: On, rt: Runtime): void {
   on('tool.call', async ($, e, next) => {
     const r = await next(e)
-    if (ready(rt)) {
+    if (ready(rt) && !('deny' in r)) {
       rt.feeds.add(1)
       void flushFeeds($, rt)
     }
     return r
   }).catch(($, e, next) => next(e))
 
-  // Shares session.end's short bound; losing a batch here is acceptable.
-  // Timers are not cancelled: `/clear` ends the session with no new start.
+  // session.end's one short bound (1.5 s) covers every hook and the engine's
+  // own end step, so that step starts first and the flush runs beside it,
+  // never ahead of it. At the bound the feed is aborted; losing a batch here
+  // is acceptable. Timers are not cancelled: `/clear` ends the session with
+  // no new start.
   on('session.end', async ($, e, next) => {
-    await flushFeeds($, rt).catch(() => {})
-    return next(e)
+    const [r] = await Promise.all([next(e), flushFeeds($, rt).catch(() => {})])
+    return r
   })
 }

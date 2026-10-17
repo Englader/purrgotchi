@@ -129,6 +129,31 @@ test('session.end flushes pending', async ($, on) => {
   expect(feeds(spies.runs)).toEqual([count(1), count(2)])
 })
 
+test('session.end runs the engine end step without waiting for the flush', async ($, on) => {
+  const g = gate()
+  beneath(on)
+  const spies = await startReady($, on, {
+    run: scripted(async () => {
+      await g.wait
+      return ok(fx.feed())
+    }),
+  })
+  await $.tool.call(read) // in flight, held by the gate
+  const ended = $.session.end(end)
+  await spies.clock.settle()
+  expect(spies.ends).toEqual(['prompt_input_exit']) // not starved by the feed
+  g.release()
+  expect(await ended).toEqual({ sessionId: 's1' })
+})
+
+test('a denied tool call is not counted', async ($, on) => {
+  on('tool.call', () => ({ deny: 'refused' }))
+  const spies = await startReady($, on)
+  expect(await $.tool.call(read)).toMatchObject({ deny: 'refused' })
+  await spies.clock.advance(2000)
+  expect(feeds(spies.runs)).toEqual([])
+})
+
 test('session.end flushes credits no kick has sent', async ($, on) => {
   beneath(on)
   const spies = await startReady($, on, { run: scripted(busy) })
