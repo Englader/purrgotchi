@@ -41,27 +41,27 @@ const fn rgb(hex: u32) -> Rgb {
 pub(crate) const OUTLINE: Rgb = rgb(0x160b26);
 const LID: Rgb = rgb(0x160b26);
 const SHADOW: Rgb = rgb(0x0d0618);
-const WHITE: Rgb = rgb(0xffffff);
+pub(crate) const WHITE: Rgb = rgb(0xffffff);
 const BLACK: Rgb = rgb(0x000000);
-const NEON_CYAN: Rgb = colors::CYAN; // #0abdc6, rim light left
-const NEON_MAGENTA: Rgb = colors::PINK; // #ea00d9, rim light right
-const NOSE: Rgb = rgb(0xff7aa8);
-const INNER_EAR: Rgb = rgb(0xf39bb8);
-const VOID_INNER_EAR: Rgb = rgb(0x3a2a5e);
+pub(crate) const NEON_CYAN: Rgb = colors::CYAN; // #0abdc6, rim light left
+pub(crate) const NEON_MAGENTA: Rgb = colors::PINK; // #ea00d9, rim light right
+pub(crate) const NOSE: Rgb = rgb(0xff7aa8);
+pub(crate) const INNER_EAR: Rgb = rgb(0xf39bb8);
+pub(crate) const VOID_INNER_EAR: Rgb = rgb(0x3a2a5e);
 const PUPIL: Rgb = rgb(0x0b0612);
 const PANIC_WHITE: Rgb = rgb(0xf4f1ff);
-const LID_ON_DARK: Rgb = rgb(0xc9c3dd);
+pub(crate) const LID_ON_DARK: Rgb = rgb(0xc9c3dd);
 const MOUTH_OPEN: Rgb = rgb(0x2a0f2a);
 const SPLIT_MUZZLE_DARK: Rgb = rgb(0x3a3346);
 const SPLIT_MUZZLE_LIGHT: Rgb = rgb(0xf3c99a);
 const RARE: Rgb = rgb(0xb45cff);
-const EPIC: Rgb = rgb(0xffc93c);
+pub(crate) const EPIC: Rgb = rgb(0xffc93c);
 const RAINBOW: [Rgb; 7] = [colors::RED, EPIC, colors::YELLOW, colors::GREEN, colors::CYAN, RARE, colors::PINK];
 
 // ── tables ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Pattern {
+pub(crate) enum Pattern {
     Tabby,
     Tuxedo,
     Calico,
@@ -75,23 +75,23 @@ enum Pattern {
     Split,
 }
 
-struct Breed {
-    name: &'static str,
-    base: Rgb,
-    mark: Rgb,
-    mark2: Option<Rgb>,
-    light: Option<Rgb>,
-    pattern: Pattern,
-    fluff: bool,
-    tufts: bool,
-    bushy: bool,
-    thin_tail: bool,
-    big_ears: bool,
-    folded: bool,
-    round: bool,
-    glow: bool,
-    hetero: bool,
-    sheen: Option<f64>,
+pub(crate) struct Breed {
+    pub(crate) name: &'static str,
+    pub(crate) base: Rgb,
+    pub(crate) mark: Rgb,
+    pub(crate) mark2: Option<Rgb>,
+    pub(crate) light: Option<Rgb>,
+    pub(crate) pattern: Pattern,
+    pub(crate) fluff: bool,
+    pub(crate) tufts: bool,
+    pub(crate) bushy: bool,
+    pub(crate) thin_tail: bool,
+    pub(crate) big_ears: bool,
+    pub(crate) folded: bool,
+    pub(crate) round: bool,
+    pub(crate) glow: bool,
+    pub(crate) hetero: bool,
+    pub(crate) sheen: Option<f64>,
 }
 
 const PLAIN: Breed = Breed {
@@ -135,7 +135,7 @@ const BREEDS: [Breed; 16] = [
 
 const GINGER: usize = 3;
 
-fn breed(name: &str) -> &'static Breed {
+pub(crate) fn breed(name: &str) -> &'static Breed {
     BREEDS.iter().find(|b| b.name == name).unwrap_or(&BREEDS[GINGER])
 }
 
@@ -203,7 +203,7 @@ impl Mood {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Rarity {
+pub(crate) enum Rarity {
     Common,
     Uncommon,
     Rare,
@@ -212,7 +212,7 @@ enum Rarity {
 }
 
 impl Rarity {
-    fn parse(s: &str) -> Rarity {
+    pub(crate) fn parse(s: &str) -> Rarity {
         match s {
             "uncommon" => Rarity::Uncommon,
             "rare" => Rarity::Rare,
@@ -223,7 +223,7 @@ impl Rarity {
     }
 
     /// Eye/collar colour; legendary cycles the rainbow by `tick % 7`.
-    fn colour(self, tick: u64) -> Rgb {
+    pub(crate) fn colour(self, tick: u64) -> Rgb {
         match self {
             Rarity::Common => colors::CYAN,
             Rarity::Uncommon => colors::GREEN,
@@ -276,7 +276,7 @@ fn in_tri(x: i32, y: i32, [a, b, c]: [[f64; 2]; 3]) -> bool {
 }
 
 /// FNV-style integer hash in [0, 1), exact i32/u32 wrapping math.
-fn hash(x: i32, y: i32, s: i32) -> f64 {
+pub(crate) fn hash(x: i32, y: i32, s: i32) -> f64 {
     let h = x
         .wrapping_mul(374761393)
         .wrapping_add(y.wrapping_mul(668265263))
@@ -312,15 +312,15 @@ pub(crate) fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     Rgb(ch(a.0, b.0), ch(a.1, b.1), ch(a.2, b.2))
 }
 
-fn lum(c: Rgb) -> f64 {
+pub(crate) fn lum(c: Rgb) -> f64 {
     (0.299 * c.0 as f64 + 0.587 * c.1 as f64 + 0.114 * c.2 as f64) / 255.0
 }
 
-fn shade(c: Rgb, t: f64) -> Rgb {
+pub(crate) fn shade(c: Rgb, t: f64) -> Rgb {
     mix(c, SHADOW, t)
 }
 
-fn light(c: Rgb, t: f64) -> Rgb {
+pub(crate) fn light(c: Rgb, t: f64) -> Rgb {
     mix(c, WHITE, t)
 }
 

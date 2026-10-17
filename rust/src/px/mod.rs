@@ -8,6 +8,9 @@
 use crate::colors::{self, Rgb};
 use crate::pixel;
 
+pub(crate) mod art;
+pub(crate) mod paint;
+
 pub(crate) const PX_ROWS: usize = 6;
 pub(crate) const PX_H: usize = 12;
 
@@ -202,6 +205,118 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
+/// `PURR_FORCE_POSE` values the Task 4 preview understands. Task 6 replaces
+/// this with the full behaviour list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PreviewPose {
+    Sit,
+    Wander,
+}
+
+pub(crate) fn preview_pose_from(v: Option<&str>) -> PreviewPose {
+    match v.map(str::trim) {
+        Some("wander" | "walk") => PreviewPose::Wander,
+        _ => PreviewPose::Sit,
+    }
+}
+
+/// Task 4 stub of the sprite column (Gate B live check): Sit with a tail
+/// flick and blinks, or `wander` (Walk1/Walk2 at 2 px/s, ping-pong across the
+/// stage). Pure in `(state, now, width)`; Task 6 replaces it with idle life.
+pub(crate) fn cat_area(st: &crate::state::State, now: u64, width: usize, pose: PreviewPose, mode: PixelMode) -> Vec<String> {
+    use art::{Pose, Tail};
+    let look = paint::CatLook {
+        breed: &st.breed,
+        rarity: &st.rarity,
+        shiny: st.shiny,
+        stage: crate::state::life_stage(st.level),
+        tick: now,
+    };
+    let span = width.saturating_sub(paint::CAT_MAX_W);
+    let (p, x, right, tail, blink) = match pose {
+        PreviewPose::Sit => {
+            let tail = if now % 5 == 0 { Tail::Flick } else if now % 10 < 5 { Tail::Curl } else { Tail::Up };
+            (Pose::Sit, span / 3, true, tail, now % 7 == 0)
+        }
+        PreviewPose::Wander => {
+            let t = now.wrapping_mul(2);
+            let walk = if now % 2 == 0 { Pose::Walk1 } else { Pose::Walk2 };
+            (walk, crate::playground::tri(t, span), crate::playground::tri_rising(t, span), Tail::Curl, false)
+        }
+    };
+    let s = paint::paint(p, &look, right, tail, blink);
+    let mut c = PxCanvas::new(width);
+    c.blit(&s, x as i32, (PX_H - s.h) as i32);
+    encode(&c, mode)
+}
+
+/// The rarity a breed always hatches with (sheet previews only).
+fn canonical_rarity(breed: &str) -> &'static str {
+    ["common", "uncommon", "rare", "epic", "legendary"]
+        .into_iter()
+        .find(|r| crate::identity::breeds_for_rarity(r).contains(&breed))
+        .unwrap_or("common")
+}
+
+/// `pixels sheet` cells for one breed: every drawn pose × stage × facing
+/// (tail Curl, eyes open), then adult Sit with tail Up / Flick / blink.
+fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
+    use art::{ALL_POSES, Pose, Tail};
+    use paint::{CatLook, paint};
+    let rarity = canonical_rarity(breed);
+    let look = |stage| CatLook { breed, rarity, shiny: false, stage, tick: 0 };
+    let drawn = ALL_POSES.into_iter().filter(|&p| p == Pose::Sit || !std::ptr::eq(art::pose_map(p), art::pose_map(Pose::Sit)));
+    let drawn: Vec<Pose> = drawn.collect();
+    let mut cells = Vec::new();
+    for st in ["kitten", "young", "adult"] {
+        for &p in &drawn {
+            for f in [true, false] {
+                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false)));
+            }
+        }
+    }
+    for (label, tail, blink) in [("tail up", Tail::Up, false), ("tail flick", Tail::Flick, false), ("blink", Tail::Curl, true)] {
+        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink)));
+    }
+    cells
+}
+
+const SHEET_COLS: usize = 6;
+
+/// Dev verb `pixels sheet [--breed B] [--json]`: ANSI blocks with labels, or
+/// `{"title","cols","cells":[{"label","px":[[hex|null]]}]}` for `px_preview.py`.
+pub(crate) fn sheet(breed: &str, json: bool) -> String {
+    let cells = sheet_cells(breed);
+    if json {
+        let cells: Vec<serde_json::Value> = cells
+            .iter()
+            .map(|(label, s)| {
+                let px: Vec<Vec<Option<String>>> =
+                    (0..s.h).map(|y| (0..s.w).map(|x| s.px[y * s.w + x].map(|c| c.hex())).collect()).collect();
+                serde_json::json!({ "label": label, "px": px })
+            })
+            .collect();
+        return serde_json::json!({ "title": breed, "cols": SHEET_COLS, "cells": cells }).to_string();
+    }
+    const CW: usize = paint::CAT_MAX_W + 2;
+    let mut out = vec![breed.to_string()];
+    for chunk in cells.chunks(SHEET_COLS) {
+        let encoded: Vec<Vec<String>> = chunk
+            .iter()
+            .map(|(_, s)| {
+                let mut c = PxCanvas::new(CW);
+                c.blit(s, 1, (PX_H - s.h) as i32);
+                encode(&c, PixelMode::Full)
+            })
+            .collect();
+        for r in 0..PX_ROWS {
+            out.push(encoded.iter().map(|e| e[r].as_str()).collect::<Vec<_>>().join(" "));
+        }
+        out.push(chunk.iter().map(|(l, _)| format!("{:<CW$}", l.chars().take(CW).collect::<String>())).collect::<Vec<_>>().join(" "));
+    }
+    out.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,5 +432,30 @@ mod tests {
         }
         assert!(r[0].contains("\x1b[48;2;234;0;217m"));
         assert!(r[1].contains("\x1b[48;2;243;243;27m"));
+    }
+
+    #[test]
+    fn preview_cat_area_shape() {
+        let mut st = crate::state::State::base(1_000);
+        for level in [1, 10, 50] {
+            st.level = level;
+            for w in [24usize, 60, 120] {
+                for pose in [PreviewPose::Sit, PreviewPose::Wander] {
+                    for m in [PixelMode::Full, PixelMode::FgOnly] {
+                        for now in 1_800_000_000..1_800_000_120u64 {
+                            let rows = cat_area(&st, now, w, pose, m);
+                            assert_eq!(rows.len(), PX_ROWS);
+                            for r in &rows {
+                                assert_eq!(crate::span::strip_ansi(r).chars().count(), w);
+                                assert!(r.ends_with("\x1b[0m"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(preview_pose_from(Some("wander")), PreviewPose::Wander);
+        assert_eq!(preview_pose_from(Some("junk")), PreviewPose::Sit);
+        assert_eq!(preview_pose_from(None), PreviewPose::Sit);
     }
 }

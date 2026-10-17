@@ -126,8 +126,13 @@ fn main() {
                 println!("{}", px::test_card().join("\n"));
                 process::exit(0);
             }
+            Some("sheet") => {
+                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
+                println!("{}", px::sheet(breed, json));
+                process::exit(0);
+            }
             _ => {
-                eprintln!("usage: purrgotchi pixels test");
+                eprintln!("usage: purrgotchi pixels test|sheet [--breed B] [--json]");
                 process::exit(2);
             }
         },
