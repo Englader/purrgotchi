@@ -10,6 +10,7 @@ import { registerOutputs } from './output'
 import { registerPane } from './pane'
 import { createRuntime } from './runtime'
 import { onSessionStart } from './session'
+import { registerSkin } from './skin'
 import { registerTurn } from './turn'
 
 export const register: Register = (on, raw) => {
@@ -17,6 +18,8 @@ export const register: Register = (on, raw) => {
   // `layout: off` is no game: no runtime and no hook touches the binary, but
   // `/purr-layout` stays so the person can switch back without `/config`.
   const rt = gameEnabled(options) ? createRuntime(options) : null
+  // The Netrunner restyle in every layout; with `layout: off` it is the whole mod (skin-only).
+  if (options.restyle) registerSkin(on)
 
   // One session.start hook (the engine's module scan allows a single unmatched one).
   on('session.start', async ($, e, next) => {

@@ -218,10 +218,18 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     spies.logs.push(e.text)
     return { value: undefined }
   })
-  // The engine's own row (what `next(e)` reaches): the command's plain text.
+  // The engine's own row (what `next(e)` reaches): the props it would draw, as plain text.
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
-    return Text({ children: [e.component === 'CommandOutput' ? e.props.text : ''] })
+    const text =
+      e.component === 'CommandOutput' || e.component === 'UserMessage'
+        ? e.props.text
+        : e.component === 'Spinner'
+          ? `${e.props.message ?? e.props.word}${e.props.suffix}`
+          : e.component === 'ToolUse'
+            ? `${e.props.tool} ${typeof e.props.output === 'string' ? e.props.output : ''}`
+            : ''
+    return Text({ children: [text] })
   })
   on('settings.read', () =>
     o.settings === 'deny' ? { deny: 'settings unavailable' } : { value: { ...(o.settings ?? {}) } },
