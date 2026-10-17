@@ -1,193 +1,193 @@
-Sit|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Sit|kitten|right|Curl|true|Ginger|0 00797654619e98f0
-Sit|kitten|right|Up|false|Ginger|0 ed9a250830e61da6
-Sit|kitten|right|Up|true|Ginger|0 9f6d97ce894b6fb0
-Sit|kitten|right|Flick|false|Ginger|0 8c40d9946b6db30f
-Sit|kitten|right|Flick|true|Ginger|0 3bc5246d4dbe3099
-Sit|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Sit|kitten|left|Curl|true|Ginger|0 5df95a0cbf71e8fd
-Sit|kitten|left|Up|false|Ginger|0 63b2717952e02591
-Sit|kitten|left|Up|true|Ginger|0 e798d4d3adc526ef
-Sit|kitten|left|Flick|false|Ginger|0 15f5065ceec9305e
-Sit|kitten|left|Flick|true|Ginger|0 917f84e29fc9e094
-Sit|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Sit|young|right|Curl|true|Ginger|0 36de8c32bf2093bc
-Sit|young|right|Up|false|Ginger|0 037c9b9611d29d12
-Sit|young|right|Up|true|Ginger|0 f4f3235c87a16578
-Sit|young|right|Flick|false|Ginger|0 c30efbdd8aabf587
-Sit|young|right|Flick|true|Ginger|0 edfefd127ff681ed
-Sit|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Sit|young|left|Curl|true|Ginger|0 b8737ac147417b58
-Sit|young|left|Up|false|Ginger|0 b449e2af983bf302
-Sit|young|left|Up|true|Ginger|0 ff7644eb4edba3dc
-Sit|young|left|Flick|false|Ginger|0 0a0173ed5b107289
-Sit|young|left|Flick|true|Ginger|0 85cfd68fa87a578f
-Sit|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Sit|adult|right|Curl|true|Ginger|0 6a306bc9ed297229
-Sit|adult|right|Up|false|Ginger|0 d3bf49bb1c63946d
-Sit|adult|right|Up|true|Ginger|0 829f5cac23594987
-Sit|adult|right|Flick|false|Ginger|0 755e2d944d24fc25
-Sit|adult|right|Flick|true|Ginger|0 5a285d17f2db8d47
-Sit|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Sit|adult|left|Curl|true|Ginger|0 a3ce385e6ec695e7
-Sit|adult|left|Up|false|Ginger|0 25b23283676b3b79
-Sit|adult|left|Up|true|Ginger|0 6570e4bc22f7deab
-Sit|adult|left|Flick|false|Ginger|0 b861b590597d09a9
-Sit|adult|left|Flick|true|Ginger|0 4689c01f4b73c2bb
-Walk1|kitten|right|Curl|false|Ginger|0 a4346b879083bc72
-Walk1|kitten|left|Curl|false|Ginger|0 fec4c748c6e840f8
-Walk1|young|right|Curl|false|Ginger|0 b454136b6622711c
-Walk1|young|left|Curl|false|Ginger|0 1fb58dc4339eb428
-Walk1|adult|right|Curl|false|Ginger|0 e336dfafd48d80a5
-Walk1|adult|left|Curl|false|Ginger|0 174a68cb034e3ac6
-Walk2|kitten|right|Curl|false|Ginger|0 d67207ac7e35e387
-Walk2|kitten|left|Curl|false|Ginger|0 e47310946c3a027e
-Walk2|young|right|Curl|false|Ginger|0 e8c0965551f08c59
-Walk2|young|left|Curl|false|Ginger|0 6312a8dd688061ba
-Walk2|adult|right|Curl|false|Ginger|0 b756369e74bf0a29
-Walk2|adult|left|Curl|false|Ginger|0 9c90f9d6749de730
-Loaf|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Loaf|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Loaf|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Loaf|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Loaf|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Loaf|adult|left|Curl|false|Ginger|0 1292b480ae077155
-LoafBreath|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-LoafBreath|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-LoafBreath|young|right|Curl|false|Ginger|0 eb8d959290b41202
-LoafBreath|young|left|Curl|false|Ginger|0 08224c94af4016aa
-LoafBreath|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-LoafBreath|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Curl|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Curl|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Curl|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Curl|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Curl|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Curl|adult|left|Curl|false|Ginger|0 1292b480ae077155
-CurlBreath|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-CurlBreath|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-CurlBreath|young|right|Curl|false|Ginger|0 eb8d959290b41202
-CurlBreath|young|left|Curl|false|Ginger|0 08224c94af4016aa
-CurlBreath|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-CurlBreath|adult|left|Curl|false|Ginger|0 1292b480ae077155
-GroomPaw|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-GroomPaw|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-GroomPaw|young|right|Curl|false|Ginger|0 eb8d959290b41202
-GroomPaw|young|left|Curl|false|Ginger|0 08224c94af4016aa
-GroomPaw|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-GroomPaw|adult|left|Curl|false|Ginger|0 1292b480ae077155
-GroomLick|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-GroomLick|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-GroomLick|young|right|Curl|false|Ginger|0 eb8d959290b41202
-GroomLick|young|left|Curl|false|Ginger|0 08224c94af4016aa
-GroomLick|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-GroomLick|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Stretch|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Stretch|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Stretch|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Stretch|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Stretch|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Stretch|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Turn|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Turn|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Turn|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Turn|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Turn|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Turn|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Look|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Look|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Look|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Look|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Look|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Look|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Meow|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Meow|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Meow|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Meow|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Meow|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Meow|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Run1|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Run1|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Run1|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Run1|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Run1|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Run1|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Run2|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Run2|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Run2|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Run2|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Run2|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Run2|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Crouch|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Crouch|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Crouch|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Crouch|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Crouch|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Crouch|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Pounce|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Pounce|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Pounce|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Pounce|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Pounce|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Pounce|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Roll1|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Roll1|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Roll1|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Roll1|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Roll1|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Roll1|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Roll2|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Roll2|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Roll2|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Roll2|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Roll2|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Roll2|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Cheer|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Cheer|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Cheer|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Cheer|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Cheer|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Cheer|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Wave|kitten|right|Curl|false|Ginger|0 4056eb5916ec55ea
-Wave|kitten|left|Curl|false|Ginger|0 6f95690949a86b97
-Wave|young|right|Curl|false|Ginger|0 eb8d959290b41202
-Wave|young|left|Curl|false|Ginger|0 08224c94af4016aa
-Wave|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Wave|adult|left|Curl|false|Ginger|0 1292b480ae077155
-Sit|adult|right|Curl|false|Tabby|0 d2d2951f2c51bdea
-Sit|adult|right|Curl|false|Tuxedo|0 bf23f5ebf392dafd
-Sit|adult|right|Curl|false|Calico|0 666e4ce2516fecfa
-Sit|adult|right|Curl|false|Ginger|0 54ac503a317bbec7
-Sit|adult|right|Curl|false|Grey Shorthair|0 9dc3171d51190652
-Sit|adult|right|Curl|false|Siamese|0 48f79dc0bf264fd4
-Sit|adult|right|Curl|false|Russian Blue|0 eed7bdff804935d6
-Sit|adult|right|Curl|false|Bengal|0 fcdda92809231e21
-Sit|adult|right|Curl|false|Maine Coon|0 b8a93e33a69632f4
-Sit|adult|right|Curl|false|Norwegian Forest|0 2bd8a76d3c920b78
-Sit|adult|right|Curl|false|Turkish Van|0 4375a2479d6ac9b0
-Sit|adult|right|Curl|false|Sphinx|0 a335e2b3c99fa277
-Sit|adult|right|Curl|false|Scottish Fold|0 3984948ec06bc09c
-Sit|adult|right|Curl|false|Void Cat|0 abb53d4279229011
-Sit|adult|right|Curl|false|Snow Leopard Cat|0 59219ca1db36a9d8
-Sit|adult|right|Curl|false|Chimera|0 c087f9b144c32714
-Sit|adult|right|Curl|false|Void Cat|0 abb53d4279229011
-Sit|adult|right|Curl|false|Void Cat|1 39fcea88856e7d2b
-Sit|adult|right|Curl|false|Void Cat|2 a31772ba83d0e981
-Sit|adult|right|Curl|false|Void Cat|3 be5e2f01654d03e1
-Sit|adult|right|Curl|false|Void Cat|4 0de141f0271139fb
-Sit|adult|right|Curl|false|Void Cat|5 b002d658e7031f13
-Sit|adult|right|Curl|false|Void Cat|6 193e5cb46df677ad
-Sit|adult|right|Curl|false|Snow Leopard Cat|0 59219ca1db36a9d8
-Sit|adult|right|Curl|false|Snow Leopard Cat|1 445fe04fc192ccfa
-Sit|adult|right|Curl|false|Snow Leopard Cat|2 25a2f879583a56b0
-Sit|adult|right|Curl|false|Snow Leopard Cat|3 0474171fa0304540
-Sit|adult|right|Curl|false|Snow Leopard Cat|4 14403003f6a9d282
-Sit|adult|right|Curl|false|Snow Leopard Cat|5 82990ff281099016
-Sit|adult|right|Curl|false|Snow Leopard Cat|6 e756e51deb5cfa10
-Sit|adult|right|Curl|false|Chimera|0 c087f9b144c32714
-Sit|adult|right|Curl|false|Chimera|1 c384791b525c49ab
-Sit|adult|right|Curl|false|Chimera|2 2d189e9263ddd128
-Sit|adult|right|Curl|false|Chimera|3 88eede6f8646d074
-Sit|adult|right|Curl|false|Chimera|4 40c29fca5ad8354d
-Sit|adult|right|Curl|false|Chimera|5 f25dc5f139d6182b
-Sit|adult|right|Curl|false|Chimera|6 5d76aa51919db81a
+Sit|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Sit|kitten|right|Curl|true|Ginger|0 a67264a9c86eb620
+Sit|kitten|right|Up|false|Ginger|0 ee045455f52e5952
+Sit|kitten|right|Up|true|Ginger|0 771dbb0b96e11b66
+Sit|kitten|right|Flick|false|Ginger|0 5b62c316b38d4637
+Sit|kitten|right|Flick|true|Ginger|0 33b993c752243f8f
+Sit|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Sit|kitten|left|Curl|true|Ginger|0 8857098dd4bcb0af
+Sit|kitten|left|Up|false|Ginger|0 ae3aa58ab13a6f34
+Sit|kitten|left|Up|true|Ginger|0 efc43adb02a1016c
+Sit|kitten|left|Flick|false|Ginger|0 3ac3eb5eb3887b2a
+Sit|kitten|left|Flick|true|Ginger|0 ea6f7b9372815612
+Sit|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Sit|young|right|Curl|true|Ginger|0 45e364f07006b6fd
+Sit|young|right|Up|false|Ginger|0 389392ff30cd5f0b
+Sit|young|right|Up|true|Ginger|0 c74025dd179cdba3
+Sit|young|right|Flick|false|Ginger|0 08953b24b92c9e66
+Sit|young|right|Flick|true|Ginger|0 40b00734d557a5da
+Sit|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Sit|young|left|Curl|true|Ginger|0 95f011189a610262
+Sit|young|left|Up|false|Ginger|0 5a13f79fc9d30b18
+Sit|young|left|Up|true|Ginger|0 06f0537f406e2b10
+Sit|young|left|Flick|false|Ginger|0 bbae5b3966024cfa
+Sit|young|left|Flick|true|Ginger|0 e1836f31c6012c62
+Sit|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Sit|adult|right|Curl|true|Ginger|0 675ac60a78925e3d
+Sit|adult|right|Up|false|Ginger|0 c288c337f37bf49d
+Sit|adult|right|Up|true|Ginger|0 0aff9a4e743cdbd1
+Sit|adult|right|Flick|false|Ginger|0 004c921770544fa9
+Sit|adult|right|Flick|true|Ginger|0 9cc56c8c5eec28ad
+Sit|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Sit|adult|left|Curl|true|Ginger|0 a70eaee12700a2f6
+Sit|adult|left|Up|false|Ginger|0 7ebd0caa131654d9
+Sit|adult|left|Up|true|Ginger|0 3b82456c5044e2a5
+Sit|adult|left|Flick|false|Ginger|0 3f7a1d39a8977ae1
+Sit|adult|left|Flick|true|Ginger|0 229d2987fe5d745d
+Walk1|kitten|right|Curl|false|Ginger|0 e8f7aaaa9f76b7b0
+Walk1|kitten|left|Curl|false|Ginger|0 6864e2afcd900383
+Walk1|young|right|Curl|false|Ginger|0 fbb0150437e88d7c
+Walk1|young|left|Curl|false|Ginger|0 d92be4bcc3254492
+Walk1|adult|right|Curl|false|Ginger|0 5785c0970cd8b0ad
+Walk1|adult|left|Curl|false|Ginger|0 b82d34016cdf41e1
+Walk2|kitten|right|Curl|false|Ginger|0 07f5f55441395345
+Walk2|kitten|left|Curl|false|Ginger|0 8aae73d49f918459
+Walk2|young|right|Curl|false|Ginger|0 c5dd9cc0e88aa94d
+Walk2|young|left|Curl|false|Ginger|0 f165b8e11200a2b3
+Walk2|adult|right|Curl|false|Ginger|0 a43fd1d5928be013
+Walk2|adult|left|Curl|false|Ginger|0 14b7f6bfd95ccca4
+Loaf|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Loaf|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Loaf|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Loaf|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Loaf|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Loaf|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+LoafBreath|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+LoafBreath|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+LoafBreath|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+LoafBreath|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+LoafBreath|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+LoafBreath|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Curl|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Curl|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Curl|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Curl|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Curl|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Curl|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+CurlBreath|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+CurlBreath|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+CurlBreath|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+CurlBreath|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+CurlBreath|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+CurlBreath|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+GroomPaw|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+GroomPaw|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+GroomPaw|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+GroomPaw|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+GroomPaw|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+GroomPaw|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+GroomLick|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+GroomLick|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+GroomLick|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+GroomLick|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+GroomLick|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+GroomLick|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Stretch|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Stretch|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Stretch|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Stretch|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Stretch|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Stretch|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Turn|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Turn|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Turn|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Turn|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Turn|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Turn|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Look|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Look|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Look|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Look|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Look|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Look|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Meow|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Meow|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Meow|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Meow|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Meow|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Meow|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Run1|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Run1|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Run1|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Run1|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Run1|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Run1|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Run2|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Run2|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Run2|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Run2|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Run2|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Run2|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Crouch|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Crouch|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Crouch|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Crouch|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Crouch|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Crouch|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Pounce|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Pounce|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Pounce|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Pounce|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Pounce|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Pounce|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Roll1|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Roll1|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Roll1|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Roll1|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Roll1|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Roll1|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Roll2|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Roll2|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Roll2|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Roll2|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Roll2|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Roll2|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Cheer|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Cheer|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Cheer|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Cheer|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Cheer|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Cheer|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Wave|kitten|right|Curl|false|Ginger|0 f4ecf131d71be974
+Wave|kitten|left|Curl|false|Ginger|0 c7a10eed30894723
+Wave|young|right|Curl|false|Ginger|0 0b6720c2284959f5
+Wave|young|left|Curl|false|Ginger|0 10386f91700dd4ea
+Wave|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Wave|adult|left|Curl|false|Ginger|0 4cff7697721e187a
+Sit|adult|right|Curl|false|Tabby|0 9f387bb585d3ce0c
+Sit|adult|right|Curl|false|Tuxedo|0 03cc51f392f677ec
+Sit|adult|right|Curl|false|Calico|0 6c907cfb5fc558a7
+Sit|adult|right|Curl|false|Ginger|0 b03a363b6d20a251
+Sit|adult|right|Curl|false|Grey Shorthair|0 554770174e1d9e4c
+Sit|adult|right|Curl|false|Siamese|0 bc5f7b8881a0c46c
+Sit|adult|right|Curl|false|Russian Blue|0 20dfb160c2d6fbbc
+Sit|adult|right|Curl|false|Bengal|0 7ce7e746eb460e62
+Sit|adult|right|Curl|false|Maine Coon|0 5d7d887a2ac9abec
+Sit|adult|right|Curl|false|Norwegian Forest|0 0d742035c6704568
+Sit|adult|right|Curl|false|Turkish Van|0 5b76c119fd69700f
+Sit|adult|right|Curl|false|Sphinx|0 ab6e659f5fde24ed
+Sit|adult|right|Curl|false|Scottish Fold|0 f966acaa73d666ec
+Sit|adult|right|Curl|false|Void Cat|0 981c5e9595429a23
+Sit|adult|right|Curl|false|Snow Leopard Cat|0 cdf16b60d4679d56
+Sit|adult|right|Curl|false|Chimera|0 cdedf8aac42034e4
+Sit|adult|right|Curl|false|Void Cat|0 981c5e9595429a23
+Sit|adult|right|Curl|false|Void Cat|1 645c4d0f8b5bff59
+Sit|adult|right|Curl|false|Void Cat|2 21499db64f1fe1f3
+Sit|adult|right|Curl|false|Void Cat|3 eb4163dfb90f59b3
+Sit|adult|right|Curl|false|Void Cat|4 e8fde03633129589
+Sit|adult|right|Curl|false|Void Cat|5 41341d7603838361
+Sit|adult|right|Curl|false|Void Cat|6 9f912240fff271e7
+Sit|adult|right|Curl|false|Snow Leopard Cat|0 cdf16b60d4679d56
+Sit|adult|right|Curl|false|Snow Leopard Cat|1 30dcda465c06f570
+Sit|adult|right|Curl|false|Snow Leopard Cat|2 7346a7c12103b616
+Sit|adult|right|Curl|false|Snow Leopard Cat|3 4907a0bc90e90d56
+Sit|adult|right|Curl|false|Snow Leopard Cat|4 4be0bf994d2856e0
+Sit|adult|right|Curl|false|Snow Leopard Cat|5 6820d94886554cb8
+Sit|adult|right|Curl|false|Snow Leopard Cat|6 88d8a2b6b0766c22
+Sit|adult|right|Curl|false|Chimera|0 cdedf8aac42034e4
+Sit|adult|right|Curl|false|Chimera|1 51400aff968d5c23
+Sit|adult|right|Curl|false|Chimera|2 24b13c47d2f0ef50
+Sit|adult|right|Curl|false|Chimera|3 fdc3ceb7600bb554
+Sit|adult|right|Curl|false|Chimera|4 adc6ca3913242665
+Sit|adult|right|Curl|false|Chimera|5 09033215f388d68b
+Sit|adult|right|Curl|false|Chimera|6 6a01b6ed9d7b6afa

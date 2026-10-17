@@ -1,6 +1,6 @@
 //! Slot map → coloured `PxSprite`. Pipeline order is load-bearing:
 //! slots → colour, breed pattern, tail layer (before the pattern), flip,
-//! 2-tone cel shade, cyan/magenta rim, auto-outline, blink.
+//! cyan/magenta rim, auto-outline, blink. Coats are flat (Gate B option D).
 
 use super::PxSprite;
 use super::art::{self, Pose, Tail};
@@ -10,10 +10,14 @@ use crate::pixel::{self, Breed, Pattern, Rarity};
 pub(crate) struct CatLook<'a> {
     pub breed: &'a str,
     pub rarity: &'a str,
-    pub shiny: bool,
     pub stage: &'a str,
     pub tick: u64,
 }
+
+/// Outline and dark-line colour (Gate B option D). Documented fallback if it
+/// is too loud next to the HUD box: `#4a3475`. (`pixel::OUTLINE` stays the
+/// near-black violet of the classic renderer.)
+pub(crate) const OUTLINE: Rgb = Rgb(0x5a, 0x3f, 0x8a);
 
 /// Sprite width incl. outline, every pose and stage.
 pub(crate) const CAT_MAX_W: usize = 16;
@@ -81,14 +85,15 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
             return Some(if b.hetero && eye_x == Some(x) { pixel::NEON_MAGENTA } else { eye });
         }
         b'n' => return Some(pixel::NOSE),
-        _ => return Some(pixel::OUTLINE), // `m`
+        _ => return Some(OUTLINE), // `m`
     };
     let body = matches!(s, b'b' | b't' | b'*');
     let fur = body || matches!(s, b'h' | b'r');
     let top = s == b'h' && top_head == Some(y);
     match b.pattern {
         Pattern::Tabby => {
-            if (body && (x + y) % 3 == 0) || (top && x % 2 == 0) {
+            // body stripes only: head stripes turn to noise at 12 px
+            if body && (x + y) % 3 == 0 {
                 c = b.mark;
             }
         }
@@ -105,7 +110,8 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
             }
         }
         Pattern::Van => {
-            if matches!(s, b'r' | b't') || top {
+            // head cap only (ears + top head row)
+            if s == b'r' || top {
                 c = b.mark;
             }
         }
@@ -117,18 +123,12 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
                 c = b.mark;
             }
         }
-        Pattern::Void => {
-            // body/tail only: specks on the head read as extra eyes at 12 px
-            if body && pixel::hash(x, y, 9) > 0.93 {
-                c = if pixel::hash(x, y, 4) > 0.5 { pixel::NEON_CYAN } else { pixel::NEON_MAGENTA };
-            }
-        }
         Pattern::Split => {
             if (x as usize) >= w / 2 {
                 c = if fur { b.mark } else { pixel::mix(b.mark, pixel::WHITE, 0.25) };
             }
         }
-        Pattern::Tuxedo | Pattern::Solid | Pattern::Wrinkles => {}
+        Pattern::Tuxedo | Pattern::Solid | Pattern::Wrinkles | Pattern::Void => {}
     }
     Some(c)
 }
@@ -157,30 +157,8 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
         }
     }
 
-    // 4. cel shade (2-tone): lit from above, shaded below and right.
-    let empty = |x: i32, y: i32| x < 0 || y < 0 || x as usize >= w || y as usize >= h || slots[at(x as usize, y as usize)] == b'.';
-    // Dark coats (Tuxedo, Void, Chimera's dark half) would sink into the
-    // near-black ground, so their lit edge is a stronger lilac lift.
-    let lift = |c: Rgb| match (pixel::lum(c) < 0.25, look.shiny) {
-        (true, s) => pixel::mix(c, pixel::LID_ON_DARK, if s { 0.45 } else { 0.35 }),
-        (false, s) => pixel::light(c, if s { 0.22 } else { 0.12 }),
-    };
-    let mut out = col.clone();
-    for y in 0..h {
-        for x in 0..w {
-            let (Some(mut c), true) = (col[at(x, y)], is_coat(slots[at(x, y)])) else { continue };
-            let (xi, yi) = (x as i32, y as i32);
-            if empty(xi, yi - 1) {
-                c = lift(c);
-            }
-            if empty(xi, yi + 1) || empty(xi + 1, yi) {
-                c = pixel::shade(c, 0.25);
-            }
-            out[at(x, y)] = Some(c);
-        }
-    }
-
-    // 5. rim light: cyan leftmost, magenta rightmost coat px per row.
+    // 4. rim light: cyan leftmost, magenta rightmost coat px per row.
+    let mut out = col;
     for y in 0..h {
         let coat: Vec<usize> = (0..w).filter(|&x| is_coat(slots[at(x, y)])).collect();
         if coat.len() >= 3 {
@@ -190,7 +168,7 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
         }
     }
 
-    // 6. auto-outline on a 1 px border.
+    // 5. auto-outline on a 1 px border.
     let (sw, sh) = (w + 2, h + 2);
     let mut px: Vec<Option<Rgb>> = vec![None; sw * sh];
     for y in 0..h {
@@ -203,12 +181,12 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
     for y in 0..sh as i32 {
         for x in 0..sw as i32 {
             if !f(x, y) && (f(x - 1, y) || f(x + 1, y) || f(x, y - 1) || f(x, y + 1)) {
-                px[y as usize * sw + x as usize] = Some(pixel::OUTLINE);
+                px[y as usize * sw + x as usize] = Some(OUTLINE);
             }
         }
     }
 
-    // 7. blink: lids in the outline colour, or light lids on a dark coat.
+    // 6. blink: lids in the outline colour, or light lids on a dark coat.
     if blink {
         for y in 0..h {
             for x in 0..w {
@@ -220,7 +198,7 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
                     .filter(|&n| n < w && is_coat(slots[at(n, y)]))
                     .find_map(|n| out[at(n, y)])
                     .unwrap_or(b.base);
-                let lid = if pixel::lum(under) < 0.3 { pixel::LID_ON_DARK } else { pixel::OUTLINE };
+                let lid = if pixel::lum(under) < 0.3 { pixel::LID_ON_DARK } else { OUTLINE };
                 px[(y + 1) * sw + x + 1] = Some(lid);
             }
         }
@@ -235,7 +213,7 @@ mod tests {
     use crate::px::art::ALL_POSES;
 
     fn look(b: &'static str, st: &'static str) -> CatLook<'static> {
-        CatLook { breed: b, rarity: "common", shiny: false, stage: st, tick: 0 }
+        CatLook { breed: b, rarity: "common", stage: st, tick: 0 }
     }
 
     #[test]
@@ -274,7 +252,7 @@ mod tests {
     fn rim_signature() {
         let s = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Curl, false);
         let row = &s.px[4 * s.w..5 * s.w];
-        let coat: Vec<_> = row.iter().flatten().filter(|c| **c != crate::pixel::OUTLINE).collect();
+        let coat: Vec<_> = row.iter().flatten().filter(|c| **c != OUTLINE).collect();
         let (l, r) = (coat[0], coat[coat.len() - 1]);
         assert!(l.1 > l.0, "left not cyan {l:?}");
         assert!(r.0 > r.1, "right not magenta {r:?}");
@@ -284,7 +262,7 @@ mod tests {
     fn rim_stays_cyan_left_when_facing_left() {
         let s = paint(Pose::Sit, &look("Ginger", "adult"), false, Tail::Curl, false);
         let row = &s.px[4 * s.w..5 * s.w];
-        let coat: Vec<_> = row.iter().flatten().filter(|c| **c != crate::pixel::OUTLINE).collect();
+        let coat: Vec<_> = row.iter().flatten().filter(|c| **c != OUTLINE).collect();
         let (l, r) = (coat[0], coat[coat.len() - 1]);
         assert!(l.1 > l.0 && r.0 > r.1, "{l:?} {r:?}");
     }
@@ -346,7 +324,7 @@ mod tests {
         use crate::px::art::ALL_TAILS;
         let mut lines = Vec::new();
         let mut push = |p: Pose, st: &str, f: bool, t: Tail, blink: bool, breed: &str, tick: u64| {
-            let lk = CatLook { breed, rarity: canonical_rarity(breed), shiny: false, stage: st, tick };
+            let lk = CatLook { breed, rarity: canonical_rarity(breed), stage: st, tick };
             let face = if f { "right" } else { "left" };
             let hash = crate::identity::fnv1a(&serialise(&paint(p, &lk, f, t, blink)));
             lines.push(format!("{p:?}|{st}|{face}|{t:?}|{blink}|{breed}|{tick} {hash:016x}"));

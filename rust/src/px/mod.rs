@@ -122,7 +122,7 @@ fn cell(t: Option<Rgb>, b: Option<Rgb>, mode: PixelMode) -> (char, Option<Rgb>, 
         (Some(t), Some(b)) if t == b => ('█', Some(t), None),
         (Some(t), Some(b)) => match mode {
             PixelMode::FgOnly => {
-                if t == pixel::OUTLINE {
+                if t == paint::OUTLINE {
                     ('▄', Some(b), None)
                 } else {
                     ('▀', Some(t), None)
@@ -228,7 +228,6 @@ pub(crate) fn cat_area(st: &crate::state::State, now: u64, width: usize, pose: P
     let look = paint::CatLook {
         breed: &st.breed,
         rarity: &st.rarity,
-        shiny: st.shiny,
         stage: crate::state::life_stage(st.level),
         tick: now,
     };
@@ -264,7 +263,7 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
     use art::{ALL_POSES, Pose, Tail};
     use paint::{CatLook, paint};
     let rarity = canonical_rarity(breed);
-    let look = |stage| CatLook { breed, rarity, shiny: false, stage, tick: 0 };
+    let look = |stage| CatLook { breed, rarity, stage, tick: 0 };
     let drawn = ALL_POSES.into_iter().filter(|&p| p == Pose::Sit || !std::ptr::eq(art::pose_map(p), art::pose_map(Pose::Sit)));
     let drawn: Vec<Pose> = drawn.collect();
     let mut cells = Vec::new();
@@ -361,7 +360,7 @@ mod tests {
     #[test]
     fn fg_only_outline_top_keeps_bottom() {
         let mut c = PxCanvas::new(1);
-        c.set(0, 0, pixel::OUTLINE);
+        c.set(0, 0, paint::OUTLINE);
         c.set(0, 1, PINK);
         let r = encode(&c, PixelMode::FgOnly);
         assert_eq!(r[0], "\x1b[0m\x1b[38;2;234;0;217m▄\x1b[0m");
