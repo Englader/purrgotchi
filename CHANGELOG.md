@@ -14,25 +14,64 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## v4.0.0 — 2026-10-17
 
-Major release: a scriptable binary surface and a hardened state directory. The
-classic statusline and `install.sh` path are unchanged.
+**Breaking release.** The ASCII cat in the statusline is replaced by a live,
+1 fps pixel-art cat, and the Claude Code mod and its command surface are gone.
+The HUD box is byte-identical to v3.8.0.
 
 ### Added
 
+- **Pixel-art cat** drawn with `▀` half-blocks and 24-bit colour, 6 rows tall.
+  It is the default statusline sprite. It has idle life (walking, running,
+  grooming, stretching, loafing, sleeping, looking around; chosen by mood),
+  pixel versions of the playground scenes (ball, butterfly, zoomies, roll,
+  yarn) and pixel celebration and birthday overlays, for all breeds, rarities
+  and life stages.
+- **ASCII fallback**: `PURR_PIXELS=0`, a non-empty `NO_COLOR`, or a terminal
+  narrower than the cat needs gives the classic ASCII output. `PURR_PIXELS=fg`
+  uses foreground colours only; `PURR_PIXELS=test` (or
+  `purrgotchi pixels test`) prints a background-colour test card.
 - **Binary `--json` surface** (versioned): `feed`, `turn`, `pet`, `play`,
-  `treat`, `rename`, `stats` and `card`, plus the new `frame` (read-only
-  snapshot for scripting and debugging, `--pixels` for the 32x32 sprite grid).
-  `feed --count N` batches tool calls.
+  `treat`, `rename`, `stats` and `card`, plus `frame` (read-only snapshot for
+  scripting and debugging, `--pixels` for the 32x32 sprite grid). `feed
+  --count N` batches tool calls.
+- `purrgotchi pixels sheet|scene|celebrate` art preview tools.
 - **`PURR_STATE_DIR`** override for the state directory (sandboxed runs and
   tests).
 - **`install.sh --uninstall-hooks`** removes the feed/turn hooks and keeps the
-  statusline.
+  statusline. The installer also writes `statusLine.refreshInterval: 1`.
+- The README documents a `purr` shell wrapper so commands run as `! purr <verb>`
+  inside Claude Code.
 
 ### Changed
 
-- The statusline's frame read and advance are split internally so `frame` and
-  the statusline share one renderer. No visible change: statusline output is
-  byte-identical (pinned by goldens).
+- The statusline sprite column is redrawn; the HUD box is unchanged. The frame
+  read and advance are split internally so `frame` and the statusline share one
+  renderer.
+
+### Removed
+
+- **The Claude Code mod / plugin** (the in-app pane, slash commands and plugin
+  install) and its commands: `serve`, `cost` and the `quip-*` family. Use the
+  `! purr <verb>` commands (`pet`, `play`, `treat`, `card`, `stats`, `rename`)
+  instead.
+
+### Migration from v3.x
+
+- **Keep the old look:** set `PURR_PIXELS=0` (in `~/.claude/purrgotchi/.env` or
+  your shell) to get the ASCII cat back, byte for byte.
+- **Animation:** the pixel cat moves at 1 fps only if Claude Code re-runs the
+  statusline every second. Re-run `bash install.sh` (idempotent) or add
+  `"refreshInterval": 1` **inside** the `statusLine` object in
+  `~/.claude/settings.json`.
+- **If you installed the mod:** run `claude plugin uninstall purrgotchi`, remove
+  `purrgotchi@inline` from `pluginConfigs` and any `purrgotchi` entry from
+  `enabledPlugins` in `~/.claude/settings.json`, and stop launching Claude Code
+  with `--plugin-dir ./mod` (it would feed the kitten twice). Keep the
+  `PostToolUse` (`feed`) and `UserPromptSubmit` (`turn`) hooks; `bash
+  install.sh` restores them if missing.
+- **Scripts** that called `serve`, `cost` or `quip-*` need to move to the
+  commands above or to the `--json` surface.
+- State files are unchanged and carry over.
 
 ## v3.8.0 — 2026-07-12
 
