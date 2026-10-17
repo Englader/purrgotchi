@@ -1,5 +1,6 @@
 mod bond;
 mod card;
+mod cli;
 mod colors;
 mod cost;
 mod cost_acc;
@@ -8,6 +9,7 @@ mod events;
 mod hatch;
 mod hooks;
 mod identity;
+mod json;
 mod llm;
 mod mood;
 mod paths;
@@ -46,11 +48,23 @@ fn main() {
             process::exit(0);
         }
         "feed" => {
-            hooks::feed();
+            let json = cli::has_flag(&args, "--json");
+            let count = if cli::has_flag(&args, "--count") {
+                match cli::flag_value(&args, "--count").and_then(cli::parse_count) {
+                    Some(n) => n,
+                    None => {
+                        eprintln!("feed: --count must be an integer in 1..={}", cli::MAX_FEED_COUNT);
+                        process::exit(2);
+                    }
+                }
+            } else {
+                1
+            };
+            hooks::feed_cmd(count, json);
             process::exit(0);
         }
         "turn" => {
-            hooks::turn();
+            hooks::turn_cmd(cli::has_flag(&args, "--json"));
             process::exit(0);
         }
         "rename" => {

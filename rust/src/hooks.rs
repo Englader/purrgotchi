@@ -44,23 +44,88 @@ pub fn detect_celebration(prev_level: u64, new_level: u64) -> Option<(Celebratio
     Some((kind, renders))
 }
 
-pub fn feed() {
-    let _ = feed_inner();
+/// What one `apply_feed_dispatch` call detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FeedTick {
+    pub detected: Option<(CelebrationKind, u8)>,
+    pub dropped: bool,
 }
 
-fn feed_inner() -> Option<()> {
-    state::locked_update(|s| {
-        let drop_seed = state::now_secs() ^ s.total_tool_calls;
-        apply_feed_dispatch(s, drop_seed);
-        s.last_fed_at = state::now_secs();
-    })
-    .ok()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FeedBatch {
+    pub celebration: Option<CelebrationKind>,
+    pub dropped: bool,
+}
+
+/// Priority for picking one celebration out of a `--count` batch. Mirrors the
+/// detection order inside `apply_feed_dispatch`.
+pub(crate) fn celebration_rank(k: CelebrationKind) -> u8 {
+    match k {
+        CelebrationKind::MilestoneCenturion
+        | CelebrationKind::MilestoneVeteran
+        | CelebrationKind::MilestoneMaster
+        | CelebrationKind::MilestoneLegendary => 4,
+        CelebrationKind::EvolvingYoung | CelebrationKind::EvolvingAdult => 3,
+        CelebrationKind::LevelUp => 2,
+        CelebrationKind::Streak => 1,
+        CelebrationKind::RandomDrop | CelebrationKind::Greeting | CelebrationKind::None => 0,
+    }
+}
+
+/// Credit `count` tool calls in one locked write. `count == 1` is exactly the
+/// classic `feed`. For larger batches the state ends up holding the
+/// highest-ranked celebration of the batch (ties -> the later one), so a streak
+/// can't overwrite a milestone that happened earlier in the same batch.
+pub(crate) fn apply_feed_batch(s: &mut crate::state::State, count: u32, now: u64) -> FeedBatch {
+    let mut best: Option<(CelebrationKind, u8)> = None;
+    let mut dropped = false;
+    for _ in 0..count {
+        let seed = now ^ s.total_tool_calls;
+        let tick = apply_feed_dispatch(s, seed);
+        dropped |= tick.dropped;
+        if let Some((k, r)) = tick.detected
+            && best.is_none_or(|(b, _)| celebration_rank(k) >= celebration_rank(b))
+        {
+            best = Some((k, r));
+        }
+    }
+    if let Some((k, r)) = best {
+        s.celebration_kind = k;
+        s.levelup_renders_remaining = r;
+    }
+    s.last_fed_at = now;
+    FeedBatch { celebration: best.map(|(k, _)| k), dropped }
+}
+
+pub fn feed_cmd(count: u32, json: bool) {
+    let now = state::now_secs();
+    let res = state::locked_update(|s| {
+        let b = apply_feed_batch(s, count, now);
+        crate::json::FeedJson {
+            v: crate::json::V,
+            ok: true,
+            celebration: b.celebration,
+            level: s.level,
+            stage: life_stage(s.level).to_string(),
+            coins: s.coins,
+            total_tool_calls: s.total_tool_calls,
+            drop: b.dropped,
+            count,
+        }
+    });
+    if !json {
+        return; // classic feed stays silent, success or not
+    }
+    match res {
+        Ok(j) => crate::json::print(&j),
+        Err(e) => crate::json::print_error("state_unavailable", &format!("feed: {e}")),
+    }
 }
 
 fn apply_feed_dispatch(
     state: &mut crate::state::State,
     drop_seed: u64,
-) {
+) -> FeedTick {
     let prev_total = state.total_tool_calls;
     state.total_tool_calls = state.total_tool_calls.saturating_add(1);
     state.coins = state.coins.saturating_add(1);
@@ -70,6 +135,7 @@ fn apply_feed_dispatch(
     state.streak_count = state.streak_count.saturating_add(1);
 
     let mut detected: Option<(crate::state::CelebrationKind, u8)> = None;
+    let dropped = crate::events::roll_random_drop_with_seed(drop_seed);
 
     if let Some((kind, watermark)) = crate::events::detect_milestone(
         prev_total, state.total_tool_calls, state.last_milestone_celebrated,
@@ -83,7 +149,7 @@ fn apply_feed_dispatch(
             crate::state::CelebrationKind::Streak,
             crate::events::STREAK_RENDERS,
         ));
-    } else if crate::events::roll_random_drop_with_seed(drop_seed) {
+    } else if dropped {
         detected = Some((
             crate::state::CelebrationKind::RandomDrop,
             crate::events::RANDOM_DROP_RENDERS,
@@ -92,7 +158,7 @@ fn apply_feed_dispatch(
 
     // Drop coins are applied unconditionally — even if a higher-priority
     // celebration eclipses the drop's speech bubble, the wallet still gets +10.
-    if crate::events::roll_random_drop_with_seed(drop_seed) {
+    if dropped {
         state.coins = state.coins.saturating_add(crate::events::RANDOM_DROP_REWARD);
     }
 
@@ -100,9 +166,11 @@ fn apply_feed_dispatch(
         state.celebration_kind = kind;
         state.levelup_renders_remaining = renders;
     }
+
+    FeedTick { detected, dropped }
 }
 
-pub fn turn() {
+pub fn turn_cmd(json: bool) {
     use std::io::Read;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
@@ -111,33 +179,42 @@ pub fn turn() {
     } else {
         serde_json::from_str(&input).unwrap_or_default()
     };
-    let _ = turn_inner(&payload);
+    let greeted = state::locked_update(|s| apply_turn_dispatch(s, state::now_secs()));
     let _ = fs::remove_file(paths::turn_anchor_file_for(&payload.session_id));
     // Pre-v3.7.0 binaries wrote a single global anchor; clear it too.
     let _ = fs::remove_file(paths::turn_anchor_file());
     state::sweep_stale_files();
-    maybe_spawn_react(&payload);
+    let react_spawned = maybe_spawn_react(&payload);
+    if !json {
+        return;
+    }
+    match greeted {
+        Ok(celebration) => crate::json::print(&crate::json::TurnJson {
+            v: crate::json::V,
+            ok: true,
+            celebration,
+            react_spawned,
+        }),
+        Err(e) => crate::json::print_error("state_unavailable", &format!("turn: {e}")),
+    }
 }
 
-fn turn_inner(_payload: &crate::payload::Payload) -> Option<()> {
-    state::locked_update(|s| apply_turn_dispatch(s, state::now_secs())).ok()
-}
-
-fn maybe_spawn_react(payload: &crate::payload::Payload) {
+fn maybe_spawn_react(payload: &crate::payload::Payload) -> bool {
     // Pre-spawn gate: if no provider is configured, skip the fork.
     // The full auth check (provider's *_API_KEY env var) happens inside
     // the worker via provider.complete() and is also a silent no-op.
     if crate::llm::select::current_provider().is_err() {
-        return;
+        return false;
     }
     if payload.transcript_path.is_empty() {
-        return;
+        return false;
     }
     let seed = state::now_secs() ^ fnv1a_session(&payload.session_id);
     if !should_fire_react(seed) {
-        return;
+        return false;
     }
     crate::spawn::detached_self(&["react", &payload.transcript_path]);
+    true
 }
 
 fn fnv1a_session(s: &str) -> u64 {
@@ -145,14 +222,17 @@ fn fnv1a_session(s: &str) -> u64 {
     crate::identity::fnv1a(s)
 }
 
-fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) {
+fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) -> Option<CelebrationKind> {
     let prev_last_turn = state.last_turn_at;
     state.streak_count = 0;
+    let mut greeted = None;
     if crate::events::should_greet(prev_last_turn, now) {
         state.celebration_kind = crate::state::CelebrationKind::Greeting;
         state.levelup_renders_remaining = crate::events::GREETING_RENDERS;
+        greeted = Some(CelebrationKind::Greeting);
     }
     state.last_turn_at = now;
+    greeted
 }
 
 pub fn rename(new_name: &str) -> i32 {
@@ -935,5 +1015,87 @@ mod tests {
         assert_eq!(s.celebration_kind, crate::state::CelebrationKind::None);
         assert_eq!(s.levelup_renders_remaining, 0);
         assert_eq!(s.streak_count, 2);
+    }
+
+    #[test]
+    fn dispatch_returns_the_celebration_it_detected() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.last_milestone_celebrated = 0;
+        let t = super::apply_feed_dispatch(&mut s, 999_999_999);
+        assert_eq!(t.detected, Some((CelebrationKind::MilestoneCenturion, crate::events::MILESTONE_RENDERS)));
+        assert!(!t.dropped);
+    }
+
+    #[test]
+    fn dispatch_reports_none_while_an_older_celebration_is_still_running() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 50;
+        s.level = 2;
+        s.streak_count = 1;
+        s.celebration_kind = CelebrationKind::LevelUp;
+        s.levelup_renders_remaining = 2;
+        let t = super::apply_feed_dispatch(&mut s, 999_999_999);
+        assert_eq!(t.detected, None, "must not echo the state's running celebration");
+        assert_eq!(s.celebration_kind, CelebrationKind::LevelUp);
+    }
+
+    #[test]
+    fn dispatch_reports_drop() {
+        let seed = (0..1000u64).find(|s| crate::events::roll_random_drop_with_seed(*s)).unwrap();
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 50;
+        s.level = 2;
+        let t = super::apply_feed_dispatch(&mut s, seed);
+        assert!(t.dropped);
+        assert_eq!(t.detected, Some((CelebrationKind::RandomDrop, crate::events::RANDOM_DROP_RENDERS)));
+    }
+
+    #[test]
+    fn batch_of_one_is_exactly_the_classic_feed() {
+        let now = 1_800_000_000u64;
+        let mut a = crate::state::State::base(0);
+        a.total_tool_calls = 37;
+        let mut b = a.clone();
+        let seed = now ^ a.total_tool_calls;
+        super::apply_feed_dispatch(&mut a, seed);
+        a.last_fed_at = now;
+        super::apply_feed_batch(&mut b, 1, now);
+        assert_eq!(serde_json::to_value(&a).unwrap(), serde_json::to_value(&b).unwrap());
+    }
+
+    #[test]
+    fn batch_keeps_highest_ranked_celebration_not_the_last() {
+        // call 1 -> 100th tool call (Centurion); call 5 -> 5-streak. Last-wins
+        // would leave Streak; the batch must keep the milestone.
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.level = 2;
+        s.last_milestone_celebrated = 0;
+        let b = super::apply_feed_batch(&mut s, 5, 1_800_000_000);
+        assert_eq!(b.celebration, Some(CelebrationKind::MilestoneCenturion));
+        assert_eq!(s.celebration_kind, CelebrationKind::MilestoneCenturion);
+        assert_eq!(s.levelup_renders_remaining, crate::events::MILESTONE_RENDERS);
+        assert_eq!(s.total_tool_calls, 104);
+        assert_eq!(s.streak_count, 5);
+        assert_eq!(s.last_fed_at, 1_800_000_000);
+    }
+
+    #[test]
+    fn celebration_rank_mirrors_dispatch_priority() {
+        use CelebrationKind::*;
+        let r = super::celebration_rank;
+        assert!(r(MilestoneLegendary) > r(EvolvingAdult));
+        assert!(r(EvolvingYoung) > r(LevelUp));
+        assert!(r(LevelUp) > r(Streak));
+        assert!(r(Streak) > r(RandomDrop));
+    }
+
+    #[test]
+    fn turn_dispatch_reports_greeting() {
+        let mut s = crate::state::State::base(0);
+        s.last_turn_at = 1_000_000;
+        assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600), Some(CelebrationKind::Greeting));
+        assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600 + 60), None);
     }
 }

@@ -198,3 +198,19 @@ pub fn assert_golden(rel: &str, actual: &[u8]) {
         panic!("golden {rel} differs in line count/trailing bytes: expected {} bytes, got {}", expected.len(), actual.len());
     }
 }
+
+pub fn keys(v: &Value) -> Vec<String> {
+    let mut k: Vec<String> = v.as_object().expect("JSON object").keys().cloned().collect();
+    k.sort();
+    k
+}
+
+/// Run with PURR_NOW=NOW; assert stdout is exactly one JSON line; parse it.
+pub fn run_json(sb: &Sandbox, args: &[&str], stdin: &str) -> (Value, Output) {
+    let now = NOW.to_string();
+    let out = sb.run(args, stdin, &[("PURR_NOW", now.as_str())]);
+    let text = String::from_utf8(out.stdout.clone()).expect("utf8 stdout");
+    assert_eq!(text.matches('\n').count(), 1, "expected exactly one JSON line, got {text:?}");
+    let v = serde_json::from_str(text.trim_end()).unwrap_or_else(|e| panic!("bad JSON {text:?}: {e}"));
+    (v, out)
+}
