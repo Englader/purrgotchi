@@ -311,7 +311,7 @@ fn finale_start(elapsed_ms: u64, duration: u64, w: usize, h: PxHeight, t: &Tempo
 /// glides from the crouch, and she never runs in place before a crouch).
 fn chase_cat(ms: u64, t: &Tempo, sim: impl Fn(u64) -> Cat) -> Cat {
     let (n, sub) = (ms / t.sim_step_ms, ms % t.sim_step_ms);
-    let lerp = |a: i32, b: i32| a + (i64::from(b - a) * sub as i64 / t.sim_step_ms as i64) as i32;
+    let lerp = |a: i32, b: i32| toward(a, b, sub, t.sim_step_ms);
     if sub == 0 {
         return sim(n);
     }

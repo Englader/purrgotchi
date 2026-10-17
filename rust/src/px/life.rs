@@ -190,15 +190,15 @@ fn zoom_out_ticks(reach: i32, t: &Tempo) -> u64 {
 
 /// Builds a block plan while tracking where the cat is and which way she faces.
 #[derive(Clone)]
-struct Plan {
-    t: Tempo,
+struct Plan<'a> {
+    t: &'a Tempo,
     segs: Vec<Seg>,
     x: i32,
     right: bool,
     used: u64,
 }
 
-impl Plan {
+impl Plan<'_> {
     /// Appends a stretch; a behaviour picked twice running becomes one longer
     /// one (no stand-up-and-sit-again between two loaves).
     fn push(&mut self, kind: Kind, len: u64) {
@@ -237,9 +237,9 @@ impl Plan {
             return false;
         }
         let len = if self.t.smooth {
-            (zoom_spin_ms(reach, self.right) + 2 * zoom_leg_ms(reach, &self.t) + SKID_MS).div_ceil(1000)
+            (zoom_spin_ms(reach, self.right) + 2 * zoom_leg_ms(reach, self.t) + SKID_MS).div_ceil(1000)
         } else {
-            2 * zoom_out_ticks(reach, &self.t) + 1
+            2 * zoom_out_ticks(reach, self.t) + 1
         };
         self.push(Kind::Zoom { reach }, len);
         self.right = reach < 0;
@@ -273,13 +273,13 @@ impl Plan {
     }
 }
 
-fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &Tempo) -> Plan {
+fn block_plan<'a>(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &'a Tempo) -> Plan<'a> {
     let mut d = Dice(b ^ seed ^ 0x4C49_4645);
     let sp = span as i32;
     if mood == "sleep" && forced.is_none() {
         // A fixed bed and a fixed side; about every 2.5 min she wakes for a
         // stretch and settles back down.
-        let mut p = Plan { t: *t, segs: Vec::new(), x: sp / 3, right: (seed >> 3) & 1 == 0, used: 0 };
+        let mut p = Plan { t, segs: Vec::new(), x: sp / 3, right: (seed >> 3) & 1 == 0, used: 0 };
         let wake = ihash(b ^ seed ^ 0x5A5A).is_multiple_of(5);
         if wake {
             p.push(Kind::Act(Behaviour::Stretch), 4);
@@ -288,7 +288,7 @@ fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behavio
         return p;
     }
     let home = out(b, seed, span, t);
-    let mut p = Plan { t: *t, segs: Vec::new(), x: anchor(b, seed, span, t), right: out(b.wrapping_sub(1), seed, span, t), used: 0 };
+    let mut p = Plan { t, segs: Vec::new(), x: anchor(b, seed, span, t), right: out(b.wrapping_sub(1), seed, span, t), used: 0 };
     p.walk(anchor(b.wrapping_add(1), seed, span, t));
     p.turn(home);
     while p.used < BLOCK {
