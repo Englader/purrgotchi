@@ -1,6 +1,7 @@
 // The only module that runs the purrgotchi binary. Argv only, never a shell;
-// every call has an explicit timeout; nothing here throws.
-import type { EngineInterface } from 'claude-code'
+// every `run` has an explicit timeout (a spawned child lives until stopped);
+// nothing here throws.
+import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult } from 'claude-code'
 
 import type { PurrOptions } from './options'
 import type { BinaryStatus, ErrorCode, ErrorJson, FrameJson } from '../types'
@@ -170,5 +171,121 @@ export class Serial {
       () => undefined,
     )
     return p
+  }
+}
+
+/** The slice of `$` `spawnLines` needs. */
+export type SpawnHost = {
+  readonly process: Pick<EngineInterface['process'], 'spawn'>
+  readonly ui: Pick<EngineInterface['ui'], 'log'>
+}
+
+/** A child streaming lines: `done` settles (never rejects) when it is over. */
+export type SpawnedLines = { done: Promise<ProcessSpawnResult>; stop(): void }
+
+/** No child: the spawn was refused, or its first pull rejected. */
+const SPAWN_FAILED: ProcessSpawnResult = { code: null, signal: 'spawn-failed' }
+/** The stream broke after it had started. */
+const STREAM_ERROR: ProcessSpawnResult = { code: null, signal: 'stream-error' }
+/** Ended by `stop()`. */
+const STOPPED: ProcessSpawnResult = { code: null, signal: 'stopped' }
+
+/**
+ * `buffer` (the last partial line) plus `chunk`, as the complete lines and the
+ * new partial line. Pure; empty lines are kept (the caller skips them).
+ */
+export function splitLines(buffer: string, chunk: string): { lines: string[]; rest: string } {
+  const parts = (buffer + chunk).split('\n')
+  const rest = parts.pop() ?? ''
+  return { lines: parts, rest }
+}
+
+type SpawnControl = { stopped: boolean; stream: HookStream<ProcessSpawnChunk, ProcessSpawnResult> | null }
+
+/** The `.catch` of a stopped stream's `return()` (a top-level function: the module scan needs one). */
+function ignoreStopFailure(): void {}
+
+/**
+ * Spawns `[bin, ...args]` (stdin closed at once) and calls `onLine` with each
+ * complete, non-empty stdout line, in order, one at a time. stderr is ignored
+ * but for one debug line; a partial line at exit is dropped. `stop()` ends the
+ * stream (the engine kills the child) and no line is delivered after it.
+ * Never throws; `done` never rejects.
+ */
+export function spawnLines(
+  $: SpawnHost,
+  bin: string,
+  args: readonly string[],
+  onLine: (line: string) => unknown,
+): SpawnedLines {
+  const ctl: SpawnControl = { stopped: false, stream: null }
+  const done = pumpLines($, [bin, ...args], onLine, ctl)
+  return {
+    done,
+    stop: () => {
+      if (ctl.stopped) return
+      ctl.stopped = true
+      try {
+        ctl.stream?.return(STOPPED).catch(ignoreStopFailure)
+      } catch {
+        // already over
+      }
+    },
+  }
+}
+
+/** A debug-log line. Never throws. */
+function spawnLog($: SpawnHost, text: string): void {
+  try {
+    $.ui.log(text, { to: 'debug' })
+  } catch {
+    // observer
+  }
+}
+
+async function pumpLines(
+  $: SpawnHost,
+  argv: string[],
+  onLine: (line: string) => unknown,
+  ctl: SpawnControl,
+): Promise<ProcessSpawnResult> {
+  let stream: HookStream<ProcessSpawnChunk, ProcessSpawnResult>
+  try {
+    stream = $.process.spawn({ argv })
+    ctl.stream = stream
+  } catch (e) {
+    spawnLog($, `spawn ${argv[1] ?? ''} refused: ${errText(e)}`)
+    return SPAWN_FAILED
+  }
+  let rest = ''
+  let pulled = false
+  let stderrSeen = false
+  try {
+    for await (const chunk of stream) {
+      pulled = true
+      if (ctl.stopped) break
+      if (chunk.stream === 'stderr') {
+        if (!stderrSeen) spawnLog($, `${argv[1] ?? ''} stderr: ${chunk.text.slice(0, 200)}`)
+        stderrSeen = true
+        continue
+      }
+      const split = splitLines(rest, chunk.text)
+      rest = split.rest
+      for (const line of split.lines) {
+        if (ctl.stopped) break
+        if (line.trim() === '') continue
+        try {
+          await onLine(line)
+        } catch (e) {
+          spawnLog($, `${argv[1] ?? ''} line failed: ${errText(e)}`)
+        }
+      }
+    }
+    if (ctl.stopped) return STOPPED
+    return await stream.result
+  } catch (e) {
+    if (ctl.stopped) return STOPPED
+    spawnLog($, `${argv[1] ?? ''} ${pulled ? 'stream broke' : 'did not start'}: ${errText(e)}`)
+    return pulled ? STREAM_ERROR : SPAWN_FAILED
   }
 }

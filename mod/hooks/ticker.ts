@@ -1,5 +1,9 @@
-// The frame clock: one `frame --json` per tick into the `frame` atom, plus the
-// status entry. The pane, band and status line only read what it writes.
+// The frame clock: frames into the `frame` atom, plus the status entry. The
+// pane, band and status line only read what it writes. In dock / bottom the
+// frames stream from `purrgotchi serve` (serve.ts); the 1 s clock is then its
+// watchdog: it hands serve the wanted argv (pane width, context bucket) and
+// polls `frame --json` only while serve is broken, dead or silent for 3 s.
+// `classic` polls every 5 s.
 //
 // Single-flight: a tick (or poke) while one is in flight shares it, so a slow
 // or hung binary never piles up processes. It does not go through `rt.serial`:
@@ -10,7 +14,7 @@
 import type { EngineInterface, StateDollar, Timer } from 'claude-code'
 
 import { writeFrame } from './atoms'
-import { errorCode, errText, okValue, runJson, TIMEOUT } from './binary'
+import { errorCode, errText, isError, okValue, runJson, TIMEOUT } from './binary'
 import type { RunOutcome } from './binary'
 import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
@@ -18,7 +22,8 @@ import { finiteOr0, statusText } from './hud'
 import type { PurrOptions } from './options'
 import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
-import type { FrameJson } from '../types'
+import { SERVE_ENABLED, servePolls, serveWants, startServe } from './serve'
+import type { ErrorJson, FrameJson } from '../types'
 
 /** The slice of `$` a tick needs (any hook's or timer's `$`). */
 type TickHost = FeedHost & StateDollar
@@ -47,19 +52,30 @@ export function tickIntervalMs(layout: PurrOptions['layout']): number | null {
   }
 }
 
-/** Width `0` is "no scene", never the inherited `COLUMNS`. */
-function frameArgv(o: { width: number; ctxPct: number | null; advance: boolean; pixels: boolean }): string[] {
-  const argv = [
-    'frame',
-    '--json',
-    '--width',
-    String(Math.max(0, Math.floor(finiteOr0(o.width)))),
-    '--context-pct',
-    finiteOr0(o.ctxPct).toFixed(1),
-  ]
+type FrameOpts = { width: number; ctxPct: number | null; advance: boolean; pixels: boolean }
+
+/** The flags `frame` and `serve` share. Width `0` is "no scene", never the inherited `COLUMNS`. */
+function frameFlags(o: FrameOpts): string[] {
+  const argv = ['--width', String(Math.max(0, Math.floor(finiteOr0(o.width)))), '--context-pct', finiteOr0(o.ctxPct).toFixed(1)]
   if (o.advance) argv.push('--advance')
   if (o.pixels) argv.push('--pixels')
   return argv
+}
+
+function frameArgv(o: FrameOpts): string[] {
+  return ['frame', '--json', ...frameFlags(o)]
+}
+
+function serveArgv(o: FrameOpts, intervalMs = 1000): string[] {
+  return ['serve', '--interval-ms', String(intervalMs), ...frameFlags(o)]
+}
+
+/**
+ * The context fill `serve` is started with: 5-point buckets keep the mood
+ * thresholds (40, 80) exact and respawn at most about once per turn.
+ */
+function ctxBucket(p: number | null): number {
+  return p == null || !Number.isFinite(p) ? 0 : Math.floor(p / 5) * 5
 }
 
 /** Pixel art is only drawn by the pane and the band, and only until an older binary rejects the flag. */
@@ -83,6 +99,11 @@ function stripWidth(rt: Runtime): number {
   return w < STRIP_MIN ? 0 : Math.min(STRIP_MAX, w)
 }
 
+/** The `serve` argv for the runtime as it is now. */
+function wantedServeArgv(rt: Runtime): string[] {
+  return serveArgv({ width: stripWidth(rt), ctxPct: ctxBucket(rt.ctxPct), advance: !rt.scan.classicStatusline, pixels: wantsPixels(rt) })
+}
+
 /** Shows `text` as the status entry (undefined clears it), only when it changed. Never throws. */
 function setStatus($: Pick<EngineInterface, 'ui'>, rt: Runtime, text: string | undefined): void {
   if (text === rt.lastStatus) return
@@ -104,22 +125,53 @@ export async function showFrame($: TickHost, rt: Runtime, frame: FrameJson | nul
   setStatus($, rt, statusText(frame))
 }
 
+type ClockHost = TickHost & Pick<EngineInterface, 'clock' | 'process'>
+
 /**
- * Starts the clock once per runtime (a later session start only ticks), for
- * any layout with an interval. Never throws.
+ * Starts the clock (and, at 1 s, `serve`) once per runtime (a later session
+ * start only ticks), for any layout with an interval. Call it with the
+ * `session.start` `$`: the serve child lives on it. Never throws.
  */
-export function startTicker($: TickHost & Pick<EngineInterface, 'clock'>, rt: Runtime): void {
+export function startTicker($: ClockHost, rt: Runtime): void {
   const ms = tickIntervalMs(rt.options.layout)
   if (ms === null) return
   const t = (rt.ticker ??= { timer: null, inflight: null })
+  if (ms === 1000 && SERVE_ENABLED && !rt.serveDisabled) {
+    startServe($, rt, wantedServeArgv(rt), line => applyLine($, rt, line))
+  }
   try {
     t.timer ??= $.clock.every(ms, () => {
-      void tickFrame($, rt)
+      onClock($, rt)
     })
   } catch (e) {
     debugLog($, `frame clock not started: ${errText(e)}`)
   }
   void tickFrame($, rt)
+}
+
+/** A clock tick: poll when serve can't feed frames, else keep its argv current. Never throws. */
+function onClock($: ClockHost, rt: Runtime): void {
+  try {
+    if (servePolls(rt)) void tickFrame($, rt)
+    if (rt.serve !== undefined) serveWants($, rt, wantedServeArgv(rt))
+  } catch (e) {
+    debugLog($, `clock tick failed: ${errText(e)}`)
+  }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** One `serve` line, applied as a tick's answer. True when it was a v1 answer. Never throws. */
+async function applyLine($: TickHost, rt: Runtime, line: string): Promise<boolean> {
+  let v: unknown
+  try {
+    v = JSON.parse(line)
+  } catch {
+    return false // stray output: skipped
+  }
+  if (!isObj(v) || v.v !== 1 || (v.ok !== true && !isError(v))) return false
+  await applyFrame($, rt, { kind: 'json', exitCode: 0, value: v as FrameJson | ErrorJson })
+  return true
 }
 
 /** An immediate tick (still single-flight), once the ticker has started. */
@@ -147,26 +199,34 @@ async function runTick($: TickHost, rt: Runtime): Promise<void> {
       rt.noPixels = true
       debugLog($, 'binary rejected --pixels: drawing the ASCII sprite')
     }
-    const f = okValue(out)
-    const code = errorCode(out)
-    if (f !== null || code === 'no_kitten') {
-      rt.frameFailures = 0
-      if (f !== null) {
-        rt.kitten = kittenOf(f)
-      } else {
-        // As the handshake's `no_kitten`: the next feed hatches one, announced.
-        // Never cleared here: a tick may see the new kitten before its feed result.
-        rt.kitten = null
-        rt.hadNoKitten = true
-      }
-      await showFrame($, rt, f)
-      return
-    }
-    // No answer, or an error about the state (lock busy, corrupt file): the
-    // last frame stays; a run of them is one debug line.
-    const why = code ?? (out.kind === 'failed' ? `${out.reason}: ${out.detail}` : 'not ok')
-    if (++rt.frameFailures === FAILURES_LOGGED_AT) debugLog($, `frame failed ${FAILURES_LOGGED_AT} times in a row: ${why}`)
+    await applyFrame($, rt, out)
   } catch (e) {
     debugLog($, `frame tick failed: ${errText(e)}`)
   }
+}
+
+/**
+ * A `frame` answer (a run's, or one `serve` line): the frame, `no_kitten`, or
+ * a failure that keeps the last frame. Never throws.
+ */
+async function applyFrame($: TickHost, rt: Runtime, out: RunOutcome<FrameJson>): Promise<void> {
+  const f = okValue(out)
+  const code = errorCode(out)
+  if (f !== null || code === 'no_kitten') {
+    rt.frameFailures = 0
+    if (f !== null) {
+      rt.kitten = kittenOf(f)
+    } else {
+      // As the handshake's `no_kitten`: the next feed hatches one, announced.
+      // Never cleared here: a tick may see the new kitten before its feed result.
+      rt.kitten = null
+      rt.hadNoKitten = true
+    }
+    await showFrame($, rt, f)
+    return
+  }
+  // No answer, or an error about the state (lock busy, corrupt file): the
+  // last frame stays; a run of them is one debug line.
+  const why = code ?? (out.kind === 'failed' ? `${out.reason}: ${out.detail}` : 'not ok')
+  if (++rt.frameFailures === FAILURES_LOGGED_AT) debugLog($, `frame failed ${FAILURES_LOGGED_AT} times in a row: ${why}`)
 }

@@ -4,7 +4,7 @@
 // real binary.
 import { mock } from 'claude-code/testing'
 import type { MockClock } from 'claude-code/testing'
-import type { ConfigValue, On, PaneOpenArgs, ProcessRunInit, ResultOf } from 'claude-code'
+import type { ConfigValue, On, PaneOpenArgs, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
 import type { ActionJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
@@ -96,11 +96,30 @@ export function host(run: (argv: string[], init?: ProcessRunInit) => OpAnswer): 
   }
 }
 
+/**
+ * A scripted `process.spawn` child: each step is a stdout chunk, a stderr
+ * chunk, or a wait on a promise the test releases (`$.clock.sleep` is refused
+ * test-side, so timing is gates only). Then it exits with `end`, or, without
+ * one, stays open and silent until the plugin stops it. Every wait gives way
+ * to the engine's abort (`return()` on the stream), ending as `SIGTERM`.
+ */
+export type SpawnScript = {
+  steps?: readonly (string | { stderr: string } | { wait: Promise<void> })[]
+  end?: ProcessSpawnResult
+}
+
+/** A child killed from outside, as the engine reports it. */
+const KILLED: ProcessSpawnResult = { code: null, signal: 'SIGTERM' }
+
 export type Spies = {
   toasts: string[]
   notifies: string[]
   statuses: (string | undefined)[]
   runs: string[][]
+  /** `process.spawn` argv, in order. */
+  spawns: string[][]
+  /** Spawned children the plugin stopped (their stream's abort). */
+  stops: number
   /** The engine's own `session.end` step, each time it ran (its `reason`). */
   ends: string[]
   /** The command names `command.register` was asked for, in order. */
@@ -117,6 +136,11 @@ export type Spies = {
 
 export type EngineOptions = {
   run?: (argv: string[], init?: ProcessRunInit) => OpAnswer
+  /**
+   * The `n`th (1-based) `process.spawn`'s child. Default: no child can start
+   * (the first pull rejects), as with a binary that has no `serve`.
+   */
+  spawn?: (argv: string[], n: number) => SpawnScript
   /** What `$.settings.read` answers (default `{}`); `'deny'` makes it reject. */
   settings?: object | 'deny'
   /** What `ui.notify` answers (default: sent nowhere, `no-surface`); `'deny'` makes it reject. */
@@ -152,7 +176,7 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], opens: [], configs: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], spawns: [], stops: 0, ends: [], registered: [], logs: [], opens: [], configs: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   // The engine echoes a measurement's units; the session figures it answers.
@@ -202,6 +226,28 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   on('settings.read', () =>
     o.settings === 'deny' ? { deny: 'settings unavailable' } : { value: { ...(o.settings ?? {}) } },
   )
+  on('process.spawn', async function* ($, e, next) {
+    const argv = [...e.argv]
+    spies.spawns.push(argv)
+    const script = o.spawn?.(argv, spies.spawns.length)
+    if (script === undefined) return { deny: 'spawn refused: no child in this test' }
+    const aborted = new Promise<'abort'>(resolve => {
+      const stop = () => {
+        spies.stops++
+        resolve('abort')
+      }
+      if (next.signal.aborted) stop()
+      else next.signal.addEventListener('abort', stop, { once: true })
+    })
+    for (const step of script.steps ?? []) {
+      if (typeof step === 'string') yield { stream: 'stdout' as const, text: step }
+      else if ('stderr' in step) yield { stream: 'stderr' as const, text: step.stderr }
+      else if ((await Promise.race([step.wait.then(() => 'go' as const), aborted])) === 'abort') return { value: KILLED }
+    }
+    if (script.end !== undefined) return { value: script.end }
+    await aborted
+    return { value: KILLED }
+  })
   on('process.run', ($, e) => {
     const argv = [...e.argv]
     spies.runs.push(argv)

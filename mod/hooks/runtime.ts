@@ -6,6 +6,7 @@ import { resolveBinary, Serial } from './binary'
 import type { KittenId } from './celebrate'
 import { FeedQueue } from './feed'
 import type { PurrOptions } from './options'
+import type { ServeSource } from './serve'
 import type { FrameTicker } from './ticker'
 import type { BinaryStatus } from '../types'
 
@@ -43,6 +44,10 @@ export type Runtime = {
   frameFailures: number
   /** The binary rejected `--pixels` (an older build): ticks stop asking for it. */
   noPixels: boolean
+  /** The `purrgotchi serve` frame stream (dock / bottom), once spawned. */
+  serve?: ServeSource
+  /** Never spawn `serve`: the clock polls `frame` instead. */
+  serveDisabled: boolean
 }
 
 export function createRuntime(options: PurrOptions): Runtime {
@@ -60,6 +65,7 @@ export function createRuntime(options: PurrOptions): Runtime {
     ctxPct: null,
     frameFailures: 0,
     noPixels: false,
+    serveDisabled: false,
   }
 }
 
