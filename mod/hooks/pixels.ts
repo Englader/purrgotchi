@@ -4,7 +4,7 @@
 // Anything it cannot draw falls back to the ASCII sprite.
 import type { ElementConstructor, RasterProps, RenderElement, SvgProps } from 'claude-code'
 
-import { renderLines } from './lines'
+import { renderLines, SURFACES } from './lines'
 import type { LineEls } from './lines'
 import type { FrameJson } from '../types'
 
@@ -123,36 +123,38 @@ function isGrid(px: PixelGrid | undefined): px is PixelGrid {
   return Array.isArray(px) && px.length === SIZE && px.every(row => Array.isArray(row) && row.length === SIZE)
 }
 
-const REMOTE: readonly string[] = ['desktop', 'vscode', 'mobile']
-
-/** Whether `spriteElement` will draw pixel art for this frame, surface and width. */
-export function usesPixels(els: SpriteEls, surface: string, frame: FrameJson, cols: number): boolean {
-  if (!isGrid(frame.pixels) || !Number.isFinite(cols) || cols < MIN_COLUMNS) return false
-  if (surface === 'terminal') return els.Raster !== undefined
-  return REMOTE.includes(surface) && els.Svg !== undefined
+/** The frame's grid when this surface can draw it in `cols` columns, else null. */
+function drawableGrid(els: SpriteEls, surface: string, frame: FrameJson, cols: number): PixelGrid | null {
+  const px = frame.pixels
+  if (!isGrid(px) || !Number.isFinite(cols) || cols < MIN_COLUMNS) return null
+  const canDraw = surface === 'terminal' ? els.Raster !== undefined : SURFACES.includes(surface) && els.Svg !== undefined
+  return canDraw ? px : null
 }
 
 /**
- * The kitten's picture: pixel art when the frame carries it and there are
- * `cols` columns to draw in, else the ASCII sprite. `portrait` is the band's
- * head-and-shoulders window, at most `rows` text rows tall on the terminal.
+ * The kitten's picture, and whether it is pixel art: the frame's grid when it
+ * carries one and there are `cols` columns to draw in, else the ASCII sprite.
+ * With `rows`, the band's head-and-shoulders portrait, at most `rows` text rows
+ * tall (the ASCII sprite is cut to them too).
  */
 export function spriteElement(
   els: SpriteEls,
   surface: string,
   frame: FrameJson,
-  mode: 'full' | 'portrait',
   cols: number,
-  rows = PORTRAIT_ROWS / 2,
-): RenderElement {
-  const px = frame.pixels
-  if (!usesPixels(els, surface, frame, cols) || !isGrid(px)) return renderLines(els, frame.sprite)
-  const [r0, r1] = mode === 'full' ? [0, SIZE] : cropRows(px, Math.min(PORTRAIT_ROWS, Math.max(2, Math.floor(rows) * 2)))
+  rows?: number,
+): { el: RenderElement; isPixels: boolean } {
+  const ascii = () => ({ el: renderLines(els, rows === undefined ? frame.sprite : frame.sprite.slice(0, rows)), isPixels: false })
+  const px = drawableGrid(els, surface, frame, cols)
+  if (px === null) return ascii()
+  const [r0, r1] = rows === undefined ? [0, SIZE] : cropRows(px, Math.min(PORTRAIT_ROWS, Math.max(2, Math.floor(rows) * 2)))
   if (surface === 'terminal' && els.Raster !== undefined) {
     const r = packRaster(px, r0, r1)
-    return els.Raster({ key: mode === 'full' ? 'kitten-full' : 'kitten-portrait', columns: r.columns, rows: r.rows, cells: r.cells })
+    const key = rows === undefined ? 'kitten-full' : 'kitten-portrait'
+    return { el: els.Raster({ key, columns: r.columns, rows: r.rows, cells: r.cells }), isPixels: true }
   }
   const source = svgSource(px, r0, r1)
-  if (els.Svg === undefined || source.length > SVG_MAX) return renderLines(els, frame.sprite)
-  return els.Svg({ source, alt: `${frame.name} the ${frame.breed}`, width: SIZE * SVG_SCALE, height: (r1 - r0) * SVG_SCALE })
+  if (els.Svg === undefined || source.length > SVG_MAX) return ascii()
+  const el = els.Svg({ source, alt: `${frame.name} the ${frame.breed}`, width: SIZE * SVG_SCALE, height: (r1 - r0) * SVG_SCALE })
+  return { el, isPixels: true }
 }

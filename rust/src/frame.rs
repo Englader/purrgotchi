@@ -109,9 +109,7 @@ pub fn serve(opts: &FrameOpts, interval_ms: u64) -> i32 {
             Ok(j) => serde_json::to_string(&j),
             Err(fail) => {
                 let (code, msg) = crate::json::read_fail_parts(fail);
-                serde_json::to_string(&crate::json::ErrorJson {
-                    v: V, ok: false, error: code.to_string(), message: msg.to_string(),
-                })
+                serde_json::to_string(&crate::json::error_json(code, msg))
             }
         };
         if let Ok(line) = line {
@@ -169,7 +167,7 @@ pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: 
         speech_source: view.speech_source.as_str().to_string(),
         scene,
         celebration,
-        hud: hud(st, now),
+        hud: hud(st, &view.rarity_attrs),
         pixels: pixels.then(|| {
             crate::pixel::grid_hex(&crate::pixel::render(&crate::pixel::PixelOpts {
                 breed: &st.breed,
@@ -189,14 +187,15 @@ pub(crate) fn xp_pct(total: u64) -> u8 {
     ((total % 50) * 2) as u8
 }
 
-fn hud(st: &State, now: u64) -> HudJson {
-    let name_fg = crate::colors::rarity_attrs(&st.rarity, st.shiny, now as i64)
-        .into_iter()
+/// `rarity_attrs`: the view's name attributes (the statusline's colour for it).
+fn hud(st: &State, rarity_attrs: &[Attr]) -> HudJson {
+    let name_fg = rarity_attrs
+        .iter()
         .find_map(|a| match a {
             Attr::Fg(rgb) => Some(rgb.hex()),
             Attr::Bold | Attr::Dim => None,
         })
-        .unwrap_or_else(|| "#0abdc6".to_string());
+        .unwrap_or_else(|| crate::colors::CYAN.hex());
     let (label, range) = crate::statusline::peak_period(crate::statusline::local_hour());
     HudJson {
         total_tool_calls: st.total_tool_calls,
@@ -230,7 +229,7 @@ mod tests {
             st.rarity = r.to_string();
             for shiny in [false, true] {
                 st.shiny = shiny;
-                let fg = hud(&st, 1_700_000_000).name_fg;
+                let fg = hud(&st, &crate::colors::rarity_attrs(r, shiny, 1_700_000_000)).name_fg;
                 assert!(fg.len() == 7 && fg.starts_with('#') && fg[1..].chars().all(|c| c.is_ascii_hexdigit()), "{r}: {fg}");
             }
         }

@@ -2,7 +2,7 @@
 // drawn in the cyberpunk palette (spec §4.8) and sized to `bodyColumns`. Also
 // `/purr` (an asked open), the unasked open at session start, and the pet /
 // treat / play buttons, which answer through the same code path as the
-// commands. The only side effect of a render is the width hint in `rt.view`,
+// commands. The only side effect of a render is the width hint in `rt.paneColumns`,
 // which the ticker turns into the scene strip's `--width`.
 import type {
   ButtonProps,
@@ -15,11 +15,11 @@ import type {
 
 import { readBinary, readFrame, readMeasure } from './atoms'
 import { errText } from './binary'
-import { act } from './commands'
-import { ago, bar, duration, kTokens, PALETTE, resetsIn, shortCwd } from './hud'
-import { renderLines } from './lines'
-import type { LineEls } from './lines'
-import { spriteElement, usesPixels } from './pixels'
+import { show } from './celebrate'
+import { act, NO_KITTEN, UNREACHABLE } from './commands'
+import { ago, bar, barPct, costText, ctxText, moodColor, PALETTE, shortCwd, timeText } from './hud'
+import { field, limitRows, lineWidth, renderLines, SURFACES } from './lines'
+import { spriteElement } from './pixels'
 import type { SpriteEls } from './pixels'
 import { binaryProblem, debugLog } from './runtime'
 import type { Runtime } from './runtime'
@@ -27,10 +27,8 @@ import type { BinaryStatus, FrameJson, MeasureView, Span } from '../types'
 
 export const PANE_ID = 'kitten'
 /** The 56-column mockup plus the border. */
-export const PANE_COLUMNS = 58
+const PANE_COLUMNS = 58
 const TITLE = 'Purrgotchi'
-
-export const NO_KITTEN_TEXT = 'No kitten yet — it hatches on your first tool call.'
 
 /** At or above: sprite and info side by side. */
 const SIDE_BY_SIDE = 56
@@ -41,19 +39,17 @@ const CHROME = 4
 /** The pixel sprite is 32 columns: beside it the info column needs 19 and the gap is 3. */
 const SIDE_BY_SIDE_PIXELS = CHROME + 32 + 3 + 19
 
-export type Verb = 'pet' | 'treat' | 'play'
+type Verb = 'pet' | 'treat' | 'play'
 const BUTTONS: readonly { verb: Verb; hotkey: string }[] = [
   { verb: 'pet', hotkey: 'p' },
   { verb: 'treat', hotkey: 't' },
   { verb: 'play', hotkey: 'y' },
 ]
 
-const LIMIT_LABELS: Readonly<Record<string, string>> = { five_hour: '5h', seven_day: '7d' }
-
 /** The elements the pane draws with (every surface carries them). */
-export type PaneEls = SpriteEls & { Button: ElementConstructor<ButtonProps> }
+type PaneEls = SpriteEls & { Button: ElementConstructor<ButtonProps> }
 
-export type PaneModel = {
+type PaneModel = {
   frame: FrameJson | null
   measure: MeasureView
   status: BinaryStatus
@@ -65,24 +61,9 @@ export type PaneModel = {
   onAction: (verb: Verb) => void
 }
 
-export const moodColor = (mood: string): string =>
-  mood === 'panic' ? PALETTE.red : mood === 'alert' ? PALETTE.yellow : PALETTE.cyan
-
-/** A dim label then a bright value, one truncated row. */
-export function field({ Text }: LineEls, label: string, value: string, color: string, bold = false): RenderElement {
-  return (
-    <Text wrap="truncate" mono>
-      <Text color={PALETTE.dim}>{label}</Text>
-      <Text color={color} bold={bold}>
-        {value}
-      </Text>
-    </Text>
-  )
-}
-
 /** `SESSION ─────` with an optional right-hand part, as wide as the body. */
 function rule({ Text }: PaneEls, title: string, inner: number, right: Span[] = []): RenderElement {
-  const rightWidth = right.reduce((n, s) => n + [...s.text].length, 0)
+  const rightWidth = lineWidth(right)
   const dashes = Math.max(3, inner - title.length - 1 - (rightWidth > 0 ? rightWidth + 1 : 0))
   return (
     <Text wrap="truncate" mono>
@@ -103,13 +84,9 @@ function buttons(els: PaneEls, m: PaneModel): RenderElement {
   const keys = m.surface !== 'mobile'
   return (
     <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-      {BUTTONS.map(b =>
-        keys ? (
-          <Button key={b.verb} hotkey={b.hotkey} label={b.verb} onPress={() => m.onAction(b.verb)} />
-        ) : (
-          <Button key={b.verb} label={b.verb} onPress={() => m.onAction(b.verb)} />
-        ),
-      )}
+      {BUTTONS.map(b => (
+        <Button key={b.verb} {...(keys && { hotkey: b.hotkey })} label={b.verb} onPress={() => m.onAction(b.verb)} />
+      ))}
       {keys ? <Text color={PALETTE.dim}>esc close</Text> : null}
     </Box>
   )
@@ -125,18 +102,12 @@ function info(els: PaneEls, f: FrameJson): RenderElement {
       <Text wrap="truncate" color={nameColor} bold>
         {f.name.toUpperCase()}
       </Text>
-      {hud !== undefined ? (
-        <Text wrap="truncate" color={nameColor}>
-          {`${hud.stars} ${f.rarity}`}
-        </Text>
-      ) : (
-        <Text wrap="truncate" color={nameColor}>
-          {f.rarity}
-        </Text>
-      )}
+      <Text wrap="truncate" color={nameColor}>
+        {hud !== undefined ? `${hud.stars} ${f.rarity}` : f.rarity}
+      </Text>
       <Text wrap="truncate">{f.breed}</Text>
       <Text wrap="truncate">{`${f.stage} · lv ${f.level}`}</Text>
-      {hud !== undefined ? field(els, 'xp   ', `${bar(hud.xp_pct)} ${hud.xp_pct}%`, PALETTE.cyan) : null}
+      {hud !== undefined ? field(els, 'xp   ', barPct(hud.xp_pct), PALETTE.cyan) : null}
       {field(els, 'bond ', `${bar(f.bond)} ${f.bond}`, PALETTE.mint)}
       {field(els, 'coin ', `${f.coins}¢`, PALETTE.yellow)}
       {field(els, 'mood ', `◆ ${f.mood}`, moodColor(f.mood))}
@@ -169,33 +140,19 @@ function session(els: PaneEls, m: PaneModel, inner: number, wide: boolean): Rend
   if (ms.model !== null) cells.push(field(els, 'model ', ms.model, PALETTE.cyan))
   const dir = shortCwd(ms.cwd)
   if (dir !== null) cells.push(field(els, 'dir ', dir, PALETTE.cyan))
-  if (ms.costUsd !== null) cells.push(field(els, 'cost ', `$${ms.costUsd.toFixed(2)} session`, PALETTE.yellow))
-  if (ms.startedAt !== null) cells.push(field(els, 'time ', duration(m.nowMs - ms.startedAt), PALETTE.cyan))
+  const cost = costText(ms)
+  if (cost !== null) cells.push(field(els, 'cost ', cost, PALETTE.yellow))
+  const time = timeText(ms, m.nowMs)
+  if (time !== null) cells.push(field(els, 'time ', time, PALETTE.cyan))
   const rows = pairs(els, cells, inner, wide)
-  if (ms.contextPct !== null) {
-    const tokens = kTokens(ms.contextTokens)
-    const ctx = `${bar(ms.contextPct)} ${Math.round(ms.contextPct)}%${tokens !== null ? ` · ${tokens}` : ''}`
-    rows.push(field(els, 'ctx  ', ctx, PALETTE.cyan))
-  }
+  const ctx = ctxText(ms)
+  if (ctx !== null) rows.push(field(els, 'ctx  ', ctx, PALETTE.cyan))
   return (
     <Box flexDirection="column">
       {rule(els, 'SESSION', inner)}
       {rows}
     </Box>
   )
-}
-
-/** One row per `five_hour` / `seven_day` rate limit with a usable figure; other kinds are skipped. */
-export function limitRows(els: LineEls, rateLimits: MeasureView['rateLimits'], nowMs: number): RenderElement[] {
-  const rows: RenderElement[] = []
-  for (const r of rateLimits) {
-    const label = LIMIT_LABELS[r.kind]
-    if (label === undefined || !Number.isFinite(r.percentUsed)) continue
-    const resets = resetsIn(r.resetsAt, nowMs)
-    const pct = Math.max(0, Math.round(r.percentUsed))
-    rows.push(field(els, label.padEnd(5), `${bar(r.percentUsed)} ${pct}%${resets !== null ? ` · resets ${resets}` : ''}`, PALETTE.yellow))
-  }
-  return rows
 }
 
 function limits(els: PaneEls, m: PaneModel, inner: number): RenderElement {
@@ -218,7 +175,7 @@ function limits(els: PaneEls, m: PaneModel, inner: number): RenderElement {
 }
 
 /** The pane's whole tree: a pure function of its inputs. */
-export function paneTree(els: PaneEls, m: PaneModel): RenderElement {
+function paneTree(els: PaneEls, m: PaneModel): RenderElement {
   const { Box, Text } = els
   const cols = Math.max(0, Math.floor(m.cols))
   const inner = Math.max(1, cols - CHROME)
@@ -245,22 +202,16 @@ export function paneTree(els: PaneEls, m: PaneModel): RenderElement {
     return frameBox([<Text wrap="wrap">{binaryProblem(m.status)}</Text>])
   }
   const f = m.frame
-  if (f === null) return frameBox([<Text wrap="wrap">{NO_KITTEN_TEXT}</Text>, buttons(els, m)])
+  if (f === null) return frameBox([<Text wrap="wrap">{NO_KITTEN}</Text>, buttons(els, m)])
 
-  const sprite = spriteElement(els, m.surface, f, 'full', inner)
-  const sideBySide = cols >= (usesPixels(els, m.surface, f, inner) ? SIDE_BY_SIDE_PIXELS : SIDE_BY_SIDE)
-  const kitten =
-    sideBySide ? (
-      <Box flexDirection="row" columnGap={3}>
-        {sprite}
-        {info(els, f)}
-      </Box>
-    ) : (
-      <Box flexDirection="column">
-        {sprite}
-        {info(els, f)}
-      </Box>
-    )
+  const sprite = spriteElement(els, m.surface, f, inner)
+  const sideBySide = cols >= (sprite.isPixels ? SIDE_BY_SIDE_PIXELS : SIDE_BY_SIDE)
+  const kitten = (
+    <Box flexDirection={sideBySide ? 'row' : 'column'} {...(sideBySide && { columnGap: 3 })}>
+      {sprite.el}
+      {info(els, f)}
+    </Box>
+  )
   const speech =
     f.speech.length > 0 ? (
       <Text wrap="truncate">
@@ -286,30 +237,25 @@ export function paneTree(els: PaneEls, m: PaneModel): RenderElement {
 }
 
 /** A button press: the command's own path, its answer as a toast (the pane has no transcript row). */
-export async function pressAction($: EngineInterface, rt: Runtime, verb: Verb): Promise<void> {
+async function pressAction($: EngineInterface, rt: Runtime, verb: Verb): Promise<void> {
   let text: string
   try {
     text = (await act($, rt, verb)).text
   } catch (e) {
     debugLog($, `pane ${verb} failed: ${errText(e)}`)
-    text = 'The kitten is unreachable right now (purrgotchi failed).'
+    text = UNREACHABLE
   }
-  try {
-    $.ui.toast(text)
-  } catch {
-    // observer
-  }
+  show($, text, false)
 }
 
 type PaneEvent = RenderInput<'Pane'>
-const SURFACES: readonly string[] = ['terminal', 'desktop', 'vscode', 'mobile']
 
 /** The pane's tree, or null for "let the engine draw it". Never throws. */
 async function drawPane($: EngineInterface, rt: Runtime, e: PaneEvent): Promise<RenderElement | null> {
   try {
     const cols = e.props.bodyColumns
     if (!SURFACES.includes(e.surface) || typeof cols !== 'number' || !Number.isFinite(cols)) return null
-    rt.view.paneColumns = cols
+    rt.paneColumns = cols
     const [frame, measure, status] = await Promise.all([readFrame($), readMeasure($), readBinary($)])
     const els = $.ui.resolve(e)
     return paneTree(els, {

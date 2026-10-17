@@ -6,11 +6,12 @@ import type { EngineInterface, On, RenderElement, RenderInput } from 'claude-cod
 
 import { readBinary, readFrame, readMeasure } from './atoms'
 import { errText } from './binary'
-import { bar, duration, kTokens, PALETTE, statusText } from './hud'
+import { NO_KITTEN } from './commands'
+import { barPct, costText, ctxText, moodColor, PALETTE, statusText, timeText } from './hud'
+import { field, limitRows } from './lines'
 import type { LineEls } from './lines'
 import { spriteElement } from './pixels'
 import type { SpriteEls } from './pixels'
-import { field, limitRows, moodColor, NO_KITTEN_TEXT } from './pane'
 import { binaryProblem, debugLog } from './runtime'
 import type { BinaryStatus, FrameJson, MeasureView } from '../types'
 
@@ -24,7 +25,7 @@ const KITTEN_WIDTH = 24
 const SESSION_WIDTH = 26
 const GAP = 2
 
-export type BandModel = {
+type BandModel = {
   frame: FrameJson | null
   measure: MeasureView
   status: BinaryStatus
@@ -35,21 +36,14 @@ export type BandModel = {
   surface: string
 }
 
-const pct = (n: number): number => Math.max(0, Math.round(n))
-
-/** `ctx {bar} {pct}%`, or null when the window's fill is not known. */
-function ctxText(m: MeasureView): string | null {
-  return m.contextPct !== null && Number.isFinite(m.contextPct) ? `${bar(m.contextPct)} ${pct(m.contextPct)}%` : null
-}
-
 /** The five-hour window as `{bar} {pct}%`, or null. */
 function fiveHourText(m: MeasureView): string | null {
   const r = m.rateLimits.find(x => x.kind === 'five_hour')
-  return r !== undefined && Number.isFinite(r.percentUsed) ? `${bar(r.percentUsed)} ${pct(r.percentUsed)}%` : null
+  return r !== undefined && Number.isFinite(r.percentUsed) ? barPct(r.percentUsed) : null
 }
 
 function compact({ Text }: LineEls, m: BandModel, f: FrameJson): RenderElement {
-  const ctx = ctxText(m.measure)
+  const ctx = ctxText(m.measure, false)
   const five = fiveHourText(m.measure)
   const parts = [statusText(f) ?? '', ctx !== null ? `ctx ${ctx}` : '', five !== null ? `5h ${five}` : '']
   return (
@@ -70,7 +64,7 @@ function kittenColumn(els: LineEls, f: FrameJson): RenderElement {
         </Text>
         <Text color={PALETTE.dim}>{` lv ${f.level}`}</Text>
       </Text>
-      {hud !== undefined ? field(els, 'xp   ', `${bar(hud.xp_pct)} ${hud.xp_pct}%`, PALETTE.cyan) : null}
+      {hud !== undefined ? field(els, 'xp   ', barPct(hud.xp_pct), PALETTE.cyan) : null}
       {field(els, 'coin ', `${f.coins}¢`, PALETTE.yellow)}
       {field(els, 'mood ', `◆ ${f.mood}`, moodColor(f.mood))}
     </Box>
@@ -79,25 +73,20 @@ function kittenColumn(els: LineEls, f: FrameJson): RenderElement {
 
 function sessionColumn(els: LineEls, m: BandModel): RenderElement {
   const { Box } = els
-  const ms = m.measure
-  const ctx = ctxText(ms)
-  const tokens = kTokens(ms.contextTokens)
+  const ctx = ctxText(m.measure)
+  const cost = costText(m.measure)
+  const time = timeText(m.measure, m.nowMs)
   return (
     <Box flexDirection="column" width={SESSION_WIDTH} flexShrink={1}>
-      {ctx !== null ? field(els, 'ctx  ', `${ctx}${tokens !== null ? ` · ${tokens}` : ''}`, PALETTE.cyan) : null}
-      {ms.costUsd !== null ? field(els, 'cost ', `$${ms.costUsd.toFixed(2)} session`, PALETTE.yellow) : null}
-      {ms.startedAt !== null ? field(els, 'time ', duration(m.nowMs - ms.startedAt), PALETTE.cyan) : null}
+      {ctx !== null ? field(els, 'ctx  ', ctx, PALETTE.cyan) : null}
+      {cost !== null ? field(els, 'cost ', cost, PALETTE.yellow) : null}
+      {time !== null ? field(els, 'time ', time, PALETTE.cyan) : null}
     </Box>
   )
 }
 
-/** The head-and-shoulders pixel portrait, else the ASCII sprite cut to the rows the band has. */
-function portrait(els: SpriteEls, m: BandModel, f: FrameJson): RenderElement {
-  return spriteElement(els, m.surface, { ...f, sprite: f.sprite.slice(0, m.rows) }, 'portrait', m.cols, m.rows)
-}
-
 /** The band's whole tree: a pure function of its inputs. */
-export function bandTree(els: SpriteEls, m: BandModel): RenderElement {
+function bandTree(els: SpriteEls, m: BandModel): RenderElement {
   const { Box, Text } = els
   const dim = (text: string) => (
     <Text wrap="truncate" color={PALETTE.dim}>
@@ -106,12 +95,12 @@ export function bandTree(els: SpriteEls, m: BandModel): RenderElement {
   )
   if (m.status.kind !== 'ready') return dim(binaryProblem(m.status))
   const f = m.frame
-  if (f === null) return dim(NO_KITTEN_TEXT)
+  if (f === null) return dim(NO_KITTEN)
   if (m.rows < COMPACT_ROWS || m.cols < COMPACT_COLUMNS) return compact(els, m, f)
 
   return (
     <Box flexDirection="row" columnGap={GAP}>
-      <Box flexShrink={0}>{portrait(els, m, f)}</Box>
+      <Box flexShrink={0}>{spriteElement(els, m.surface, f, m.cols, m.rows).el}</Box>
       {kittenColumn(els, f)}
       {m.cols >= SESSION_COLUMNS ? sessionColumn(els, m) : null}
       {m.cols >= LIMITS_COLUMNS ? (

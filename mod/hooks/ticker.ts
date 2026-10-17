@@ -5,7 +5,7 @@
 // or hung binary never piles up processes. It does not go through `rt.serial`:
 // `frame` is read-mostly and `--advance` takes the state lock itself. A failed
 // tick keeps the last frame and never toasts. The engine's module scan needs
-// every `$` passed by name to a plain function, so `FrameTicker` holds state
+// every `$` passed by name to a plain function, so `FrameTicker` is state
 // only and the functions below take `($, rt)`.
 import type { EngineInterface, StateDollar, Timer } from 'claude-code'
 
@@ -14,24 +14,24 @@ import { errorCode, errText, okValue, runJson, TIMEOUT } from './binary'
 import type { RunOutcome } from './binary'
 import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
-import { statusText } from './hud'
+import { finiteOr0, statusText } from './hud'
 import type { PurrOptions } from './options'
 import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
 import type { FrameJson } from '../types'
 
 /** The slice of `$` a tick needs (any hook's or timer's `$`). */
-export type TickHost = FeedHost & StateDollar
+type TickHost = FeedHost & StateDollar
 
 /** Consecutive failed ticks before one debug line. */
 const FAILURES_LOGGED_AT = 5
 const STRIP_MIN = 24
 const STRIP_MAX = 120
 
-export class FrameTicker {
-  timer: Timer | null = null
+export type FrameTicker = {
+  timer: Timer | null
   /** The tick in progress, shared by every caller until it settles. */
-  inflight: Promise<void> | null = null
+  inflight: Promise<void> | null
 }
 
 /** `dock` / `bottom` animate every second; `classic` only feeds the status entry. */
@@ -47,17 +47,15 @@ export function tickIntervalMs(layout: PurrOptions['layout']): number | null {
   }
 }
 
-const finite = (n: number | null): number => (n !== null && Number.isFinite(n) ? n : 0)
-
 /** Width `0` is "no scene", never the inherited `COLUMNS`. */
-export function frameArgv(o: { width: number; ctxPct: number | null; advance: boolean; pixels: boolean }): string[] {
+function frameArgv(o: { width: number; ctxPct: number | null; advance: boolean; pixels: boolean }): string[] {
   const argv = [
     'frame',
     '--json',
     '--width',
-    String(Math.max(0, Math.floor(finite(o.width)))),
+    String(Math.max(0, Math.floor(finiteOr0(o.width)))),
     '--context-pct',
-    finite(o.ctxPct).toFixed(1),
+    finiteOr0(o.ctxPct).toFixed(1),
   ]
   if (o.advance) argv.push('--advance')
   if (o.pixels) argv.push('--pixels')
@@ -65,7 +63,7 @@ export function frameArgv(o: { width: number; ctxPct: number | null; advance: bo
 }
 
 /** Pixel art is only drawn by the pane and the band, and only until an older binary rejects the flag. */
-export function wantsPixels(rt: Runtime): boolean {
+function wantsPixels(rt: Runtime): boolean {
   return !rt.noPixels && (rt.options.layout === 'dock' || rt.options.layout === 'bottom')
 }
 
@@ -80,14 +78,13 @@ function pixelsRefused(out: RunOutcome<FrameJson>): boolean {
  * so it follows the pane's body in any layout, and is 0 (no scene) until the
  * pane is drawn or below 24, at most 120.
  */
-export function stripWidth(rt: Runtime): number {
-  const { paneColumns } = rt.view
-  const w = paneColumns === null ? 0 : Math.floor(finite(paneColumns - 4))
+function stripWidth(rt: Runtime): number {
+  const w = rt.paneColumns === null ? 0 : Math.floor(finiteOr0(rt.paneColumns - 4))
   return w < STRIP_MIN ? 0 : Math.min(STRIP_MAX, w)
 }
 
 /** Shows `text` as the status entry (undefined clears it), only when it changed. Never throws. */
-export function setStatus($: Pick<EngineInterface, 'ui'>, rt: Runtime, text: string | undefined): void {
+function setStatus($: Pick<EngineInterface, 'ui'>, rt: Runtime, text: string | undefined): void {
   if (text === rt.lastStatus) return
   try {
     $.ui.status(text)
@@ -114,7 +111,7 @@ export async function showFrame($: TickHost, rt: Runtime, frame: FrameJson | nul
 export function startTicker($: TickHost & Pick<EngineInterface, 'clock'>, rt: Runtime): void {
   const ms = tickIntervalMs(rt.options.layout)
   if (ms === null) return
-  const t = (rt.ticker ??= new FrameTicker())
+  const t = (rt.ticker ??= { timer: null, inflight: null })
   try {
     t.timer ??= $.clock.every(ms, () => {
       void tickFrame($, rt)

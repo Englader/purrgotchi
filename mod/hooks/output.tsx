@@ -4,10 +4,9 @@
 import type { EngineInterface, On, RenderElement, RenderInput } from 'claude-code'
 
 import { readOutput } from './atoms'
-import { lineWidth, renderLines } from './lines'
+import { lineWidth, renderLines, SURFACES } from './lines'
 
 type OutputEvent = RenderInput<'CommandOutput'>
-const SURFACES: readonly string[] = ['terminal', 'desktop', 'vscode', 'mobile']
 
 /** The row's tree, or null for "let the engine draw it". Never throws. */
 async function drawOutput($: Pick<EngineInterface, 'ui' | 'state'>, e: OutputEvent): Promise<RenderElement | null> {

@@ -53,7 +53,7 @@ export function celebrationToast(kind: string | null, ctx: CelebrationCtx): { te
 }
 
 /** Toasts (and maybe notifies) `text`. Never throws. */
-function show($: Pick<EngineInterface, 'ui'>, text: string, notify: boolean): void {
+export function show($: Pick<EngineInterface, 'ui'>, text: string, notify: boolean): void {
   try {
     $.ui.toast(text)
     if (notify) void $.ui.notify(text, { title: 'Purrgotchi' }).catch(() => {})

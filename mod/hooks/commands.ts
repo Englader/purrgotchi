@@ -51,7 +51,7 @@ export const COMMANDS: readonly {
   },
 ]
 
-const UNREACHABLE = 'The kitten is unreachable right now (purrgotchi failed).'
+export const UNREACHABLE = 'The kitten is unreachable right now (purrgotchi failed).'
 const NAME_MAX = 32
 const HATCH_USAGE = 'Usage: /purr-hatch [--rarity common|uncommon|rare|epic|legendary] [--breed "Name"] [--shiny]'
 const RARITIES: readonly string[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
@@ -84,9 +84,8 @@ export async function registerCommandNames($: Pick<EngineInterface, 'command' | 
 
 /** `layout: off` registers this one command, so the way back never needs `/config`. */
 export async function registerLayoutName($: Pick<EngineInterface, 'command' | 'ui'>): Promise<void> {
-  for (const c of COMMANDS) {
-    if (c.name === 'purr-layout') await registerName($, c)
-  }
+  const c = COMMANDS.find(x => x.name === 'purr-layout')
+  if (c !== undefined) await registerName($, c)
 }
 
 /**
@@ -251,7 +250,7 @@ async function hatch($: Host, rt: Runtime, rawArgs: string) {
   return { text }
 }
 
-const NO_KITTEN = 'No kitten yet — it hatches on your first tool call.'
+export const NO_KITTEN = 'No kitten yet — it hatches on your first tool call.'
 
 /** `{name} — lv {level} {stage} {breed}, {coins}¢, bond {bond}, mood {mood}`; the numbers keep rows apart. */
 export function kittenSummary(f: FrameJson | null, fallback: string): string {

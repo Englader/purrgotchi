@@ -24,8 +24,13 @@ pub struct ErrorJson {
     pub message: String,
 }
 
+/// The `{v, ok: false, error, message}` answer.
+pub fn error_json(code: &str, message: &str) -> ErrorJson {
+    ErrorJson { v: V, ok: false, error: code.to_string(), message: message.to_string() }
+}
+
 pub fn print_error(code: &str, message: &str) {
-    print(&ErrorJson { v: V, ok: false, error: code.to_string(), message: message.to_string() });
+    print(&error_json(code, message));
 }
 
 /// Hook commands under `--json`: print the result (exit 0), or a

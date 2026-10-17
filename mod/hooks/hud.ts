@@ -1,6 +1,6 @@
 // Pure HUD formatters and the chrome palette shared by the pane, the band and
 // the status entry. No `$`, no game rules: those come from the binary.
-import type { FrameJson } from '../types'
+import type { FrameJson, MeasureView } from '../types'
 
 /** `colors.rs`'s palette, verbatim (chrome only; game colours come from the binary). */
 export const PALETTE = {
@@ -14,7 +14,8 @@ export const PALETTE = {
   dim: '#6d6488', // labels
 } as const
 
-const finiteOr0 = (n: number): number => (Number.isFinite(n) ? n : 0)
+/** `n`, or 0 for null, undefined, NaN or ±Infinity. */
+export const finiteOr0 = (n: number | null | undefined): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0)
 
 /** 10 segments of `▰` / `▱`; NaN or negative is empty, over 100 is full. */
 export function bar(pct: number): string {
@@ -31,6 +32,15 @@ export function ago(secs: number): string {
   if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86_400)}d ago`
 }
+
+/** `{bar} {pct}%`, the percentage rounded and never negative. */
+export function barPct(pct: number): string {
+  return `${bar(pct)} ${Math.max(0, Math.round(finiteOr0(pct)))}%`
+}
+
+/** The mood's chrome colour: red in a panic, yellow when alert, else cyan. */
+export const moodColor = (mood: string): string =>
+  mood === 'panic' ? PALETTE.red : mood === 'alert' ? PALETTE.yellow : PALETTE.cyan
 
 const pad2 = (n: number): string => String(n).padStart(2, '0')
 
@@ -74,4 +84,24 @@ export function shortCwd(p: string | null): string | null {
 export function statusText(f: FrameJson | null): string | undefined {
   if (f === null) return undefined
   return `=^.^= ${f.name.toLowerCase()} lv${f.level} · ${f.coins}¢ · ${f.mood}`
+}
+
+/**
+ * The context window as `{bar} {pct}%`, plus ` · 87k` with `withTokens` when
+ * the tokens are known; null when the fill is unknown.
+ */
+export function ctxText(m: MeasureView, withTokens = true): string | null {
+  if (m.contextPct === null || !Number.isFinite(m.contextPct)) return null
+  const tokens = withTokens ? kTokens(m.contextTokens) : null
+  return `${barPct(m.contextPct)}${tokens !== null ? ` · ${tokens}` : ''}`
+}
+
+/** `$0.12 session`, or null when the cost is unknown. */
+export function costText(m: MeasureView): string | null {
+  return m.costUsd !== null ? `$${m.costUsd.toFixed(2)} session` : null
+}
+
+/** The session's age at `nowMs`, or null when its start is unknown. */
+export function timeText(m: MeasureView, nowMs: number): string | null {
+  return m.startedAt !== null ? duration(nowMs - m.startedAt) : null
 }

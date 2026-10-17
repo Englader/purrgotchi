@@ -15,7 +15,7 @@ const num = (n: number | undefined): number | null => (n !== undefined && Number
 type Figures = { context: SessionContextUsage; rateLimits: readonly SessionRateLimit[]; cost?: SessionCost }
 
 /** The engine's figures as the pane's view (no NaN, no undefined numbers). */
-export function figuresView(f: Figures): Pick<MeasureView, 'contextPct' | 'contextTokens' | 'contextWindow' | 'rateLimits' | 'costUsd'> {
+function figuresView(f: Figures): Pick<MeasureView, 'contextPct' | 'contextTokens' | 'contextWindow' | 'rateLimits' | 'costUsd'> {
   return {
     contextPct: num(f.context.percent),
     contextTokens: num(f.context.tokens),
