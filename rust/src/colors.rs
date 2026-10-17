@@ -21,6 +21,72 @@ pub const RAINBOW_HUES: [&str; 6] = [
     C_MAGENTA,
 ];
 
+/// 24-bit colour. `ansi()` must equal the matching `C_*` constant (tested).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rgb(pub u8, pub u8, pub u8);
+
+impl Rgb {
+    // Consumed by the --json printers (Task 4+); test-only until then.
+    #[allow(dead_code)]
+    pub fn hex(self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
+    }
+    pub fn ansi(self) -> String {
+        format!("\x1b[38;2;{};{};{}m", self.0, self.1, self.2)
+    }
+}
+
+pub const CYAN: Rgb = Rgb(10, 189, 198);
+pub const PINK: Rgb = Rgb(234, 0, 217);
+pub const MAGENTA: Rgb = Rgb(113, 28, 145);
+pub const YELLOW: Rgb = Rgb(243, 243, 27);
+pub const GREEN: Rgb = Rgb(87, 236, 166);
+pub const RED: Rgb = Rgb(255, 84, 104);
+pub const PURPLE: Rgb = Rgb(170, 100, 255);
+pub const GOLD: Rgb = Rgb(255, 200, 60);
+pub const BLUE: Rgb = Rgb(80, 150, 255);
+pub const RAINBOW: [Rgb; 6] = [RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA];
+
+/// One SGR attribute. Order inside a span is significant (see span.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Attr {
+    Fg(Rgb),
+    Bold,
+    Dim,
+}
+
+impl Attr {
+    pub fn ansi(self) -> String {
+        match self {
+            Attr::Fg(c) => c.ansi(),
+            Attr::Bold => C_BOLD.to_string(),
+            Attr::Dim => C_DIM.to_string(),
+        }
+    }
+}
+
+pub fn rarity_rgb(rarity: &str, now: i64) -> Rgb {
+    match rarity {
+        "common" => CYAN,
+        "uncommon" => GREEN,
+        "rare" => PURPLE,
+        "epic" => GOLD,
+        "legendary" => RAINBOW[now.rem_euclid(6) as usize],
+        _ => CYAN,
+    }
+}
+
+/// Span-attribute twin of [`rarity_color`]; prints byte-identically (tested).
+pub fn rarity_attrs(rarity: &str, shiny: bool, now: i64) -> Vec<Attr> {
+    let base = Attr::Fg(rarity_rgb(rarity, now));
+    if shiny {
+        let shimmer = if now.rem_euclid(2) == 0 { Attr::Bold } else { Attr::Dim };
+        vec![shimmer, base]
+    } else {
+        vec![base]
+    }
+}
+
 /// Return an ANSI prefix for the kitten's name / sprite based on rarity.
 ///
 /// Legendary cycles through `RAINBOW_HUES` by `now % 6`.
@@ -137,5 +203,32 @@ mod tests {
         // now=2 is even → bold, RAINBOW_HUES[2] is C_GREEN
         assert!(s.starts_with(C_BOLD));
         assert!(s.contains(C_GREEN));
+    }
+
+    #[test]
+    fn rgb_ansi_matches_legacy_constants() {
+        for (rgb, c) in [
+            (CYAN, C_CYAN), (PINK, C_PINK), (MAGENTA, C_MAGENTA), (YELLOW, C_YELLOW),
+            (GREEN, C_GREEN), (RED, C_RED), (PURPLE, C_PURPLE), (GOLD, C_GOLD), (BLUE, C_BLUE),
+        ] {
+            assert_eq!(rgb.ansi(), c);
+            assert_eq!(Attr::Fg(rgb).ansi(), c);
+        }
+        assert_eq!(Attr::Bold.ansi(), C_BOLD);
+        assert_eq!(Attr::Dim.ansi(), C_DIM);
+        assert_eq!(CYAN.hex(), "#0abdc6");
+        assert_eq!(PINK.hex(), "#ea00d9");
+    }
+
+    #[test]
+    fn rarity_attrs_print_exactly_like_rarity_color() {
+        for r in ["common", "uncommon", "rare", "epic", "legendary", "", "garbage"] {
+            for shiny in [false, true] {
+                for now in -7i64..14 {
+                    let printed: String = rarity_attrs(r, shiny, now).into_iter().map(Attr::ansi).collect();
+                    assert_eq!(printed, rarity_color(r, shiny, now), "{r} shiny={shiny} now={now}");
+                }
+            }
+        }
     }
 }

@@ -2,9 +2,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::time::SystemTime;
 
-use crate::colors::{
-    C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
-};
+use crate::colors::{Attr, CYAN, GREEN, MAGENTA, PINK, RED, YELLOW};
 use crate::identity;
 use crate::cost::compute_turn_cost;
 use crate::debug;
@@ -12,9 +10,10 @@ use crate::mood::compute_mood;
 use crate::paths;
 use crate::payload::Payload;
 use crate::render::{
-    anchor_col, close_row, format_tokens, human_duration, human_elapsed, pad_col,
+    anchor_spans, close_row_spans, format_tokens, human_duration, human_elapsed, pad_spans,
     pad_sprite, progress_bar, short_cwd, time_until_reset, truncate_tail,
 };
+use crate::span::{bold, dim, fg, plain, to_ansi, width as spans_width, Span};
 use crate::speech::{compute_celebration_speech, compute_speech};
 use crate::sprites::{get_celebration_sprite, get_sprite_lines};
 use crate::state::{self, CelebrationKind, PlaygroundScene};
@@ -163,7 +162,7 @@ pub fn run() {
     );
 
     // Truncate the branch so `GIT: {branch}` fits its W3 column exactly, the
-    // same way short_cwd shortens the DIR path. `pad_col` only pads — it never
+    // same way short_cwd shortens the DIR path. `pad_spans` only pads — it never
     // trims — so a long branch name (e.g. feat/v3.8.0-playground-scenes) would
     // otherwise overflow the column and push the card's right border out of
     // alignment, shattering the box. Budget = W3 minus the "GIT: " prefix.
@@ -206,34 +205,32 @@ pub fn run() {
         let stage = state::life_stage(level);
         get_sprite_lines(stage, &rarity, mood, frame)
     };
-    let speech_color: String = if matches!(
+    let speech_attrs: Vec<Attr> = if matches!(
         speech_source,
         SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip | SpeechSource::Scene
     ) {
-        // Celebration, birthday, and LLM-quip speech: pink for warmth/specialness,
-        // matching the existing rail/HUD pink accent.
-        C_PINK.to_string()
+        // Celebration, birthday, scene and LLM-quip speech: pink for warmth.
+        vec![Attr::Fg(PINK)]
     } else {
         match mood {
-            "panic" => C_RED.to_string(),
-            "alert" => C_YELLOW.to_string(),
-            "happy" => C_GREEN.to_string(),
-            "sleep" => C_MAGENTA.to_string(),
-            "hungry" => format!("{C_DIM}{C_CYAN}"),
-            _ => C_CYAN.to_string(),
+            "panic" => vec![Attr::Fg(RED)],
+            "alert" => vec![Attr::Fg(YELLOW)],
+            "happy" => vec![Attr::Fg(GREEN)],
+            "sleep" => vec![Attr::Fg(MAGENTA)],
+            "hungry" => vec![Attr::Dim, Attr::Fg(CYAN)],
+            _ => vec![Attr::Fg(CYAN)],
         }
     };
 
-    // Sprite color is rarity-driven outside of celebrations / overlays. During
-    // celebration, birthday, or quip overlay, the sprite mirrors the speech color
-    // for continuity.
-    let sprite_color: String = if matches!(
+    // Sprite colour is rarity-driven outside celebrations / overlays; during
+    // celebration, birthday or quip it mirrors the speech colour.
+    let sprite_attrs: Vec<Attr> = if matches!(
         speech_source,
         SpeechSource::Celebration | SpeechSource::Birthday | SpeechSource::Quip
     ) {
-        speech_color.clone()
+        speech_attrs.clone()
     } else {
-        crate::colors::rarity_color(&rarity, shiny, now)
+        crate::colors::rarity_attrs(&rarity, shiny, now)
     };
 
     // During a scene the cat keeps her rarity/shiny tint even if a quip is
@@ -253,167 +250,127 @@ pub fn run() {
     });
 
     // --- Build the 7 HUD rows ---
-    let sep_p = " │ ";
-    let sep_a = format!(" {C_PINK}│{C_RESET} ");
+    let sep = || [plain(" "), fg("│", PINK), plain(" ")];
+    let row3 = |c1: Vec<Span>, c2: Vec<Span>, c3: Vec<Span>| -> Vec<Span> {
+        let mut r = vec![plain(" ")];
+        r.extend(c1);
+        r.extend(sep());
+        r.extend(c2);
+        r.extend(sep());
+        r.extend(c3);
+        close_row_spans(r, BOX_WIDTH)
+    };
 
-    // H1 — top rail. Name stays pink (rail glyphs + name match). Rarity stars
-    // ride inline in the rail between the name cap and the PEAK label. PEAK
-    // label is now centered over H6 col 3 (above GIT / CTX / Cost / Total).
-    let title_plain = format!("═╡ NETRUNNER // {kitten_name} ╞");
-    let title_ansi = format!(
-        "{C_PINK}═╡{C_RESET} {C_BOLD}{C_CYAN}NETRUNNER{C_RESET} {C_MAGENTA}//{C_RESET} {C_PINK}{kitten_name}{C_RESET} {C_PINK}╞{C_RESET}"
-    );
-    let (peak_plain, peak_ansi) = peak_label(local_hour());
-
-    // Stars stay C_YELLOW to match the HUD's yellow accent palette (bars, %,
-    // costs). Rarity color lives on the sprite column only, so the rail stays
-    // visually consistent across kittens.
+    // H1 — top rail: title, rarity stars, PEAK label centred over column 3.
+    let title = vec![
+        fg("═╡", PINK),
+        plain(" "),
+        Span::new("NETRUNNER", &[Attr::Bold, Attr::Fg(CYAN)]),
+        plain(" "),
+        fg("//", MAGENTA),
+        plain(" "),
+        fg(kitten_name.as_str(), PINK),
+        plain(" "),
+        fg("╞", PINK),
+    ];
+    let peak = peak_spans(local_hour());
+    // Stars stay yellow (HUD accent); rarity colour lives on the sprite only.
     let stars = identity::rarity_stars(&rarity, shiny);
-    let stars_plain = format!(" {stars} ");
-    let stars_ansi = format!(" {C_YELLOW}{stars}{C_RESET} ");
-
-    let title_len = title_plain.chars().count();
-    let peak_len = peak_plain.chars().count();
-    let stars_len = stars_plain.chars().count();
-
+    let stars_spans = vec![plain(" "), fg(stars, YELLOW), plain(" ")];
     let (pre_stars, mid_stars, post_peak) =
-        compute_h1_layout(title_len, stars_len, peak_len);
-
-    let pre_rail = "═".repeat(pre_stars);
-    let mid_rail = "═".repeat(mid_stars);
-    let post_rail = "═".repeat(post_peak);
-    let h1 = format!(
-        "{C_PINK}╔{C_RESET}{title_ansi}\
-         {C_PINK}{pre_rail}{C_RESET}{stars_ansi}\
-         {C_PINK}{mid_rail}{C_RESET}{peak_ansi}\
-         {C_PINK}{post_rail}╗{C_RESET}"
-    );
+        compute_h1_layout(spans_width(&title), spans_width(&stars_spans), spans_width(&peak));
+    let mut h1 = vec![fg("╔", PINK)];
+    h1.extend(title);
+    h1.push(fg("═".repeat(pre_stars), PINK));
+    h1.extend(stars_spans);
+    h1.push(fg("═".repeat(mid_stars), PINK));
+    h1.extend(peak);
+    h1.push(fg(format!("{}╗", "═".repeat(post_peak)), PINK));
 
     // H2 — MODEL | DIR | GIT
-    let (c1p, c1a) = pad_col(
-        &format!("MODEL: {model}"),
-        &format!("{C_DIM}MODEL:{C_RESET} {C_CYAN}{model}{C_RESET}"),
-        W1,
+    let h2 = row3(
+        pad_spans(vec![dim("MODEL:"), plain(" "), fg(model.as_str(), CYAN)], W1),
+        if cwd.is_empty() {
+            pad_spans(vec![], W2)
+        } else {
+            pad_spans(vec![dim("DIR:"), plain(" "), fg(short_path.as_str(), CYAN)], W2)
+        },
+        if git_branch.is_empty() {
+            pad_spans(vec![], W3)
+        } else {
+            pad_spans(vec![dim("GIT:"), plain(" "), fg(git_branch.as_str(), CYAN)], W3)
+        },
     );
-    let (c2p, c2a) = if cwd.is_empty() {
-        pad_col("", "", W2)
-    } else {
-        pad_col(
-            &format!("DIR: {short_path}"),
-            &format!("{C_DIM}DIR:{C_RESET} {C_CYAN}{short_path}{C_RESET}"),
-            W2,
-        )
-    };
-    let (c3p, c3a) = if git_branch.is_empty() {
-        pad_col("", "", W3)
-    } else {
-        pad_col(
-            &format!("GIT: {git_branch}"),
-            &format!("{C_DIM}GIT:{C_RESET} {C_CYAN}{git_branch}{C_RESET}"),
-            W3,
-        )
-    };
-    let p2 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
-    let a2 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
-    let h2 = close_row(&p2, &a2, BOX_WIDTH);
 
     // H3 — USAGE: 5h | 7d | CTX
-    let (c1p, c1a) = pad_col(
-        &format!("USAGE: 5h: {r5h_bar} {rate_int}%"),
-        &format!("{C_DIM}USAGE:{C_RESET} {C_DIM}5h:{C_RESET} {C_YELLOW}{r5h_bar}{C_RESET} {C_BOLD}{rate_int}%{C_RESET}"),
-        W1,
+    let h3 = row3(
+        pad_spans(
+            vec![dim("USAGE:"), plain(" "), dim("5h:"), plain(" "), fg(r5h_bar.as_str(), YELLOW),
+                 plain(" "), bold(format!("{rate_int}%"))],
+            W1,
+        ),
+        pad_spans(
+            vec![dim("7d:"), plain(" "), fg(r7d_bar.as_str(), YELLOW), plain(" "),
+                 bold(format!("{rate_7d_int}%"))],
+            W2,
+        ),
+        pad_spans(
+            vec![dim("CTX:"), plain(" "), fg(ctx_bar.as_str(), CYAN), plain(" "),
+                 bold(ctx_tok_fmt.as_str()), plain(" "), dim(format!("({ctx_int}%)"))],
+            W3,
+        ),
     );
-    let (c2p, c2a) = pad_col(
-        &format!("7d: {r7d_bar} {rate_7d_int}%"),
-        &format!("{C_DIM}7d:{C_RESET} {C_YELLOW}{r7d_bar}{C_RESET} {C_BOLD}{rate_7d_int}%{C_RESET}"),
-        W2,
-    );
-    let (c3p, c3a) = pad_col(
-        &format!("CTX: {ctx_bar} {ctx_tok_fmt} ({ctx_int}%)"),
-        &format!("{C_DIM}CTX:{C_RESET} {C_CYAN}{ctx_bar}{C_RESET} {C_BOLD}{ctx_tok_fmt}{C_RESET} {C_DIM}({ctx_int}%){C_RESET}"),
-        W3,
-    );
-    let p3 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
-    let a3 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
-    let h3 = close_row(&p3, &a3, BOX_WIDTH);
 
     // H4 — RESET 5h | 7d | Cost
-    let (c1p, c1a) = pad_col(
-        &format!("RESET: 5h {reset_5h_str}"),
-        &format!("{C_DIM}RESET:{C_RESET} {C_DIM}5h{C_RESET} {C_YELLOW}{reset_5h_str}{C_RESET}"),
-        W1,
+    let h4 = row3(
+        pad_spans(
+            vec![dim("RESET:"), plain(" "), dim("5h"), plain(" "), fg(reset_5h_str.as_str(), YELLOW)],
+            W1,
+        ),
+        pad_spans(vec![dim("7d"), plain(" "), fg(reset_7d_str.as_str(), YELLOW)], W2),
+        pad_spans(vec![dim("Cost:"), plain(" "), fg(format!("${turn_cost_fmt}"), YELLOW)], W3),
     );
-    let (c2p, c2a) = pad_col(
-        &format!("7d {reset_7d_str}"),
-        &format!("{C_DIM}7d{C_RESET} {C_YELLOW}{reset_7d_str}{C_RESET}"),
-        W2,
-    );
-    let (c3p, c3a) = pad_col(
-        &format!("Cost: ${turn_cost_fmt}"),
-        &format!("{C_DIM}Cost:{C_RESET} {C_YELLOW}${turn_cost_fmt}{C_RESET}"),
-        W3,
-    );
-    let p4 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
-    let a4 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
-    let h4 = close_row(&p4, &a4, BOX_WIDTH);
 
     // H5 — LINES | TIME | Total
     let la = payload.cost.total_lines_added;
     let lr = payload.cost.total_lines_removed;
-    let (c1p, c1a) = pad_col(
-        &format!("LINES: +{la}/-{lr}"),
-        &format!("{C_DIM}LINES:{C_RESET} {C_GREEN}+{la}{C_RESET}/{C_RED}-{lr}{C_RESET}"),
-        W1,
+    let h5 = row3(
+        pad_spans(
+            vec![dim("LINES:"), plain(" "), fg(format!("+{la}"), GREEN), plain("/"),
+                 fg(format!("-{lr}"), RED)],
+            W1,
+        ),
+        pad_spans(vec![dim("TIME:"), plain(format!(" {duration}"))], W2),
+        pad_spans(vec![dim("Total:"), plain(" "), fg(format!("${cost_fmt}"), YELLOW)], W3),
     );
-    let (c2p, c2a) = pad_col(
-        &format!("TIME: {duration}"),
-        &format!("{C_DIM}TIME:{C_RESET} {duration}"),
-        W2,
-    );
-    let (c3p, c3a) = pad_col(
-        &format!("Total: ${cost_fmt}"),
-        &format!("{C_DIM}Total:{C_RESET} {C_YELLOW}${cost_fmt}{C_RESET}"),
-        W3,
-    );
-    let p5 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
-    let a5 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
-    let h5 = close_row(&p5, &a5, BOX_WIDTH);
 
-    // H6 — LV | COINS (anchored) | MOOD | FED (anchored) | empty
-    let (c1p, c1a) = anchor_col(
-        &format!("LV: {level}"),
-        &format!("{C_DIM}LV:{C_RESET} {C_PINK}{C_BOLD}{level}{C_RESET}"),
-        &format!("COINS: {coins}"),
-        &format!("{C_DIM}COINS:{C_RESET} {C_YELLOW}{coins}{C_RESET}"),
-        W1,
-    );
-    let (c2p, c2a) = anchor_col(
-        &format!("MOOD: {mood}"),
-        &format!("{C_DIM}MOOD:{C_RESET} {C_MAGENTA}{mood}{C_RESET}"),
-        &format!("FED: {fed_ago}"),
-        &format!("{C_DIM}FED:{C_RESET} {fed_ago}"),
-        W2,
-    );
+    // H6 — LV | COINS (anchored) | MOOD | FED (anchored) | BOND
     let effective_bond = crate::bond::effective_bond(
         st.bond,
         crate::bond::last_interaction_at(&st),
         now as u64,
     );
     let bond_bar = crate::render::progress_bar(effective_bond as f64, 10);
-    let (c3p, c3a) = pad_col(
-        &format!("BOND: \u{2665} {bond_bar} {effective_bond}"),
-        &format!(
-            "{C_DIM}BOND:{C_RESET} {C_PINK}\u{2665}{C_RESET} {C_PINK}{bond_bar}{C_RESET} {C_BOLD}{effective_bond}{C_RESET}"
+    let h6 = row3(
+        anchor_spans(
+            vec![dim("LV:"), plain(" "), Span::new(level.to_string(), &[Attr::Fg(PINK), Attr::Bold])],
+            vec![dim("COINS:"), plain(" "), fg(coins.to_string(), YELLOW)],
+            W1,
         ),
-        W3,
+        anchor_spans(
+            vec![dim("MOOD:"), plain(" "), fg(mood, MAGENTA)],
+            vec![dim("FED:"), plain(format!(" {fed_ago}"))],
+            W2,
+        ),
+        pad_spans(
+            vec![dim("BOND:"), plain(" "), fg("\u{2665}", PINK), plain(" "), fg(bond_bar, PINK),
+                 plain(" "), bold(effective_bond.to_string())],
+            W3,
+        ),
     );
-    let p6 = format!(" {c1p}{sep_p}{c2p}{sep_p}{c3p}");
-    let a6 = format!(" {c1a}{sep_a}{c2a}{sep_a}{c3a}");
-    let h6 = close_row(&p6, &a6, BOX_WIDTH);
 
-    // H7 — bottom rail.
-    let bottom_rail = "═".repeat(BOX_WIDTH);
-    let h7 = format!("{C_PINK}╚{C_RESET}{C_PINK}{bottom_rail}╝{C_RESET}");
+    // H7 — bottom rail (two pink spans, as before).
+    let h7 = vec![fg("╚", PINK), fg(format!("{}╝", "═".repeat(BOX_WIDTH)), PINK)];
 
     // --- Compose final output with sprite column + speech bubble ---
     let rows = [h1, h2, h3, h4, h5, h6, h7];
@@ -422,18 +379,17 @@ pub fn run() {
     let mut buf = String::with_capacity(4096);
 
     for (i, row) in rows.iter().enumerate() {
+        let row = to_ansi(row);
         if i == 6 {
-            buf.push_str(&format!(
-                "{row}   {speech_color}\"{speech}\"{C_RESET}\n"
-            ));
+            let bubble = to_ansi(&[Span::new(format!("\"{speech}\""), &speech_attrs)]);
+            buf.push_str(&format!("{row}   {bubble}\n"));
         } else if let Some(sf) = &scene_frame {
-            // Scene rows carry their own colors + trailing reset and are
-            // already padded to the strip width.
+            // Scene rows carry their own colours + trailing reset (Canvas::emit).
             buf.push_str(&format!("{row}   {}\n", sf.rows[i]));
         } else {
             let line = sprite_lines.get(i).map(String::as_str).unwrap_or("");
-            let padded = pad_sprite(line, SW);
-            buf.push_str(&format!("{row}   {sprite_color}{padded}{C_RESET}\n"));
+            let sprite = to_ansi(&[Span::new(pad_sprite(line, SW), &sprite_attrs)]);
+            buf.push_str(&format!("{row}   {sprite}\n"));
         }
     }
 
@@ -590,13 +546,11 @@ fn local_hour() -> u32 {
     ((state::now_secs() / 3600) % 24) as u32
 }
 
-fn peak_label(hour: u32) -> (String, String) {
+fn peak_spans(hour: u32) -> Vec<Span> {
     let (label, range) = peak_period(hour);
-    let plain = format!("╡ {label} {range} ╞");
-    let ansi = format!(
-        "{C_PINK}╡{C_RESET} {C_CYAN}{label}{C_RESET} {C_YELLOW}{range}{C_RESET} {C_PINK}╞{C_RESET}"
-    );
-    (plain, ansi)
+    vec![
+        fg("╡", PINK), plain(" "), fg(label, CYAN), plain(" "), fg(range, YELLOW), plain(" "), fg("╞", PINK),
+    ]
 }
 
 /// Compute the three `═` rail spans that bracket the stars and peak label in H1.
@@ -699,24 +653,24 @@ mod tests {
 
     #[test]
     fn test_peak_label_plain_content() {
-        let (plain, _) = peak_label(17);
+        let plain = crate::span::to_plain(&peak_spans(17));
         assert_eq!(plain, "╡ PEAK 2PM-8PM ╞");
-        let (plain, _) = peak_label(8);
+        let plain = crate::span::to_plain(&peak_spans(8));
         assert_eq!(plain, "╡ OFF PEAK 8PM-2PM ╞");
     }
 
     #[test]
     fn test_peak_label_plain_len() {
-        let (plain, _) = peak_label(17);
+        let plain = crate::span::to_plain(&peak_spans(17));
         assert_eq!(plain.chars().count(), 16);
-        let (plain, _) = peak_label(8);
+        let plain = crate::span::to_plain(&peak_spans(8));
         assert_eq!(plain.chars().count(), 20);
     }
 
     fn build_h1_parts(name: &str, hour: u32, rarity: &str, shiny: bool)
         -> (usize, usize, usize, usize, usize, usize) {
         let title_plain = format!("═╡ NETRUNNER // {} ╞", name);
-        let (peak_plain, _) = peak_label(hour);
+        let peak_plain = crate::span::to_plain(&peak_spans(hour));
         let stars = crate::identity::rarity_stars(rarity, shiny);
         let stars_plain = format!(" {stars} ");
 

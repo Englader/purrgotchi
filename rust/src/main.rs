@@ -17,6 +17,7 @@ mod quip_cache;
 mod react;
 mod render;
 mod spawn;
+mod span;
 mod speech;
 mod sprites;
 
