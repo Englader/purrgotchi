@@ -1,7 +1,7 @@
 // The bottom band (`layout: bottom`): a reader of the `frame`, `measure` and
 // `binary` atoms drawn on `AbovePrompt`. Full (four columns: portrait ·
 // kitten · session · limits) when there are rows to spare, else one compact
-// row. The only side effect of a render is the width hint in `rt.view`.
+// row. Its renders have no side effect: the band draws no scene strip.
 import type { EngineInterface, On, RenderElement, RenderInput } from 'claude-code'
 
 import { readBinary, readFrame, readMeasure } from './atoms'
@@ -12,7 +12,6 @@ import { spriteElement } from './pixels'
 import type { SpriteEls } from './pixels'
 import { field, limitRows, moodColor, NO_KITTEN_TEXT } from './pane'
 import { binaryProblem, debugLog } from './runtime'
-import type { Runtime } from './runtime'
 import type { BinaryStatus, FrameJson, MeasureView } from '../types'
 
 /** Below: the compact row. */
@@ -127,12 +126,11 @@ export function bandTree(els: SpriteEls, m: BandModel): RenderElement {
 type BandEvent = RenderInput<'AbovePrompt'>
 
 /** The band's tree, or null for "let the engine draw it". Never throws. */
-async function drawBand($: EngineInterface, rt: Runtime, e: BandEvent): Promise<RenderElement | null> {
+async function drawBand($: EngineInterface, e: BandEvent): Promise<RenderElement | null> {
   try {
     const { bodyColumns: cols, maxRows: rows, hasSurvey } = e.props
     if (hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) return null
     if (!Number.isFinite(cols) || !Number.isFinite(rows)) return null
-    rt.view.bandColumns = cols
     const [frame, measure, status] = await Promise.all([readFrame($), readMeasure($), readBinary($)])
     return bandTree($.ui.resolve(e), { frame, measure, status, cols, rows, nowMs: Date.now(), surface: e.surface })
   } catch (err) {
@@ -141,6 +139,6 @@ async function drawBand($: EngineInterface, rt: Runtime, e: BandEvent): Promise<
   }
 }
 
-export function registerBand(on: On, rt: Runtime): void {
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => (await drawBand($, rt, e)) ?? next(e))
+export function registerBand(on: On): void {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => (await drawBand($, e)) ?? next(e))
 }

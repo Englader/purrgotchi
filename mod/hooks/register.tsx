@@ -41,5 +41,5 @@ export const register: Register = (on, raw) => {
   registerTurn(on, rt)
   registerMeasure(on, rt)
   registerPane(on, rt)
-  if (options.layout === 'bottom') registerBand(on, rt)
+  if (options.layout === 'bottom') registerBand(on)
 }

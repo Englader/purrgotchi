@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { pixelFixtures } from './fixtures/pixels'
-import { fx, ok, startReady, defaultRun } from './testkit'
+import { defaultRun, fx, ok, paneProps, startReady } from './testkit'
 import type { EngineOptions } from './testkit'
 import type { HudJson } from '../types'
 
@@ -143,13 +143,24 @@ test('dock layout registers no band hook', async ($, on) => {
   expect(await band.find({ text: /THALIA|thalia/ })).toBeUndefined()
 })
 
-test('the band width feeds the scene strip', BOTTOM, async ($, on) => {
+const lastTickWidth = (runs: string[][]) =>
+  runs.filter(a => a[1] === 'frame' && a.includes('--width')).at(-1)?.slice(3, 5)
+
+test('the band never asks for a scene strip (it draws none)', BOTTOM, async ($, on) => {
   const spies = await startReady($, on)
   await spies.clock.settle()
   await mountBand($, 'terminal', 12, 120)
   await spies.clock.advance(1000)
-  const tick = spies.runs.filter(a => a[1] === 'frame' && a.includes('--width')).at(-1)
-  expect(tick?.slice(3, 5)).toEqual(['--width', '80'])
+  expect(lastTickWidth(spies.runs)).toEqual(['--width', '0'])
+})
+
+test('a pane opened under bottom still sizes the scene strip', BOTTOM, async ($, on) => {
+  const spies = await startReady($, on)
+  await spies.clock.settle()
+  await mountBand($, 'terminal', 12, 120)
+  await $.ui.mount({ plugin: 'purrgotchi', surface: 'terminal', component: 'Pane', requestId: 'kitten', props: paneProps(58) })
+  await spies.clock.advance(1000)
+  expect(lastTickWidth(spies.runs)).toEqual(['--width', '54'])
 })
 
 for (const surface of SURFACES) {

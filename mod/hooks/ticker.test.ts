@@ -201,3 +201,25 @@ test('other failures keep asking for --pixels', async ($, on) => {
   await spies.clock.advance(2000)
   for (const a of ticks(spies.runs)) expect(a).toContain('--pixels')
 })
+
+test('a kitten gone mid-session: the next hatch is announced', async ($, on) => {
+  on('tool.call', () => ({ result: 'file text' }))
+  let hatched = false
+  const spies = await startReady($, on, {
+    run: argv => {
+      if (argv[1] === 'feed') {
+        hatched = true
+        return ok(fx.feed())
+      }
+      if (argv.includes('--width')) return hatched ? ok(fx.frame({ name: 'Mochi', rarity: 'common', breed: 'Tabby' })) : ok(fx.noKitten, 1)
+      if (argv[1] === 'frame' && hatched) return ok(fx.frame({ name: 'Mochi', rarity: 'common', breed: 'Tabby' }))
+      return defaultRun(argv)
+    },
+  })
+  await spies.clock.settle()
+  expect(spies.statuses.at(-1)).toBeUndefined()
+  await $.tool.call({ tool: 'Read', file_path: '/x' })
+  await spies.clock.advance(2000)
+  await spies.clock.settle()
+  expect(spies.toasts).toEqual(['Mochi hatched — a common Tabby!'])
+})

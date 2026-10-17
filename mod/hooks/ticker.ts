@@ -75,13 +75,14 @@ function pixelsRefused(out: RunOutcome<FrameJson>): boolean {
   return errorCode(out) === 'bad_args'
 }
 
-/** The scene strip's width for the current layout: 0 (no scene) below 24, at most 120. */
+/**
+ * The scene strip's width: only the pane draws a scene (the band never does),
+ * so it follows the pane's body in any layout, and is 0 (no scene) until the
+ * pane is drawn or below 24, at most 120.
+ */
 export function stripWidth(rt: Runtime): number {
-  const { paneColumns, bandColumns } = rt.view
-  let w = 0
-  if (rt.options.layout === 'dock' && paneColumns !== null) w = paneColumns - 4
-  else if (rt.options.layout === 'bottom' && bandColumns !== null) w = bandColumns - 40
-  w = Math.floor(finite(w))
+  const { paneColumns } = rt.view
+  const w = paneColumns === null ? 0 : Math.floor(finite(paneColumns - 4))
   return w < STRIP_MIN ? 0 : Math.min(STRIP_MAX, w)
 }
 
@@ -153,7 +154,14 @@ async function runTick($: TickHost, rt: Runtime): Promise<void> {
     const code = errorCode(out)
     if (f !== null || code === 'no_kitten') {
       rt.frameFailures = 0
-      if (f !== null) rt.kitten = kittenOf(f)
+      if (f !== null) {
+        rt.kitten = kittenOf(f)
+      } else {
+        // As the handshake's `no_kitten`: the next feed hatches one, announced.
+        // Never cleared here: a tick may see the new kitten before its feed result.
+        rt.kitten = null
+        rt.hadNoKitten = true
+      }
       await showFrame($, rt, f)
       return
     }

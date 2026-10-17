@@ -33,8 +33,8 @@ export type Runtime = {
   flushTimer?: Timer
   /** The frame clock, started at the first ready session start. */
   ticker?: FrameTicker
-  /** Layout hints the render hooks record (null until drawn); the ticker's `--width`. */
-  view: { paneColumns: number | null; bandColumns: number | null }
+  /** The pane's last `bodyColumns` (null until drawn); the ticker's `--width`. */
+  view: { paneColumns: number | null }
   /** The context window's fill, from `session.measure` (null: not known yet). */
   ctxPct: number | null
   /** The status entry last shown (undefined: cleared). */
@@ -56,7 +56,7 @@ export function createRuntime(options: PurrOptions): Runtime {
     feeds: new FeedQueue(),
     kitten: null,
     hadNoKitten: false,
-    view: { paneColumns: null, bandColumns: null },
+    view: { paneColumns: null },
     ctxPct: null,
     frameFailures: 0,
     noPixels: false,
