@@ -17,6 +17,7 @@ mod paths;
 mod payload;
 mod pixel;
 mod playground;
+mod px;
 mod quip_cache;
 mod react;
 mod render;
@@ -120,6 +121,16 @@ fn main() {
                 process::exit(2);
             }
         },
+        "pixels" => match args.get(2).map(String::as_str) {
+            Some("test") => {
+                println!("{}", px::test_card().join("\n"));
+                process::exit(0);
+            }
+            _ => {
+                eprintln!("usage: purrgotchi pixels test");
+                process::exit(2);
+            }
+        },
         "serve" => {
             const USAGE: &str = "usage: purrgotchi serve [--interval-ms N] [--width N] [--context-pct P] [--advance] [--pixels]";
             let parsed = frame::parse_opts(&args).and_then(|o| {
@@ -171,7 +182,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|frame|serve|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
+            eprintln!("usage: purrgotchi <statusline|frame|pixels|serve|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
             process::exit(2);
         }
     }

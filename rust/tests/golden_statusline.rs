@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 const PINK: &str = "\x1b[38;2;234;0;217m";
 
 struct Case {
+    dir: &'static str,         // golden subdirectory
     name: &'static str,
     now: u64,
     state: Value,               // patch over base_state()
@@ -25,7 +26,7 @@ struct Case {
 
 fn case(name: &'static str) -> Case {
     Case {
-        name, now: NOW, state: json!({}), payload: Some(json!({})), branch: Some("main"),
+        dir: "statusline", name, now: NOW, state: json!({}), payload: Some(json!({})), branch: Some("main"),
         cwd_outside_home: false, anchor: None, quip: None, env: &[], must_contain: &[], raw_contain: &[],
     }
 }
@@ -90,6 +91,15 @@ fn cases() -> Vec<Case> {
     .into_iter()
     .chain(extra_cases())
     .collect()
+}
+
+/// Opt-in pixel-cat cases (goldens under `statusline_px/`).
+fn px_cases() -> Vec<Case> {
+    vec![Case {
+        dir: "statusline_px",
+        env: &[("PURR_PIXELS", "test"), ("COLUMNS", "160")],
+        ..case("pixel_test_card")
+    }]
 }
 
 fn legendary() -> Value {
@@ -191,7 +201,7 @@ fn run_case(c: &Case) -> (Vec<u8>, Sandbox) {
 
 #[test]
 fn statusline_goldens() {
-    for c in cases() {
+    for c in cases().into_iter().chain(px_cases()) {
         let (bytes, sb) = run_case(&c);
         let text = String::from_utf8(bytes.clone()).expect("utf8");
         // Structural sanity, independent of the recorded bytes.
@@ -213,7 +223,7 @@ fn statusline_goldens() {
             let q: Value = serde_json::from_slice(&std::fs::read(sb.state.join("llm-quip.json")).unwrap()).unwrap();
             assert_eq!(q["renders_remaining"], 6, "quip must not burn behind a celebration");
         }
-        assert_golden(&format!("statusline/{}.ansi", c.name), &bytes);
+        assert_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
     }
 }
 
@@ -223,9 +233,9 @@ fn statusline_goldens() {
 #[test]
 #[ignore = "recorder: writes golden files that do not exist yet; run by hand"]
 fn record_missing_statusline_goldens() {
-    for c in cases() {
+    for c in cases().into_iter().chain(px_cases()) {
         let (bytes, _sb) = run_case(&c);
-        common::record_missing_golden(&format!("statusline/{}.ansi", c.name), &bytes);
+        common::record_missing_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
     }
 }
 

@@ -489,11 +489,18 @@ pub fn run() {
     let mut out = stdout.lock();
     let mut buf = String::with_capacity(4096);
 
+    let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::strip_width()) {
+        (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
+        _ => None,
+    };
+
     for (i, row) in rows.iter().enumerate() {
         let row = to_ansi(row);
         if i == 6 {
             let bubble = to_ansi(&[Span::new(format!("\"{}\"", view.speech), &view.speech_attrs)]);
             buf.push_str(&format!("{row}   {bubble}\n"));
+        } else if let Some(px) = &px_rows {
+            buf.push_str(&format!("{row}   {}\n", px[i]));
         } else if let Some(sf) = &scene_frame {
             // Scene rows carry their own colours + trailing reset (Canvas::emit).
             buf.push_str(&format!("{row}   {}\n", sf.rows[i]));

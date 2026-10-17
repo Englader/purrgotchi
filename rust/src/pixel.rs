@@ -38,7 +38,7 @@ const fn rgb(hex: u32) -> Rgb {
     Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 
-const OUTLINE: Rgb = rgb(0x160b26);
+pub(crate) const OUTLINE: Rgb = rgb(0x160b26);
 const LID: Rgb = rgb(0x160b26);
 const SHADOW: Rgb = rgb(0x0d0618);
 const WHITE: Rgb = rgb(0xffffff);
@@ -304,7 +304,7 @@ fn spot(x: i32, y: i32, seed: i32, cell: i32) -> Spot {
 }
 
 /// Linear blend, quantised to u8 per channel like the prototype's `toHex`.
-fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
+pub(crate) fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     let ch = |u: u8, v: u8| {
         let (u, v) = (u as f64, v as f64);
         js_round(u + (v - u) * t).clamp(0.0, 255.0) as u8
