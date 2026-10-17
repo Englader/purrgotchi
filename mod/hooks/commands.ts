@@ -5,12 +5,13 @@
 import type { EngineInterface, On, StateDollar } from 'claude-code'
 
 import { outputKey, writeOutput } from './atoms'
-import { errText, isError, okValue, runJson, runRaw, TIMEOUT } from './binary'
+import { errorCode, errText, isError, okValue, runJson, runRaw, TIMEOUT } from './binary'
+import type { RunOutcome } from './binary'
 import { kittenOf } from './celebrate'
-import type { CelebrateHost } from './celebrate'
-import { debugLog, ready } from './runtime'
+import type { FeedHost } from './feed'
+import { binaryProblem, debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
-import type { ActionJson, BinaryStatus, FrameJson, LinesJson, Span } from '../types'
+import type { ActionJson, FrameJson, LinesJson, Span } from '../types'
 
 export type CommandName =
   | 'purr-pet'
@@ -47,16 +48,7 @@ const HATCH_USAGE = 'Usage: /purr-hatch [--rarity common|uncommon|rare|epic|lege
 const RARITIES: readonly string[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 
 /** What a command says when the binary cannot be used. */
-export function NOT_READY_TEXT(status: BinaryStatus): string {
-  switch (status.kind) {
-    case 'missing':
-      return 'Purrgotchi binary not found — set Binary path in /config or run `cargo install --path rust`'
-    case 'outdated':
-      return `Purrgotchi binary ${status.version} is too old for this mod — rebuild: \`cargo install --path rust\``
-    default:
-      return 'Purrgotchi is not ready yet — try again in a moment.'
-  }
-}
+const notReady = (rt: Runtime) => ({ text: binaryProblem(rt.status), exitCode: 1 })
 
 /**
  * Registers every command (dev ones only with `devCommands`), each in its own
@@ -91,24 +83,32 @@ export function validateName(raw: string): { ok: true; name: string } | { ok: fa
 }
 
 /** `$` for handlers that also keep a printed row. */
-type Host = CelebrateHost & StateDollar
+type Host = FeedHost & StateDollar
 
 type ActionOutcome = { text: string; isError: boolean; result?: ActionJson }
 
-/** One action verb's `--json` run, through `rt.serial`. Never throws. */
-async function runVerb($: CelebrateHost, rt: Runtime, args: readonly string[]): Promise<ActionOutcome> {
-  const out = await rt.serial.run(() => runJson<ActionJson>($, rt.bin, args, { timeoutMs: TIMEOUT.command }))
+/** What a run that gave no `ok: true` value tells the user (a failed run is logged). */
+function failText($: FeedHost, label: string, out: RunOutcome<unknown>): string {
   if (out.kind === 'failed') {
-    debugLog($, `${args[0]} failed (${out.reason}): ${out.detail}`)
-    return { text: UNREACHABLE, isError: true }
+    debugLog($, `${label} failed (${out.reason}): ${out.detail}`)
+    return UNREACHABLE
   }
   const v = out.value
-  if (isError(v)) return { text: v.message ?? v.detail ?? v.error, isError: true }
-  return { text: v.message, isError: !v.ok, result: v }
+  return isError(v) ? (v.message ?? v.detail ?? v.error) : UNREACHABLE
+}
+
+/** One action verb's `--json` run, through `rt.serial`. Never throws. */
+async function runVerb($: FeedHost, rt: Runtime, args: readonly [string, ...string[]]): Promise<ActionOutcome> {
+  const out = await rt.serial.run(() => runJson<ActionJson>($, rt.bin, args, { timeoutMs: TIMEOUT.command }))
+  if (out.kind === 'json' && !isError(out.value)) {
+    const v = out.value
+    return { text: v.message, isError: !v.ok, result: v }
+  }
+  return { text: failText($, args[0], out), isError: true }
 }
 
 /** `pet`, `play` or `treat`. A cooldown or an empty wallet is a normal answer. */
-export function runAction($: CelebrateHost, rt: Runtime, verb: 'pet' | 'play' | 'treat'): Promise<ActionOutcome> {
+export function runAction($: FeedHost, rt: Runtime, verb: 'pet' | 'play' | 'treat'): Promise<ActionOutcome> {
   return runVerb($, rt, [verb, '--json'])
 }
 
@@ -163,7 +163,12 @@ export function parseHatchArgs(args: string): { ok: true; argv: string[] } | { o
 
 const reply = (o: ActionOutcome) => ({ text: o.text, ...(o.isError && { exitCode: 1 }) })
 
-async function rename($: CelebrateHost, rt: Runtime, rawName: string) {
+async function act($: FeedHost, rt: Runtime, verb: 'pet' | 'play' | 'treat') {
+  return ready(rt) ? reply(await runAction($, rt, verb)) : notReady(rt)
+}
+
+async function rename($: FeedHost, rt: Runtime, rawName: string) {
+  if (!ready(rt)) return notReady(rt)
   const v = validateName(rawName)
   if (!v.ok) return { text: v.text }
   const o = await runVerb($, rt, ['rename', v.name, '--json'])
@@ -172,6 +177,7 @@ async function rename($: CelebrateHost, rt: Runtime, rawName: string) {
 }
 
 async function hatch($: Host, rt: Runtime, rawArgs: string) {
+  if (!ready(rt)) return notReady(rt)
   const p = parseHatchArgs(rawArgs)
   if (!p.ok) return { text: p.text }
   const r = await rt.serial.run(() => runRaw($, rt.bin, ['hatch', ...p.argv], { timeoutMs: TIMEOUT.command }))
@@ -186,16 +192,16 @@ async function hatch($: Host, rt: Runtime, rawArgs: string) {
   // A new kitten: the cached one is wrong until a frame names it.
   rt.hadNoKitten = false
   rt.kitten = null
-  const out = await rt.serial.run(() => runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame }))
-  if (out.kind === 'json' && out.value.ok === true) {
-    const f = out.value as FrameJson
-    rt.kitten = kittenOf(f)
-    const text = `Hatched ${f.name} — ${f.rarity} ${f.breed}.`
-    const card = okValue(await runJson<LinesJson>($, rt.bin, ['card', '--json'], { timeoutMs: TIMEOUT.command }))
-    await storeLines($, 'purr-hatch', text, card?.lines ?? null)
-    return { text }
-  }
-  return { text: 'Hatched a new kitten.' }
+  const [fr, card] = await Promise.all([
+    rt.serial.run(() => runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame })),
+    runJson<LinesJson>($, rt.bin, ['card', '--json'], { timeoutMs: TIMEOUT.command }),
+  ])
+  const f = okValue(fr)
+  if (f === null) return { text: 'Hatched a new kitten.' }
+  rt.kitten = kittenOf(f)
+  const text = `Hatched ${f.name} — ${f.rarity} ${f.breed}.`
+  await storeLines($, 'purr-hatch', text, okValue(card)?.lines ?? null)
+  return { text }
 }
 
 const NO_KITTEN = 'No kitten yet — it hatches on your first tool call.'
@@ -206,7 +212,7 @@ export function kittenSummary(f: FrameJson | null, fallback: string): string {
   return `${f.name} — lv ${f.level} ${f.stage} ${f.breed}, ${f.coins}¢, bond ${f.bond}, mood ${f.mood}`
 }
 
-type Fetched = { lines: Span[][] | null; frame: FrameJson | null; error?: { text: string; exitCode: 1 | undefined } }
+type Fetched = { lines: Span[][]; frame: FrameJson | null } | { error: ActionOutcome }
 
 /** `card` or `stats` with `frame`, side by side (both read-only: no `serial`). */
 async function fetchLines($: Host, rt: Runtime, verb: 'card' | 'stats'): Promise<Fetched> {
@@ -214,20 +220,10 @@ async function fetchLines($: Host, rt: Runtime, verb: 'card' | 'stats'): Promise
     runJson<LinesJson>($, rt.bin, [verb, '--json'], { timeoutMs: TIMEOUT.command }),
     runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame }),
   ])
-  const frame = okValue(fr)
   const lines = okValue(out)
-  if (lines !== null) return { lines: lines.lines, frame }
-  if (out.kind === 'failed') {
-    debugLog($, `${verb} failed (${out.reason}): ${out.detail}`)
-    return { lines: null, frame, error: { text: UNREACHABLE, exitCode: 1 } }
-  }
-  const v = out.value
-  if (isError(v)) {
-    return v.error === 'no_kitten'
-      ? { lines: null, frame, error: { text: NO_KITTEN, exitCode: undefined } }
-      : { lines: null, frame, error: { text: v.message ?? v.detail ?? v.error, exitCode: 1 } }
-  }
-  return { lines: null, frame, error: { text: UNREACHABLE, exitCode: 1 } }
+  if (lines !== null) return { lines: lines.lines, frame: okValue(fr) }
+  if (errorCode(out) === 'no_kitten') return { error: { text: NO_KITTEN, isError: false } }
+  return { error: { text: failText($, verb, out), isError: true } }
 }
 
 /** Keeps the coloured lines for the render hook. Never throws. */
@@ -242,8 +238,9 @@ async function storeLines($: Host, command: string, text: string, lines: Span[][
 
 /** `/purr-card` and `/purr-stats`: a one-line summary for the model, the full thing drawn by `CommandOutput`. */
 async function showLines($: Host, rt: Runtime, verb: 'card' | 'stats') {
+  if (!ready(rt)) return notReady(rt)
   const r = await fetchLines($, rt, verb)
-  if (r.error !== undefined) return { text: r.error.text, ...(r.error.exitCode !== undefined && { exitCode: r.error.exitCode }) }
+  if ('error' in r) return reply(r.error)
   const text = kittenSummary(r.frame, verb === 'card' ? 'Purrgotchi card' : 'Purrgotchi stats')
   await storeLines($, `purr-${verb}`, text, r.lines)
   return { text }
@@ -256,29 +253,13 @@ function commandFailed() {
 
 /** The `command.run` answers. */
 export function registerCommands(on: On, rt: Runtime): void {
-  const notReady = () => ({ text: NOT_READY_TEXT(rt.status), exitCode: 1 })
-
-  on('command.run', { command: 'purr-pet' }, async $ =>
-    ready(rt) ? reply(await runAction($, rt, 'pet')) : notReady(),
-  ).catch(commandFailed)
-  on('command.run', { command: 'purr-play' }, async $ =>
-    ready(rt) ? reply(await runAction($, rt, 'play')) : notReady(),
-  ).catch(commandFailed)
-  on('command.run', { command: 'purr-treat' }, async $ =>
-    ready(rt) ? reply(await runAction($, rt, 'treat')) : notReady(),
-  ).catch(commandFailed)
-  on('command.run', { command: 'purr-rename' }, async ($, e) =>
-    ready(rt) ? rename($, rt, e.args) : notReady(),
-  ).catch(commandFailed)
-  on('command.run', { command: 'purr-card' }, async $ =>
-    ready(rt) ? showLines($, rt, 'card') : notReady(),
-  ).catch(commandFailed)
-  on('command.run', { command: 'purr-stats' }, async $ =>
-    ready(rt) ? showLines($, rt, 'stats') : notReady(),
-  ).catch(commandFailed)
+  on('command.run', { command: 'purr-pet' }, $ => act($, rt, 'pet')).catch(commandFailed)
+  on('command.run', { command: 'purr-play' }, $ => act($, rt, 'play')).catch(commandFailed)
+  on('command.run', { command: 'purr-treat' }, $ => act($, rt, 'treat')).catch(commandFailed)
+  on('command.run', { command: 'purr-rename' }, ($, e) => rename($, rt, e.args)).catch(commandFailed)
+  on('command.run', { command: 'purr-card' }, $ => showLines($, rt, 'card')).catch(commandFailed)
+  on('command.run', { command: 'purr-stats' }, $ => showLines($, rt, 'stats')).catch(commandFailed)
   if (rt.options.devCommands) {
-    on('command.run', { command: 'purr-hatch' }, async ($, e) =>
-      ready(rt) ? hatch($, rt, e.args) : notReady(),
-    ).catch(commandFailed)
+    on('command.run', { command: 'purr-hatch' }, ($, e) => hatch($, rt, e.args)).catch(commandFailed)
   }
 }

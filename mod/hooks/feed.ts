@@ -18,7 +18,7 @@ import type { FeedJson } from '../types'
 /** Mirrors `cli::MAX_FEED_COUNT`; a larger `--count` is a usage error. */
 export const MAX_FEED_COUNT = 10_000
 
-/** The slice of `$` a flush needs (any hook's or timer's `$`). */
+/** The slice of `$` a flush, a celebration or a command needs (any hook's or timer's `$`). */
 export type FeedHost = Pick<EngineInterface, 'process' | 'ui'>
 
 /**

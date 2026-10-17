@@ -51,6 +51,18 @@ export function ready(rt: Runtime): boolean {
   return rt.status.kind === 'ready'
 }
 
+/** What is wrong with the binary: a start-up toast, or a command's answer. */
+export function binaryProblem(status: BinaryStatus): string {
+  switch (status.kind) {
+    case 'missing':
+      return 'Purrgotchi binary not found — set Binary path in /config or run `cargo install --path rust`'
+    case 'outdated':
+      return `Purrgotchi binary ${status.version} is too old for this mod — rebuild it: \`cargo install --path rust\``
+    default:
+      return 'Purrgotchi is not ready yet — try again in a moment.'
+  }
+}
+
 /** Toasts `text` once per runtime per `key`. Never throws. */
 export function warnOnce($: Pick<EngineInterface, 'ui'>, rt: Runtime, key: string, text: string): void {
   if (rt.warned.has(key)) return

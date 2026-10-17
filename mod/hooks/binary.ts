@@ -22,6 +22,17 @@ export function resolveBinary(o: PurrOptions): string {
   return p === '' ? 'purrgotchi' : p
 }
 
+/** `resolveBinary`, with a leading `~` as the home directory. Never throws. */
+export async function locateBinary($: Pick<EngineInterface, 'env'>, o: PurrOptions): Promise<string> {
+  const bin = resolveBinary(o)
+  if (!bin.startsWith('~')) return bin
+  try {
+    return expandHome(bin, (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')))
+  } catch {
+    return bin // no home: the path stays as typed
+  }
+}
+
 /** A leading `~` (alone, or before `/` or `\`) as `home`; anything else, or no home, as is. */
 export function expandHome(path: string, home: string | undefined): string {
   if (home === undefined || home === '' || !/^~(?=$|[/\\])/.test(path)) return path
@@ -35,6 +46,15 @@ export function isError(v: unknown): v is ErrorJson {
 }
 
 export const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/** No undefined keys: the engine sees exactly what the caller set. */
+function runInitOf(init: RunInit): RunInit {
+  return {
+    ...(init.stdin !== undefined && { stdin: init.stdin }),
+    ...(init.env !== undefined && { env: init.env }),
+    timeoutMs: init.timeoutMs ?? TIMEOUT.command,
+  }
+}
 
 /** First non-empty stdout line as a plain object, else null. */
 function parseLine(stdout: string): Record<string, unknown> | null {
@@ -59,15 +79,9 @@ export async function runJson<T>(
   args: readonly string[],
   init: RunInit = {},
 ): Promise<RunOutcome<T>> {
-  // No undefined keys: the engine sees exactly what the caller set.
-  const runInit: RunInit = {
-    ...(init.stdin !== undefined && { stdin: init.stdin }),
-    ...(init.env !== undefined && { env: init.env }),
-    timeoutMs: init.timeoutMs ?? TIMEOUT.command,
-  }
   let r: Awaited<ReturnType<ProcessHost['process']['run']>>
   try {
-    r = await $.process.run([bin, ...args], runInit)
+    r = await $.process.run([bin, ...args], runInitOf(init))
   } catch (e) {
     return { kind: 'failed', reason: 'rejected', detail: errText(e) }
   }
@@ -92,13 +106,8 @@ export async function runRaw(
   args: readonly string[],
   init: RunInit = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string } | { failed: string }> {
-  const runInit: RunInit = {
-    ...(init.stdin !== undefined && { stdin: init.stdin }),
-    ...(init.env !== undefined && { env: init.env }),
-    timeoutMs: init.timeoutMs ?? TIMEOUT.command,
-  }
   try {
-    const r = await $.process.run([bin, ...args], runInit)
+    const r = await $.process.run([bin, ...args], runInitOf(init))
     return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }
   } catch (e) {
     return { failed: errText(e) }

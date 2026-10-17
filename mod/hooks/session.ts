@@ -3,11 +3,11 @@
 import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
-import { expandHome, handshake } from './binary'
+import { handshake, locateBinary } from './binary'
 import { kittenOf } from './celebrate'
 import { registerCommandNames } from './commands'
 import { flushFeeds } from './feed'
-import { ready, warnOnce } from './runtime'
+import { binaryProblem, ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
 import type { FrameJson } from '../types'
 
@@ -55,9 +55,6 @@ export function scanSettings(s: unknown): SettingsScan {
 }
 
 const WARN = {
-  missing: 'Purrgotchi binary not found — set Binary path in /config or run `cargo install --path rust`',
-  outdated: (version: string) =>
-    `Purrgotchi binary ${version} is too old for this mod — rebuild it: \`cargo install --path rust\``,
   classicHooks:
     'Old Purrgotchi hooks are still in settings.json (double feeding) — run `bash install.sh --uninstall-hooks`',
   handEdited:
@@ -69,13 +66,7 @@ const WARN = {
  * handshake; `warned` resets only with a fresh runtime (module reload).
  */
 export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{ frame: FrameJson | null }> {
-  if (rt.bin.startsWith('~')) {
-    try {
-      rt.bin = expandHome(rt.bin, (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')))
-    } catch {
-      // no home: the path stays as typed
-    }
-  }
+  rt.bin = await locateBinary($, rt.options)
   const { status, frame, noKitten } = await handshake($, rt.bin)
   rt.status = status
   // state_unavailable / state_corrupt keep the last state: neither a kitten nor "none".
@@ -99,8 +90,7 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     // each registration has its own try/catch; this is the last net
   }
 
-  if (status.kind === 'missing') warnOnce($, rt, 'missing', WARN.missing)
-  if (status.kind === 'outdated') warnOnce($, rt, 'outdated', WARN.outdated(status.version))
+  if (status.kind === 'missing' || status.kind === 'outdated') warnOnce($, rt, status.kind, binaryProblem(status))
 
   try {
     rt.scan = scanSettings(await $.settings.read({ source: 'user' }))
