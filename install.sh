@@ -11,7 +11,7 @@
 #
 # Safe to run multiple times — it's idempotent.
 #
-# bash install.sh --uninstall-hooks removes the feed/turn hooks (for the v4 mod) and keeps statusLine.
+# bash install.sh --uninstall-hooks removes the feed/turn hooks and keeps statusLine.
 
 set -euo pipefail
 
@@ -39,10 +39,9 @@ case "${1:-}" in
     *)                 echo "unknown option: $1"; usage; exit 2 ;;
 esac
 
-# --- Uninstall hooks (v4 mod migration) -------------------------------------
-# The Purrgotchi mod owns feed/turn wiring; leaving the settings.json hooks in
-# place would feed every tool call twice. statusLine is kept (it never counts
-# anything). Needs only jq — never the compiled binary.
+# --- Uninstall hooks ---------------------------------------------------------
+# Removes the feed/turn hooks so nothing feeds the kitten. statusLine is kept
+# (it never counts anything). Needs only jq — never the compiled binary.
 if [ "$MODE" = "uninstall-hooks" ]; then
     echo "Purrgotchi: removing feed/turn hooks from $SETTINGS (statusLine is kept)"
     if ! command -v jq >/dev/null 2>&1; then

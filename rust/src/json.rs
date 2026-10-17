@@ -71,14 +71,9 @@ pub fn report(code: &str, message: &str, json: bool) {
 
 const NO_KITTEN: &str = "No kitten hatched yet. Run: purrgotchi hatch";
 
-/// Caller exits 1.
-pub fn no_kitten(json: bool) {
-    report("no_kitten", NO_KITTEN, json);
-}
-
-/// Read-only commands (frame/stats/card/cost/quip-prompt) when the kitten
+/// Read-only commands (frame/stats/card) when the kitten
 /// could not be loaded. Missing keeps the classic `no_kitten` output; a
-/// transient or corrupt state gets its own code so the mod does not mistake
+/// transient or corrupt state gets its own code so a script does not mistake
 /// a lock error for "not hatched". Caller exits 1.
 pub fn state_read_error(fail: crate::state::ReadFail, json: bool) {
     let (code, msg) = read_fail_parts(fail);
@@ -151,7 +146,7 @@ pub struct ActionJson {
     /// "applied" | "cooldown" | "insufficient_coins" | "renamed" | "error"
     pub result: String,
     /// The classic stdout line with ANSI stripped — short and in-character;
-    /// the mod returns it as slash-command text (which the model also reads).
+    /// scripts can show it verbatim.
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bond_old: Option<u8>,
@@ -219,7 +214,7 @@ pub struct FrameJson {
 }
 
 /// Everything the pane shows that is not already a top-level `frame` field,
-/// so the mod never re-implements game rules.
+/// so scripts never re-implement game rules.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HudJson {
     pub total_tool_calls: u64,
@@ -258,33 +253,6 @@ pub struct CelebrationJson {
     /// renderer advances (statusline or `frame --advance`).
     pub remaining_ticks: u8,
     pub tick_secs: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CostJson {
-    pub v: u32,
-    pub ok: bool,
-    /// USD credited to the lifetime tally by this call (0 when nothing new).
-    pub credit: f64,
-    pub lifetime_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct QuipPromptJson {
-    pub v: u32,
-    pub ok: bool,
-    pub mood: String,
-    pub system: String,
-    pub user: String,
-    pub max_tokens: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct QuipStoreJson {
-    pub v: u32,
-    pub ok: bool,
-    /// The sanitized text actually written to the quip cache.
-    pub stored: String,
 }
 
 #[cfg(test)]
@@ -372,19 +340,5 @@ mod tests {
         assert_eq!(serde_json::from_str::<SceneJson>(&s).unwrap(), sc);
         let c = CelebrationJson { kind: CelebrationKind::LevelUp, remaining_ticks: 2, tick_secs: 2 };
         assert_eq!(serde_json::from_str::<CelebrationJson>(&serde_json::to_string(&c).unwrap()).unwrap(), c);
-    }
-
-    #[test]
-    fn small_command_structs_round_trip() {
-        let c = CostJson { v: V, ok: true, credit: 0.5, lifetime_cost_usd: 3.92 };
-        let s = serde_json::to_string(&c).unwrap();
-        assert_eq!(s, r#"{"v":1,"ok":true,"credit":0.5,"lifetime_cost_usd":3.92}"#);
-        assert_eq!(serde_json::from_str::<CostJson>(&s).unwrap(), c);
-
-        let p = QuipPromptJson { v: V, ok: true, mood: "calm".into(), system: "sys".into(), user: "u".into(), max_tokens: 50 };
-        assert_eq!(serde_json::from_str::<QuipPromptJson>(&serde_json::to_string(&p).unwrap()).unwrap(), p);
-
-        let q = QuipStoreJson { v: V, ok: true, stored: "mrow".into() };
-        assert_eq!(serde_json::to_string(&q).unwrap(), r#"{"v":1,"ok":true,"stored":"mrow"}"#);
     }
 }

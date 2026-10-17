@@ -1,5 +1,5 @@
 //! Styled text spans: the single representation behind the classic ANSI
-//! statusline and the mod's JSON (spec §3.1).
+//! statusline and the JSON surface (spec §3.1).
 
 use serde::{Deserialize, Serialize};
 

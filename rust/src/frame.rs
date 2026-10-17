@@ -5,8 +5,6 @@ use crate::colors::Attr;
 use crate::json::{CelebrationJson, FrameJson, HudJson, PeakJson, SceneJson, V};
 use crate::span::{to_json, Span};
 use crate::state::{self, CelebrationKind, ReadFail, State};
-use std::io::Write;
-use std::time::Duration;
 use crate::statusline::{advance, kitten_view, KittenView, ViewInput, CELEBRATION_TICK_SECS};
 
 #[derive(Clone, Copy)]
@@ -93,33 +91,6 @@ pub fn run(opts: &FrameOpts) -> i32 {
             crate::json::state_read_error(fail, true);
             1
         }
-    }
-}
-
-/// `purrgotchi serve`: an endless NDJSON stream, one `frame --json` object per
-/// line every `interval_ms`. A missing/unreadable kitten becomes an error line
-/// and the loop keeps going (it may hatch later). stdin is never read: the mod
-/// starts this with stdin already closed. Returns 0 once stdout is gone.
-pub fn serve(opts: &FrameOpts, interval_ms: u64) -> i32 {
-    // The sprite parity comes from the wall clock, as in `frame` without --tick.
-    let opts = FrameOpts { tick: None, ..*opts };
-    let stdout = std::io::stdout();
-    loop {
-        let line = match render_once(&opts) {
-            Ok(j) => serde_json::to_string(&j),
-            Err(fail) => {
-                let (code, msg) = crate::json::read_fail_parts(fail);
-                serde_json::to_string(&crate::json::error_json(code, msg))
-            }
-        };
-        if let Ok(line) = line {
-            // Never println!: with panic = "abort" an EPIPE panic would dump core.
-            let mut out = stdout.lock();
-            if writeln!(out, "{line}").and_then(|_| out.flush()).is_err() {
-                return 0;
-            }
-        }
-        std::thread::sleep(Duration::from_millis(interval_ms));
     }
 }
 

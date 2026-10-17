@@ -1,4 +1,4 @@
-//! Error paths the mod relies on: unreadable/corrupt state is never reported
+//! Error paths scripts rely on: unreadable/corrupt state is never reported
 //! as "no kitten", bad args and bad stdin are machine-readable under --json,
 //! and `--json` ok:false always exits 1 (classic exit codes are unchanged).
 #![cfg(unix)]
@@ -7,12 +7,10 @@ use common::{base_state, run_json, Sandbox};
 use serde_json::{json, Value};
 
 /// state.json as a directory: read() fails with something other than NotFound.
-const READ_ONLY: [&[&str]; 5] = [
+const READ_ONLY: [&[&str]; 3] = [
     &["frame", "--json"],
     &["stats", "--json"],
     &["card", "--json"],
-    &["cost", "--session", "s1", "--total", "1", "--json"],
-    &["quip-prompt", "--json"],
 ];
 
 #[test]
@@ -66,7 +64,6 @@ fn bad_args_under_json_also_print_a_bad_args_object() {
     for args in [
         vec!["feed", "--json", "--count", "0"],
         vec!["frame", "--json", "--width", "abc"],
-        vec!["cost", "--json", "--session", "s1"],
     ] {
         let out = sb.run(&args, "", &[]);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -82,7 +79,7 @@ fn bad_args_under_json_also_print_a_bad_args_object() {
 #[test]
 fn bad_args_without_json_print_nothing_on_stdout() {
     let sb = Sandbox::new("bad_args_classic");
-    for args in [vec!["feed", "--count", "0"], vec!["frame", "--width", "x"], vec!["cost", "--session", "s1"]] {
+    for args in [vec!["feed", "--count", "0"], vec!["frame", "--width", "x"]] {
         let out = sb.run(&args, "", &[]);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert!(out.stdout.is_empty(), "{args:?}");
@@ -90,19 +87,12 @@ fn bad_args_without_json_print_nothing_on_stdout() {
 }
 
 #[test]
-fn quip_prompt_rejects_invalid_utf8_stdin() {
-    let sb = Sandbox::new("qp_utf8");
-    sb.write_state(&base_state());
-    let mut c = sb.cmd(&["quip-prompt", "--json"]);
-    use std::io::Write;
-    use std::process::Stdio;
-    c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = c.spawn().unwrap();
-    child.stdin.take().unwrap().write_all(&[b'{', 0xff, 0xfe, b'}']).unwrap();
-    let out = child.wait_with_output().unwrap();
-    assert_eq!(out.status.code(), Some(2));
-    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!((v["ok"].as_bool(), v["error"].as_str()), (Some(false), Some("bad_input")));
+fn removed_mod_verbs_are_unknown() {
+    let sb = Sandbox::with_state("removed", json!({}));
+    for v in ["serve", "cost", "quip-prompt", "quip-store"] {
+        let out = sb.run(&[v], "", &[]);
+        assert_eq!(out.status.code(), Some(2), "{v}");
+    }
 }
 
 #[test]

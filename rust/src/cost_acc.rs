@@ -180,24 +180,6 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) -> f64 {
     outcome.credit
 }
 
-/// `purrgotchi cost --session <id> --total <usd> [--json]` — the statusline's
-/// lifetime-cost tally as a command, for the mod's `session.measure` hook.
-pub fn run_cmd(session_id: &str, total: f64, json: bool) -> i32 {
-    // Check first: accumulate_from_payload would take the lock (creating the
-    // lock file) before discovering there is no kitten.
-    if crate::json::load_for_read(json).is_none() {
-        return 1;
-    }
-    let credit = accumulate_from_payload(session_id, total);
-    let lifetime = crate::state::load().map(|s| s.lifetime_cost_usd).unwrap_or(0.0);
-    if json {
-        crate::json::print(&crate::json::CostJson { v: crate::json::V, ok: true, credit, lifetime_cost_usd: lifetime });
-    } else {
-        println!("credited ${credit:.4} (lifetime ${lifetime:.2})");
-    }
-    0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

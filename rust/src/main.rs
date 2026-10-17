@@ -131,58 +131,12 @@ fn main() {
                 process::exit(2);
             }
         },
-        "serve" => {
-            const USAGE: &str = "usage: purrgotchi serve [--interval-ms N] [--width N] [--context-pct P] [--advance] [--pixels]";
-            let parsed = frame::parse_opts(&args).and_then(|o| {
-                let ms = match cli::opt_value(&args, "--interval-ms")? {
-                    None => 1000,
-                    Some(v) => v
-                        .trim()
-                        .parse::<u64>()
-                        .map_err(|_| format!("--interval-ms must be an integer, got {v:?}"))?
-                        .clamp(250, 60_000),
-                };
-                Ok((o, ms))
-            });
-            match parsed {
-                Ok((opts, ms)) => process::exit(frame::serve(&opts, ms)),
-                Err(msg) => {
-                    eprintln!("serve: {msg}");
-                    eprintln!("{USAGE}");
-                    process::exit(2);
-                }
-            }
-        }
-        "cost" => {
-            let session = cli::flag_value(&args, "--session").unwrap_or("");
-            let total = cli::flag_value(&args, "--total")
-                .and_then(|v| v.trim().parse::<f64>().ok())
-                .filter(|t| t.is_finite() && *t >= 0.0);
-            match total {
-                Some(t) if !session.is_empty() && !session.starts_with("--") => {
-                    process::exit(cost_acc::run_cmd(session, t, json))
-                }
-                _ => {
-                    let usage = "usage: purrgotchi cost --session <id> --total <usd> [--json]";
-                    eprintln!("{usage}");
-                    if json {
-                        json::print_bad_args(usage);
-                    }
-                    process::exit(2);
-                }
-            }
-        }
-        "quip-prompt" => process::exit(react::quip_prompt_cmd(json)),
-        "quip-store" => {
-            let text = cli::positionals(&args, &["--json"], &[]).join(" ");
-            process::exit(react::quip_store_cmd(&text, json));
-        }
         "--version" | "-V" => {
             println!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|frame|pixels|serve|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
+            eprintln!("usage: purrgotchi <statusline|frame|pixels|feed|turn|rename|hatch|card|pet|play|treat|stats|react> [--json]");
             process::exit(2);
         }
     }
