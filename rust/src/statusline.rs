@@ -344,11 +344,21 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
+    let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::pixel_width()) {
+        (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
+        (m @ (crate::px::PixelMode::Full | crate::px::PixelMode::FgOnly), Some(w)) => {
+            Some(crate::px::cat_area(&view, &st, now.max(0) as u64, w, m, crate::px::life::forced()))
+        }
+        _ => None,
+    };
+
     // During a scene the cat keeps her rarity/shiny tint even if a quip is
     // active (quips normally re-tint the home sprite pink; there is no home
     // sprite on screen while she plays). attrs_ansi(rarity_attrs) prints
     // exactly like rarity_color (pinned in colors.rs).
-    let scene_frame = view.scene.as_ref().map(|sv| {
+    // Pixel rows replace the ASCII scene, so it is only rendered without them
+    // (the speech caption comes from `view.scene`, not from the render).
+    let scene_frame = view.scene.as_ref().filter(|_| px_rows.is_none()).map(|sv| {
         crate::playground::render_scene(
             sv.kind,
             sv.elapsed,
@@ -488,14 +498,6 @@ pub fn run() {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let mut buf = String::with_capacity(4096);
-
-    let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::pixel_width()) {
-        (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
-        (m @ (crate::px::PixelMode::Full | crate::px::PixelMode::FgOnly), Some(w)) => {
-            Some(crate::px::cat_area(&view, &st, now.max(0) as u64, w, m, crate::px::life::forced()))
-        }
-        _ => None,
-    };
 
     for (i, row) in rows.iter().enumerate() {
         let row = to_ansi(row);
