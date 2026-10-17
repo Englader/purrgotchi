@@ -5,6 +5,7 @@ import { registerFeed } from './feed'
 import { gameEnabled, readOptions } from './options'
 import { createRuntime } from './runtime'
 import { onSessionStart } from './session'
+import { registerTurn } from './turn'
 
 export const register: Register = (on, raw) => {
   const options = readOptions(raw)
@@ -25,4 +26,5 @@ export const register: Register = (on, raw) => {
   })
 
   registerFeed(on, rt)
+  registerTurn(on, rt)
 }
