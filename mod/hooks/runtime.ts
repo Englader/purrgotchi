@@ -8,7 +8,11 @@ import { FeedQueue } from './feed'
 import type { PurrOptions } from './options'
 import type { BinaryStatus } from '../types'
 
-export type SettingsScan = { classicHooks: boolean; classicStatusline: boolean }
+/**
+ * `classicHooks`: a settings hook still feeds or turns. `handEdited`: one of
+ * them is not what `install.sh --uninstall-hooks` removes.
+ */
+export type SettingsScan = { classicHooks: boolean; handEdited: boolean; classicStatusline: boolean }
 
 export type Runtime = {
   options: PurrOptions
@@ -33,7 +37,7 @@ export function createRuntime(options: PurrOptions): Runtime {
     options,
     bin: resolveBinary(options),
     status: { kind: 'unknown' },
-    scan: { classicHooks: false, classicStatusline: false },
+    scan: { classicHooks: false, handEdited: false, classicStatusline: false },
     serial: new Serial(),
     warned: new Set(),
     feeds: new FeedQueue(),

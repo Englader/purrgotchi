@@ -6,7 +6,7 @@ import type { EngineOptions } from './testkit'
 // The card and stats rows, driven through the engine: `/purr-card` stores the
 // lines, then a CommandOutput mount draws them (or falls back).
 
-const SURFACES = ['terminal', 'desktop'] as const
+const SURFACES = ['terminal', 'desktop', 'mobile'] as const
 const CARD = [
   [{ text: '╭─ THALIA ─╮', fg: '#ea00d9' }],
   [],
@@ -28,7 +28,7 @@ let rows = 0
 
 function mountRow(
   $: Parameters<Extract<Parameters<typeof test>[1], (...a: never[]) => unknown>>[0],
-  surface: 'terminal' | 'desktop',
+  surface: (typeof SURFACES)[number],
   command: string,
   text: string,
   columns = 120,

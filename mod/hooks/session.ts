@@ -3,7 +3,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
-import { handshake } from './binary'
+import { expandHome, handshake } from './binary'
 import { kittenOf } from './celebrate'
 import { registerCommandNames } from './commands'
 import { flushFeeds } from './feed'
@@ -16,31 +16,42 @@ const mentions = (v: unknown): boolean => typeof v === 'string' && v.toLowerCase
 
 // install.sh's BIN_RE: `"<dir>/purrgotchi[.exe]"`, quoted or bare, or the `purr`
 // wrapper, then the verb. A hook that merely mentions purrgotchi is not double
-// feeding. Wider than --uninstall-hooks on purpose (any case, any matcher): a
-// hand-edited hook that still double feeds is warned about, and removed by hand.
+// feeding. The warning is wider than --uninstall-hooks on purpose (any case,
+// any matcher): a hand-edited hook that still double feeds is warned about too,
+// and the toast says to remove it by hand.
 const BIN_RE = String.raw`^\s*("([^"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?"|([^\s"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?)\s+`
-const runsVerb = (verb: string): RegExp => new RegExp(`${BIN_RE}${verb}(\\s|$)`, 'i')
-const FEED_HOOK = runsVerb('feed')
-const TURN_HOOK = runsVerb('turn')
+const runsVerb = (verb: string, flags: string): RegExp => new RegExp(`${BIN_RE}${verb}(\\s|$)`, flags)
 
-/** Any `hooks.<event>[*].hooks[*].command` running the purrgotchi binary as `re` says. */
-function eventRuns(hooks: Record<string, unknown>, event: string, re: RegExp): boolean {
-  const groups = hooks[event]
-  if (!Array.isArray(groups)) return false
-  return groups.some(
-    g =>
-      isObj(g) && Array.isArray(g.hooks) && g.hooks.some(h => isObj(h) && typeof h.command === 'string' && re.test(h.command)),
-  )
+/** Per event: what double feeds (`wide`) and what --uninstall-hooks removes (`strict`, under `star` only). */
+const CLASSIC = [
+  { event: 'PostToolUse', wide: runsVerb('feed', 'i'), strict: runsVerb('feed', ''), star: true },
+  { event: 'UserPromptSubmit', wide: runsVerb('turn', 'i'), strict: runsVerb('turn', ''), star: false },
+] as const
+
+/** Every `hooks.<event>[*].hooks[*].command` running the purrgotchi binary's feed / turn. */
+function scanHooks(hooks: Record<string, unknown>): Pick<SettingsScan, 'classicHooks' | 'handEdited'> {
+  let classicHooks = false
+  let handEdited = false
+  for (const { event, wide, strict, star } of CLASSIC) {
+    const groups = hooks[event]
+    if (!Array.isArray(groups)) continue
+    for (const g of groups) {
+      if (!isObj(g) || !Array.isArray(g.hooks)) continue
+      for (const h of g.hooks) {
+        if (!isObj(h) || typeof h.command !== 'string' || !wide.test(h.command)) continue
+        classicHooks = true
+        if (!strict.test(h.command) || (star && g.matcher !== '*')) handEdited = true
+      }
+    }
+  }
+  return { classicHooks, handEdited }
 }
 
 /** Pure scan of the user settings for classic Purrgotchi wiring. Never throws. */
 export function scanSettings(s: unknown): SettingsScan {
   const hooks = isObj(s) && isObj(s.hooks) ? s.hooks : {}
   const statusLine = isObj(s) && isObj(s.statusLine) ? s.statusLine : {}
-  return {
-    classicHooks: eventRuns(hooks, 'PostToolUse', FEED_HOOK) || eventRuns(hooks, 'UserPromptSubmit', TURN_HOOK),
-    classicStatusline: mentions(statusLine.command),
-  }
+  return { ...scanHooks(hooks), classicStatusline: mentions(statusLine.command) }
 }
 
 const WARN = {
@@ -49,6 +60,8 @@ const WARN = {
     `Purrgotchi binary ${version} is too old for this mod — rebuild it: \`cargo install --path rust\``,
   classicHooks:
     'Old Purrgotchi hooks are still in settings.json (double feeding) — run `bash install.sh --uninstall-hooks`',
+  handEdited:
+    'Old Purrgotchi feed/turn hooks are still in settings.json (double feeding) — remove them from ~/.claude/settings.json by hand',
 } as const
 
 /**
@@ -56,6 +69,13 @@ const WARN = {
  * handshake; `warned` resets only with a fresh runtime (module reload).
  */
 export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{ frame: FrameJson | null }> {
+  if (rt.bin.startsWith('~')) {
+    try {
+      rt.bin = expandHome(rt.bin, (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')))
+    } catch {
+      // no home: the path stays as typed
+    }
+  }
   const { status, frame, noKitten } = await handshake($, rt.bin)
   rt.status = status
   // state_unavailable / state_corrupt keep the last state: neither a kitten nor "none".
@@ -88,7 +108,9 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     // keep the defaults
   }
   if (ready(rt)) {
-    if (rt.scan.classicHooks) warnOnce($, rt, 'classic-hooks', WARN.classicHooks)
+    if (rt.scan.classicHooks) {
+      warnOnce($, rt, 'classic-hooks', rt.scan.handEdited ? WARN.handEdited : WARN.classicHooks)
+    }
     // Feed safety net: a timer is a long-lived context, so credits go out even
     // if a kick from a returned tool.call hook did not. Once per runtime.
     rt.flushTimer ??= $.clock.every(2000, () => {

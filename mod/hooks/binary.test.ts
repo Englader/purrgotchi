@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { ProcessRunInit } from 'claude-code'
 
-import { handshake, isError, resolveBinary, runJson, Serial } from './binary'
+import { expandHome, handshake, isError, resolveBinary, runJson, Serial } from './binary'
 import { readOptions } from './options'
 import { fx, gate, host, ok, withVersion } from './testkit'
 import type { FeedJson } from '../types'
@@ -14,6 +14,16 @@ test('resolveBinary prefers binaryPath', () => {
   expect(resolveBinary(readOptions({ binaryPath: ' /opt/p ' }))).toBe('/opt/p')
   expect(resolveBinary(readOptions({}))).toBe('purrgotchi')
   expect(resolveBinary(readOptions({ binaryPath: '   ' }))).toBe('purrgotchi')
+})
+
+test('expandHome table', () => {
+  expect(expandHome('~', '/home/u')).toBe('/home/u')
+  expect(expandHome('~/bin/purr', '/home/u/')).toBe('/home/u/bin/purr')
+  expect(expandHome('~\\bin\\purr.exe', 'C:\\Users\\u')).toBe('C:\\Users\\u\\bin\\purr.exe')
+  expect(expandHome('~other/bin/purr', '/home/u')).toBe('~other/bin/purr')
+  expect(expandHome('/opt/~/purr', '/home/u')).toBe('/opt/~/purr')
+  expect(expandHome('~/bin/purr', undefined)).toBe('~/bin/purr')
+  expect(expandHome('~/bin/purr', '')).toBe('~/bin/purr')
 })
 
 test('runJson parses one line', async () => {

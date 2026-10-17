@@ -119,13 +119,15 @@ export type EngineOptions = {
   notify?: 'deny'
   /** Command names `command.register` refuses (rejects). */
   refuse?: readonly string[]
+  /** What `$.env.get` answers (default: every variable unset). */
+  env?: Readonly<Record<string, string>>
 }
 
 /** User settings shapes for the migration scan. */
 export const settingsFx = {
   /** `hooks.<event>` with one command hook, as install.sh writes it. */
-  hook: (event: string, command: string): object => ({
-    hooks: { [event]: [{ matcher: '*', hooks: [{ type: 'command', command }] }] },
+  hook: (event: string, command: string, matcher = '*'): object => ({
+    hooks: { [event]: [{ matcher, hooks: [{ type: 'command', command }] }] },
   }),
 }
 
@@ -143,6 +145,7 @@ export function defaultRun(argv: string[]): RunAnswer {
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
   const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], clock: mock.clock(on) }
+  mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => {
     spies.ends.push(e.reason)

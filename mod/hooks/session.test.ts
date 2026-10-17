@@ -7,10 +7,11 @@ const frames = (runs: string[][]) => runs.filter(a => a.includes('frame')).lengt
 const versions = (runs: string[][]) => runs.filter(a => a.includes('--version')).length
 
 test('scanSettings table', () => {
-  const none = { classicHooks: false, classicStatusline: false }
+  const none = { classicHooks: false, handEdited: false, classicStatusline: false }
   expect(scanSettings({})).toEqual(none)
   expect(scanSettings({ statusLine: { command: '/x/purrgotchi statusline' } })).toEqual({
     classicHooks: false,
+    handEdited: false,
     classicStatusline: true,
   })
   expect(scanSettings(settingsFx.hook('PostToolUse', 'C:/p/purrgotchi.exe feed')).classicHooks).toBe(true)
@@ -35,6 +36,32 @@ test('scanSettings table', () => {
   expect(scanSettings({ statusLine: { command: 7 } })).toEqual(none)
   expect(scanSettings(null)).toEqual(none)
   expect(scanSettings('settings')).toEqual(none)
+})
+
+test('scanSettings: hooks --uninstall-hooks would not remove are hand-edited', () => {
+  const scan = (event: string, command: string, matcher?: string) =>
+    scanSettings(settingsFx.hook(event, command, matcher))
+  // What install.sh writes: removable.
+  expect(scan('PostToolUse', '"/r/purrgotchi" feed')).toMatchObject({ classicHooks: true, handEdited: false })
+  expect(scan('UserPromptSubmit', 'purrgotchi turn', 'anything')).toMatchObject({ classicHooks: true, handEdited: false })
+  // Another case, or a feed hook under a matcher other than "*": by hand.
+  expect(scan('PostToolUse', 'C:/p/PurrGotchi.exe feed')).toMatchObject({ classicHooks: true, handEdited: true })
+  expect(scan('UserPromptSubmit', 'PURRGOTCHI turn')).toMatchObject({ classicHooks: true, handEdited: true })
+  expect(scan('PostToolUse', 'purrgotchi feed', 'Bash')).toMatchObject({ classicHooks: true, handEdited: true })
+})
+
+test('a hand-edited hook toasts to remove it by hand', async ($, on) => {
+  const spies = engine(on, { settings: settingsFx.hook('PostToolUse', 'C:/p/PurrGotchi.exe feed') })
+  await $.session.start(START)
+  expect(spies.toasts).toHaveLength(1)
+  expect(spies.toasts[0]).toContain('by hand')
+  expect(spies.toasts[0]).not.toContain('--uninstall-hooks')
+})
+
+test('a leading ~ in binaryPath is the home directory', { options: { binaryPath: '~/bin/purr' } }, async ($, on) => {
+  const spies = engine(on, { env: { HOME: '/home/u' } })
+  await $.session.start(START)
+  expect(spies.runs[0]).toEqual(['/home/u/bin/purr', 'frame', '--json'])
 })
 
 test('missing binary toasts once and marks status', async ($, on) => {

@@ -22,6 +22,12 @@ export function resolveBinary(o: PurrOptions): string {
   return p === '' ? 'purrgotchi' : p
 }
 
+/** A leading `~` (alone, or before `/` or `\`) as `home`; anything else, or no home, as is. */
+export function expandHome(path: string, home: string | undefined): string {
+  if (home === undefined || home === '' || !/^~(?=$|[/\\])/.test(path)) return path
+  return home.replace(/[/\\]+$/, '') + path.slice(1)
+}
+
 export function isError(v: unknown): v is ErrorJson {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
