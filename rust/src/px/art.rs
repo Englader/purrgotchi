@@ -153,7 +153,7 @@ const LOAF: [&str; 9] = [
     "....bbhhhlnlhh",
     "....bbbbhhllhh",
     "-....bbbbbbllbb",
-    "....bbbbbbbbbb",
+    "-....bbbbbbbbbb",
     "....*bbbbbbbbb",
 ];
 
@@ -166,7 +166,7 @@ const LOAF_BREATH: [&str; 9] = [
     "....bbhhhlnlhh",
     "....bbbbhhllhh",
     "-....bbbbbbllbb",
-    "....bbbbbbbbbb",
+    "-....bbbbbbbbbb",
     "....*bbbbbbbbb",
 ];
 
@@ -174,9 +174,9 @@ const LOAF_BREATH: [&str; 9] = [
 const CURL: [&str; 6] = [
     "....bbbb.r...r",
     "...bbbbbbrihir",
-    "..bbbbbbbhmhmh",
-    ".bbbbbbbbhlnlh",
-    ".bbbbbbbbbhhhh",
+    "..bbbbbbmhmhmh",
+    ".bbbbbbbmhlnlh",
+    "-.bbbbbbbbmhhhh",
     "..tttttttttt..",
 ];
 
@@ -184,16 +184,16 @@ const CURL: [&str; 6] = [
 const CURL_BREATH: [&str; 6] = [
     "...bbbbb.r...r",
     "...bbbbbbrihir",
-    "..bbbbbbbhmhmh",
-    ".bbbbbbbbhlnlh",
-    ".bbbbbbbbbhhhh",
+    "..bbbbbbmhmhmh",
+    ".bbbbbbbmhlnlh",
+    "-.bbbbbbbbmhhhh",
     "..tttttttttt..",
 ];
 
 /// Downward-dog: rear up, chest low, front legs reaching along the ground.
 const STRETCH: [&str; 7] = [
     "t.............",
-    "tbbb..........",
+    "-tbbb..........",
     ".bbbbbb.r....r",
     ".bbbbbbbrihhir",
     "bbbbbbbbhehheh",
@@ -251,7 +251,7 @@ const RUN1: [&str; 8] = [
     "t.....hehhhheh",
     "ttbbbbhhhlnlhh",
     "-..bbbbbhhllhh.",
-    "..bbbbbbbbbbb.",
+    "-..bbbbbbbbbbb.",
     "aaa........aaa",
 ];
 
@@ -263,7 +263,7 @@ const RUN2: [&str; 8] = [
     "t.....hehhhheh",
     "ttbbbbhhhlnlhh",
     "-..bbbbbhhllhh.",
-    "..bbbbbbbbbbb.",
+    "-..bbbbbbbbbbb.",
     "....aa....aa..",
 ];
 
@@ -275,7 +275,7 @@ const CROUCH: [&str; 8] = [
     ".bbbb.hehhhheh",
     "tbbbbbhehlnleh",
     "-tbbbbbbbbhhhh.",
-    ".bbbbbbbbbllb.",
+    "-.bbbbbbbbbllb.",
     "..aa.....aaa..",
 ];
 
@@ -287,7 +287,7 @@ const POUNCE: [&str; 9] = [
     "......hmhhhhmh",
     "....bbhhmlnmhh",
     "-t.bbbbbbhhllhh",
-    "tbbbbbbbbbllaa",
+    "-tbbbbbbbbbllaa",
     "tbbbbbbb....aa",
     "aabbbb........",
 ];
@@ -298,7 +298,7 @@ const ROLL1: [&str; 6] = [
     ".a.a..a.arihir",
     ".bbbbbbbbheheh",
     "bllllllllhhnhh",
-    "bbllllllbhhhhh",
+    "-bbllllllbhhhhh",
     "tbbbbbbbb.....",
 ];
 
@@ -308,7 +308,7 @@ const ROLL2: [&str; 6] = [
     ".bbbbbbbbrihir",
     "bllllllllheheh",
     "bbllllllbhhnhh",
-    "tbbbbbbbbhhhhh",
+    "-tbbbbbbbbhhhhh",
     ".aa.aa.aa.aa..",
 ];
 
@@ -329,14 +329,14 @@ const CHEER: [&str; 10] = [
 
 /// Sit with `^^` eyes and one front paw waving beside the head.
 const WAVE: [&str; 10] = [
-    "....aa.r...r..",
-    ".....arir.rir.",
-    ".....ahhhhhhhh",
-    ".....ahmhhhhmh",
-    ".....amhmlnmhm",
-    "-......ahhllhh.",
+    "...aa..r...r..",
+    "...aa.rir.rir.",
+    "....a.hhhhhhhh",
+    "....a.hmhhhhmh",
+    "....a.mhmlnmhm",
+    ".....aahhllhh.",
     "-......bbbllb..",
-    ".....bbbbbllb.",
+    "-.....bbbbbllb.",
     "....*bbbbbbbb.",
     "....bbbbbama..",
 ];
@@ -414,21 +414,21 @@ fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 /// No outline: props are drawn over the cat's ground and sky.
 pub(crate) fn prop(p: Prop, frame: u8) -> PxSprite {
     let second = frame % 2 == 1;
-    let (ball, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
+    let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
     match (p, second) {
-        (Prop::Ball, _) => grid(&["wYY", "YYY", "YYY"], &[('w', pixel::WHITE), ('Y', ball)]),
+        (Prop::Ball, _) => grid(&[".w.", "RRR", ".R."], &[('w', pixel::WHITE), ('R', colors::RED)]),
         (Prop::Butterfly, false) => grid(&["MM.MM", "MMdMM", ".M.M."], &[('M', wing), ('d', OUTLINE)]),
         (Prop::Butterfly, true) => grid(&[".M.", "MdM", ".M."], &[('M', wing), ('d', OUTLINE)]),
         (Prop::Yarn, _) => grid(&[".PP.", "PPdP", "PdPP", ".PP."], &[('P', pink), ('d', OUTLINE)]),
         (Prop::Coin, false) => grid(&[".GG.", "GGGG", "GGGG", ".GG."], &[('G', gold)]),
         (Prop::Coin, true) => grid(&[".wG.", "GGGG", "GGGG", ".GG."], &[('G', gold), ('w', pixel::WHITE)]),
         (Prop::Heart, _) => grid(&[".H.H.", "HHHHH", ".HHH.", "..H.."], &[('H', pink)]),
-        (Prop::Hat, _) => grid(&[".Y.", ".M.", "MMM", "MMM"], &[('Y', ball), ('M', wing)]),
+        (Prop::Hat, _) => grid(&[".Y.", ".M.", "MMM", "MMM"], &[('Y', yellow), ('M', wing)]),
         (Prop::Sparkle, false) => grid(&[".W.", "WWW", ".W."], &[('W', pixel::WHITE)]),
         (Prop::Sparkle, true) => grid(&["...", ".W.", "..."], &[('W', pixel::WHITE)]),
         (Prop::Confetti, _) => PxSprite { w: 1, h: 1, px: vec![Some(colors::RAINBOW[frame as usize % colors::RAINBOW.len()])] },
-        (Prop::Flame, false) => grid(&[".O", "OO", "YO"], &[('O', flame), ('Y', ball)]),
-        (Prop::Flame, true) => grid(&["OO", "YO"], &[('O', flame), ('Y', ball)]),
+        (Prop::Flame, false) => grid(&[".O", "OO", "YO"], &[('O', flame), ('Y', yellow)]),
+        (Prop::Flame, true) => grid(&["OO", "YO"], &[('O', flame), ('Y', yellow)]),
         (Prop::Z, false) => grid(&["ZZ.", ".Z.", ".ZZ"], &[('Z', z)]),
         (Prop::Z, true) => grid(&["ZZ", ".Z"], &[('Z', pixel::mix(z, OUTLINE, 0.5))]),
     }
@@ -525,6 +525,14 @@ mod tests {
         assert_eq!(stage_rows(m, "kitten").len(), 8);
         assert_eq!(stage_rows(m, "elder"), stage_rows(m, "adult"));
         assert!(stage_rows(m, "kitten").iter().all(|r| !r.starts_with('-')));
+    }
+
+    #[test]
+    fn kittens_are_smaller_than_adults() {
+        for p in ALL_POSES {
+            let m = pose_map(p);
+            assert!(stage_rows(m, "kitten").len() < stage_rows(m, "adult").len(), "{p:?}");
+        }
     }
 
     #[test]
