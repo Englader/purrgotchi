@@ -153,7 +153,11 @@ pub fn now_override() -> Option<u64> {
 }
 
 pub(crate) fn now_override_from(v: Option<&str>) -> Option<u64> {
-    v?.trim().parse::<u64>().ok()
+    // 0 means "no clock" and anything past this bound overflows the i64
+    // arithmetic (seconds → µs, age deltas) downstream; both fall back to the
+    // real clock instead of poisoning time-dependent state.
+    const MAX_NOW_SECS: u64 = (i64::MAX / 1_000_000) as u64;
+    v?.trim().parse::<u64>().ok().filter(|n| (1..=MAX_NOW_SECS).contains(n))
 }
 
 pub fn now_secs() -> u64 {
@@ -585,6 +589,16 @@ mod tests {
         assert_eq!(now_override_from(Some("")), None);
         assert_eq!(now_override_from(Some("soon")), None);
         assert_eq!(now_override_from(Some("-5")), None);
+    }
+
+    #[test]
+    fn now_override_rejects_zero_and_values_that_overflow_i64_micros() {
+        assert_eq!(now_override_from(Some("0")), None);
+        assert_eq!(now_override_from(Some("18446744073709551615")), None);
+        assert_eq!(now_override_from(Some("9223372036854775807")), None);
+        let max = (i64::MAX / 1_000_000) as u64;
+        assert_eq!(now_override_from(Some(&max.to_string())), Some(max));
+        assert_eq!(now_override_from(Some(&(max + 1).to_string())), None);
     }
 
     #[test]

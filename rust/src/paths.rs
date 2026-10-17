@@ -23,12 +23,14 @@ pub fn state_dir() -> PathBuf {
     state_dir_from(env::var_os("PURR_STATE_DIR"), home_dir())
 }
 
-/// Pure twin of [`state_dir`]. A non-empty `PURR_STATE_DIR` replaces the whole
+/// Pure twin of [`state_dir`]. A non-empty, absolute `PURR_STATE_DIR` replaces the whole
 /// `~/.claude/purrgotchi` path (dev/test backdoor — keep out of README), so
 /// tests and the mod's fixtures never have to fake HOME.
 pub(crate) fn state_dir_from(override_dir: Option<std::ffi::OsString>, home: PathBuf) -> PathBuf {
     match override_dir {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
+        // Relative paths would resolve against whatever project Claude Code
+        // happens to have as cwd — ignore them rather than scatter state.
+        Some(d) if !d.is_empty() && std::path::Path::new(&d).is_absolute() => PathBuf::from(d),
         _ => home.join(".claude").join("purrgotchi"),
     }
 }
@@ -65,6 +67,27 @@ pub fn env_file() -> PathBuf {
     state_dir().join(".env")
 }
 
+/// Dev/test backdoors that only the process environment may set. The state-dir
+/// `.env` is user-writable config for API keys — it must never be able to
+/// freeze the clock (PURR_NOW) or redirect the state dir (PURR_STATE_DIR).
+const PROCESS_ENV_ONLY: [&str; 2] = ["PURR_NOW", "PURR_STATE_DIR"];
+
+/// Load `.env` from the trusted state dir into the process environment.
+/// Same semantics as `dotenvy::from_path` (existing process vars win, a missing
+/// file is a no-op, parsing stops at the first malformed line) except that the
+/// [`PROCESS_ENV_ONLY`] keys are skipped.
+pub fn load_trusted_env() {
+    let Ok(iter) = dotenvy::from_path_iter(env_file()) else { return };
+    for item in iter {
+        let Ok((key, value)) = item else { break };
+        if PROCESS_ENV_ONLY.contains(&key.as_str()) || env::var_os(&key).is_some() {
+            continue;
+        }
+        // SAFETY: called first thing in main(), before any thread is spawned.
+        unsafe { env::set_var(&key, &value) };
+    }
+}
+
 pub fn cost_sessions_file() -> PathBuf {
     state_dir().join("cost-sessions.json")
 }
@@ -92,6 +115,17 @@ mod tests {
             state_dir_from(Some(OsString::from("/tmp/purr-x")), PathBuf::from("/h")),
             PathBuf::from("/tmp/purr-x")
         );
+    }
+
+    #[test]
+    fn state_dir_relative_override_is_ignored() {
+        for rel in ["purr-x", "./purr-x", "../purr-x"] {
+            assert_eq!(
+                state_dir_from(Some(OsString::from(rel)), PathBuf::from("/h")),
+                PathBuf::from("/h").join(".claude").join("purrgotchi"),
+                "{rel}"
+            );
+        }
     }
 
     #[test]

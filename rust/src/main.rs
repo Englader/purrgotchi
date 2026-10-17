@@ -36,7 +36,7 @@ fn main() {
     // Code has open, so a cwd .env would let any repo silently inject HOME,
     // provider selection, or API keys. Process-set vars take precedence
     // (dotenvy default behaviour). Missing file is a no-op.
-    let _ = dotenvy::from_path(paths::env_file());
+    paths::load_trusted_env();
 
     let args: Vec<String> = env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
