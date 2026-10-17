@@ -5,6 +5,7 @@ import type { EngineInterface } from 'claude-code'
 import { writeBinary } from './atoms'
 import { handshake } from './binary'
 import { kittenOf } from './celebrate'
+import { registerCommandNames } from './commands'
 import { flushFeeds } from './feed'
 import { ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
@@ -69,6 +70,13 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     await writeBinary($, status)
   } catch {
     // view state only; the runtime copy is what hooks check
+  }
+
+  // Commands exist whatever the binary's status: a handler explains what is wrong.
+  try {
+    await registerCommandNames($, rt)
+  } catch {
+    // each registration has its own try/catch; this is the last net
   }
 
   if (status.kind === 'missing') warnOnce($, rt, 'missing', WARN.missing)

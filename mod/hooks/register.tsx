@@ -1,6 +1,7 @@
 // Composition root: options → runtime → one register* per feature.
 import type { Register } from 'claude-code'
 
+import { registerCommands } from './commands'
 import { registerFeed } from './feed'
 import { gameEnabled, readOptions } from './options'
 import { createRuntime } from './runtime'
@@ -23,6 +24,7 @@ export const register: Register = (on, raw) => {
     return r
   })
 
+  registerCommands(on, rt)
   registerFeed(on, rt)
   registerTurn(on, rt)
 }

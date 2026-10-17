@@ -76,6 +76,29 @@ export async function runJson<T>(
   return { kind: 'json', exitCode: r.exitCode, value: obj as T | ErrorJson }
 }
 
+/**
+ * Runs `[bin, ...args]` for a verb with no `--json` (`hatch`) and returns what
+ * the child printed. Never throws.
+ */
+export async function runRaw(
+  $: ProcessHost,
+  bin: string,
+  args: readonly string[],
+  init: RunInit = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string } | { failed: string }> {
+  const runInit: RunInit = {
+    ...(init.stdin !== undefined && { stdin: init.stdin }),
+    ...(init.env !== undefined && { env: init.env }),
+    timeoutMs: init.timeoutMs ?? TIMEOUT.command,
+  }
+  try {
+    const r = await $.process.run([bin, ...args], runInit)
+    return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }
+  } catch (e) {
+    return { failed: errText(e) }
+  }
+}
+
 /** The `ok: true` value of an outcome, else null. */
 export function okValue<T extends { ok: true }>(out: RunOutcome<T>): T | null {
   return out.kind === 'json' && !isError(out.value) && out.value.ok === true ? out.value : null

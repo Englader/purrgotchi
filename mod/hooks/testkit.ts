@@ -103,6 +103,10 @@ export type Spies = {
   runs: string[][]
   /** The engine's own `session.end` step, each time it ran (its `reason`). */
   ends: string[]
+  /** The command names `command.register` was asked for, in order. */
+  registered: string[]
+  /** `ui.log` texts. */
+  logs: string[]
   /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
   clock: MockClock
 }
@@ -113,6 +117,8 @@ export type EngineOptions = {
   settings?: object | 'deny'
   /** What `ui.notify` answers (default: sent nowhere, `no-surface`); `'deny'` makes it reject. */
   notify?: 'deny'
+  /** Command names `command.register` refuses (rejects). */
+  refuse?: readonly string[]
 }
 
 /** User settings shapes for the migration scan. */
@@ -136,13 +142,18 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], clock: mock.clock(on) }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => {
     spies.ends.push(e.reason)
     return { sessionId: e.sessionId }
   })
-  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('command.register', ($, e) => {
+    spies.registered.push(e.name)
+    return o.refuse?.includes(e.name) === true
+      ? { deny: `"/${e.name}" refused: it is a built-in` }
+      : { value: { command: e.name } }
+  })
   on('ui.toast', ($, e) => {
     spies.toasts.push(e.text)
     return { value: undefined }
@@ -155,7 +166,10 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     spies.statuses.push(e.text)
     return { value: undefined }
   })
-  on('ui.log', () => ({ value: undefined }))
+  on('ui.log', ($, e) => {
+    spies.logs.push(e.text)
+    return { value: undefined }
+  })
   on('settings.read', () =>
     o.settings === 'deny' ? { deny: 'settings unavailable' } : { value: { ...(o.settings ?? {}) } },
   )
@@ -179,6 +193,10 @@ export async function startReady(
   await $.session.start(START)
   return spies
 }
+
+/** The full `CommandRunInput` the engine would build for `/name args`. */
+export const cmd = (command: string, args = '') =>
+  ({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }) as const
 
 /** A promise the test opens with `release()`. */
 export function gate(): { wait: Promise<void>; release: () => void } {
