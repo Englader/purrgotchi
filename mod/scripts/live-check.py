@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Live check of the cat band: run interactive claude in a pty with the mod, measure CPU and shown frames.
 
-usage: live-check.py <label> <outdir> [--rows R] [--fps F] [--resize-at S] [--no-mod]
+usage: live-check.py <label> <outdir> [--rows R] [--fps F] [--resize-at S] [--statusline] [--no-mod]
 
 The binary is $PURR_BIN when set (e.g. a release wrapper that pins
 PURR_STATE_DIR), else the dev-sandbox wrapper under /tmp/claude-1000/purr-band-smoke.
 claude keeps the real HOME and runs with --setting-sources project,local, so
 user hooks and the user statusline do not run. PURR_STATE_DIR is passed
 through when set. The mod writes its counters to <outdir>/<label>.stats.json
-(PURR_BAND_STATS).
+(PURR_BAND_STATS). --statusline runs `$PURR_BIN statusline` as the statusline.
+
+The result adds `orphans_after_exit` (`purrgotchi band` processes left after
+claude is killed) and `heartbeats` (`band-*.alive` files in the state dir with
+their age in seconds; the state dir is $PURR_STATE_DIR, else the sandbox's).
 """
 import argparse, fcntl, json, os, pty, re, select, signal, struct, subprocess, sys, termios, time
 
@@ -24,6 +28,7 @@ ap.add_argument('outdir')
 ap.add_argument('--rows', default='4')
 ap.add_argument('--fps', default='30')
 ap.add_argument('--resize-at', type=float, default=None)
+ap.add_argument('--statusline', action='store_true')
 ap.add_argument('--no-mod', action='store_true')
 opt = ap.parse_args()
 label, outdir = opt.label, opt.outdir
@@ -34,14 +39,19 @@ counters = f'{outdir}/{label}.stats.json'
 if os.path.exists(counters):
     os.remove(counters)
 purr_bin = os.environ.get('PURR_BIN')
+state_dir = os.environ.get('PURR_STATE_DIR')
 if not purr_bin:
     sb = '/tmp/claude-1000/purr-band-smoke'
     subprocess.run(['bash', WT + '/mod/scripts/dev-sandbox.sh', sb], check=True, stdout=subprocess.DEVNULL)
     purr_bin = sb + '/bin/purrgotchi'
+    state_dir = state_dir or sb + '/state'
 
 argv = ['claude', '--setting-sources', 'project,local', '--debug-file', f'{outdir}/{label}.debug.log']
 if os.environ.get('SPIKE_FULLSCREEN'):
     argv += ['--settings', '{"tui":"fullscreen"}']
+if opt.statusline:
+    sl = {'statusLine': {'type': 'command', 'command': f'{purr_bin} statusline', 'padding': 1, 'refreshInterval': 1}}
+    argv += ['--settings', json.dumps(sl)]
 if not opt.no_mod:
     argv += ['--plugin-dir', MOD]
 env = dict(os.environ, COLUMNS=str(COLS), LINES=str(LINES), TERM='xterm-256color', COLORTERM='truecolor',
@@ -55,6 +65,22 @@ if pid == 0:
     os.chdir(WT)
     os.execvpe(argv[0], argv, env)
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', LINES, COLS, 0, 0))
+
+
+def band_procs():
+    """Live processes whose argv is `.../purrgotchi band ...` (not shells that mention it)."""
+    out = []
+    for p in os.listdir('/proc'):
+        try:
+            a = open(f'/proc/{p}/cmdline', 'rb').read().split(b'\0')
+        except OSError:
+            continue
+        if len(a) > 1 and a[0].endswith(b'purrgotchi') and a[1] == b'band':
+            out.append(int(p))
+    return out
+
+
+procs_before = set(band_procs())
 
 
 def tree(root):
@@ -148,6 +174,15 @@ for p in tree(pid):
     except OSError:
         pass
 
+time.sleep(0.5)
+
+orphans = len(set(band_procs()) - procs_before)
+heartbeats = {}
+if state_dir and os.path.isdir(state_dir):
+    for n in sorted(os.listdir(state_dir)):
+        if n.startswith('band-') and n.endswith('.alive'):
+            heartbeats[n] = round(time.time() - os.path.getmtime(os.path.join(state_dir, n)), 1)
+
 raw = b''.join(d for _, d in chunks)
 open(f'{outdir}/{label}.tty', 'wb').write(raw)
 win_bytes = sum(len(d) for t, d in chunks if W0 <= t < W1)
@@ -177,6 +212,8 @@ res = {
     'shown_fps': round(band_bursts_win / (W1 - W0), 1),
     'bursts_per_s': round(bursts_win / (W1 - W0), 1),
     'procs': {p: v[1] for p, v in procs_b.items()},
+    'orphans_after_exit': orphans,
+    'heartbeats': heartbeats,
 }
 c = stats()
 if st0 and st1 and st1['t'] > st0['t']:
