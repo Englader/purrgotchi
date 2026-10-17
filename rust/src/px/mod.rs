@@ -218,12 +218,22 @@ pub(crate) fn cat_area(
     mode: PixelMode,
     forced: Option<life::Behaviour>,
 ) -> Vec<String> {
-    let canvas = match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
+    encode(&cat_canvas(view, st, now, width, forced), mode)
+}
+
+/// The canvas behind [`cat_area`]; the cat band packs it into Raster cells.
+pub(crate) fn cat_canvas(
+    view: &crate::statusline::KittenView,
+    st: &crate::state::State,
+    now: u64,
+    width: usize,
+    forced: Option<life::Behaviour>,
+) -> PxCanvas {
+    match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
         (Some(o), _) => fx::overlay_canvas(o, now, width, &cat_look(st, now)),
         (None, Some(sv)) => scene_canvas(st, sv, now, width),
         (None, None) => life_canvas(st, view.mood, now, width, forced),
-    };
-    encode(&canvas, mode)
+    }
 }
 
 fn cat_look(st: &crate::state::State, now: u64) -> paint::CatLook<'_> {

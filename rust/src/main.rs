@@ -1,3 +1,4 @@
+mod band;
 mod bond;
 mod card;
 mod cli;
@@ -121,6 +122,14 @@ fn main() {
                 process::exit(2);
             }
         },
+        "band" => match band::parse_opts(&args) {
+            Ok(opts) => process::exit(band::run(&opts)),
+            Err(msg) => {
+                bad_args("band", &msg, false);
+                eprintln!("{}", band::USAGE);
+                process::exit(2);
+            }
+        },
         "pixels" => match args.get(2).map(String::as_str) {
             Some("test") => {
                 println!("{}", px::test_card().join("\n"));
@@ -161,7 +170,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|frame|pixels|feed|turn|rename|hatch|card|pet|play|treat|stats|react> [--json]");
+            eprintln!("usage: purrgotchi <statusline|frame|band|pixels|feed|turn|rename|hatch|card|pet|play|treat|stats|react> [--json]");
             process::exit(2);
         }
     }

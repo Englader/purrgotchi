@@ -4,8 +4,6 @@
 //! snapped to multiples of 0x11 per channel (keeps the distinct-pair count
 //! under the Raster limit); `DEFAULT_COLOR` is the terminal default.
 
-#![allow(dead_code)] // consumed by `purrgotchi band` (Task 1.2)
-
 use super::PxCanvas;
 use crate::colors::Rgb;
 
