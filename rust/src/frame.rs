@@ -114,7 +114,7 @@ pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: 
         .map(|r| to_json(r))
         .collect(),
     });
-    let celebration = (st.celebration_kind != CelebrationKind::None).then(|| CelebrationJson {
+    let celebration = (st.celebration_kind != CelebrationKind::None).then_some(CelebrationJson {
         kind: st.celebration_kind,
         remaining_ticks: st.levelup_renders_remaining,
         tick_secs: CELEBRATION_TICK_SECS,

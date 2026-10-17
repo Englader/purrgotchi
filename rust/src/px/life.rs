@@ -57,7 +57,7 @@ impl Dice {
 /// A once-in-`n` one-second event (blink, tail flick) that never fires two
 /// seconds running, so it always reads as a single beat.
 fn beat(now: u64, salt: u64, n: u64) -> bool {
-    let hit = |t: u64| ihash(t ^ salt) % n == 0;
+    let hit = |t: u64| ihash(t ^ salt).is_multiple_of(n);
     hit(now) && !hit(now.wrapping_sub(1))
 }
 
@@ -265,7 +265,7 @@ fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behavio
         // A fixed bed and a fixed side; about every 2.5 min she wakes for a
         // stretch and settles back down.
         let mut p = Plan { segs: Vec::new(), x: sp / 3, right: (seed >> 3) & 1 == 0, used: 0 };
-        let wake = ihash(b ^ seed ^ 0x5A5A) % 5 == 0;
+        let wake = ihash(b ^ seed ^ 0x5A5A).is_multiple_of(5);
         if wake {
             p.push(Kind::Act(Behaviour::Stretch), 4);
         }
@@ -315,7 +315,7 @@ fn has_eyes(p: Pose) -> bool {
 /// Alternates two poses every 2 s on the wall clock (breathing), so the
 /// rhythm carries across behaviour and block boundaries.
 fn breathe(now: u64, a: Pose, b: Pose) -> Pose {
-    if (now / 2) % 2 == 0 { a } else { b }
+    if (now / 2).is_multiple_of(2) { a } else { b }
 }
 
 /// Pose of a stationary behaviour at tick `k` of `len`.
@@ -329,11 +329,11 @@ fn act_pose(b: Behaviour, k: u64, len: u64, now: u64, mood: &str) -> Pose {
         Behaviour::Sleep => breathe(now, Pose::Curl, Pose::CurlBreath),
         Behaviour::Groom if k == 0 || last => Pose::Sit,
         // lick, lick, wipe
-        Behaviour::Groom if k % 3 == 0 => Pose::GroomPaw,
+        Behaviour::Groom if k.is_multiple_of(3) => Pose::GroomPaw,
         Behaviour::Groom => Pose::GroomLick,
         Behaviour::Stretch => [Pose::Crouch, Pose::Stretch, Pose::Stretch].get(k as usize).copied().unwrap_or(Pose::Sit),
         Behaviour::Look if k == 0 => Pose::Sit,
-        Behaviour::Look if mood == "hungry" && k % 3 == 0 => Pose::Meow,
+        Behaviour::Look if mood == "hungry" && k.is_multiple_of(3) => Pose::Meow,
         Behaviour::Look => Pose::Look,
         _ => Pose::Sit,
     }

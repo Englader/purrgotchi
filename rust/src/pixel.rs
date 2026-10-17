@@ -677,11 +677,10 @@ pub(crate) fn render(o: &PixelOpts) -> Grid {
     // paw separators
     for dx in [-3.6, 3.6] {
         let (x, y) = (js_round(bx + dx) as i32, js_round(s.paws) as i32);
-        if reg_at(&reg, x, y) == Some(Paw) {
-            if let Some(c) = px_at(&out, x, y) {
+        if reg_at(&reg, x, y) == Some(Paw)
+            && let Some(c) = px_at(&out, x, y) {
                 put(&mut out, x, y, shade(c, 0.45));
             }
-        }
     }
 
     // collar in rarity colour
@@ -782,7 +781,7 @@ pub(crate) fn render(o: &PixelOpts) -> Grid {
             eye
         };
         put(&mut out, x, y, c);
-        if (i + frame) % 2 == 0 {
+        if (i + frame).is_multiple_of(2) {
             for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                 let (ax, ay) = (x + dx, y + dy);
                 if px_at(&out, ax, ay).is_none() && reg_at(&reg, ax, ay).is_none() {
