@@ -256,4 +256,4 @@ Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI cal
 - **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
 - **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
 
-All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.0.0** (pixel-art cat; the Claude Code mod and the `serve`, `cost` and `quip-*` commands are gone — see the [CHANGELOG](./CHANGELOG.md) for migration notes).
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.0.0** (live pixel-art cat; `PURR_PIXELS=0` keeps the classic ASCII cat — see the [CHANGELOG](./CHANGELOG.md) for migration notes).

@@ -15,8 +15,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## v4.0.0 — 2026-10-17
 
 **Breaking release.** The ASCII cat in the statusline is replaced by a live,
-1 fps pixel-art cat, and the Claude Code mod and its command surface are gone.
-The HUD box is byte-identical to v3.8.0.
+1 fps pixel-art cat by default. The HUD box is byte-identical to v3.8.0, and
+`PURR_PIXELS=0` brings the old cat back byte for byte.
 
 ### Added
 
@@ -48,13 +48,6 @@ The HUD box is byte-identical to v3.8.0.
   read and advance are split internally so `frame` and the statusline share one
   renderer.
 
-### Removed
-
-- **The Claude Code mod / plugin** (the in-app pane, slash commands and plugin
-  install) and its commands: `serve`, `cost` and the `quip-*` family. Use the
-  `! purr <verb>` commands (`pet`, `play`, `treat`, `card`, `stats`, `rename`)
-  instead.
-
 ### Migration from v3.x
 
 - **Keep the old look:** set `PURR_PIXELS=0` (in `~/.claude/purrgotchi/.env` or
@@ -63,14 +56,6 @@ The HUD box is byte-identical to v3.8.0.
   statusline every second. Re-run `bash install.sh` (idempotent) or add
   `"refreshInterval": 1` **inside** the `statusLine` object in
   `~/.claude/settings.json`.
-- **If you installed the mod:** run `claude plugin uninstall purrgotchi`, remove
-  `purrgotchi@inline` from `pluginConfigs` and any `purrgotchi` entry from
-  `enabledPlugins` in `~/.claude/settings.json`, and stop launching Claude Code
-  with `--plugin-dir ./mod` (it would feed the kitten twice). Keep the
-  `PostToolUse` (`feed`) and `UserPromptSubmit` (`turn`) hooks; `bash
-  install.sh` restores them if missing.
-- **Scripts** that called `serve`, `cost` or `quip-*` need to move to the
-  commands above or to the `--json` surface.
 - State files are unchanged and carry over.
 
 ## v3.8.0 — 2026-07-12
