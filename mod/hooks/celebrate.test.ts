@@ -116,3 +116,18 @@ test('a busy lock at the handshake is not "no kitten": no hatch toast', async ($
   expect(spies.toasts).toEqual([])
   expect(spies.runs.filter(a => a[1] === 'frame')).toHaveLength(1)
 })
+
+test('an unknown kitten still toasts the level the feed reports', async ($, on) => {
+  on('tool.call', () => ({ result: 'file text' }))
+  const spies = await startReady($, on, {
+    run: argv =>
+      argv[1] === 'frame'
+        ? ok(fx.error('state_unavailable', 'state lock busy'), 1)
+        : argv[1] === 'feed'
+          ? ok(fx.feed({ celebration: 'LevelUp', level: 13 }))
+          : defaultRun(argv),
+  })
+  await $.tool.call(ev)
+  await spies.clock.settle()
+  expect(spies.toasts).toEqual(['Your kitten reached level 13 ✦'])
+})

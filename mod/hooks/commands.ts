@@ -77,10 +77,14 @@ export async function registerCommandNames($: Pick<EngineInterface, 'command' | 
   }
 }
 
-/** Trimmed, 1 to 32 characters, no control characters. */
+/**
+ * Trimmed, 1 to 32 characters, no control characters, and not `--json` (the
+ * binary reads that argv element as its flag, never as the name).
+ */
 export function validateName(raw: string): { ok: true; name: string } | { ok: false; text: string } {
   const name = raw.trim()
   if (name === '') return { ok: false, text: 'Usage: /purr-rename <name>' }
+  if (name === '--json') return { ok: false, text: 'That name is reserved; pick another.' }
   if ([...name].length > NAME_MAX) return { ok: false, text: `Names are limited to ${NAME_MAX} characters.` }
   if (/\p{Cc}/u.test(name)) return { ok: false, text: "Names can't contain control characters." }
   return { ok: true, name }
@@ -179,7 +183,9 @@ async function hatch($: Host, rt: Runtime, rawArgs: string) {
     const first = (r.stderr.trim() || r.stdout.trim()).split('\n')[0] ?? ''
     return { text: first === '' ? 'Hatch failed.' : first, exitCode: 1 }
   }
+  // A new kitten: the cached one is wrong until a frame names it.
   rt.hadNoKitten = false
+  rt.kitten = null
   const out = await rt.serial.run(() => runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame }))
   if (out.kind === 'json' && out.value.ok === true) {
     const f = out.value as FrameJson

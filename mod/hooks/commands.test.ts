@@ -107,6 +107,7 @@ test('rename rejects empty, long and control input without running', async ($, o
   expect(await say('a\u001bb')).toBe("Names can't contain control characters.")
   expect(await say('a\nb')).toBe("Names can't contain control characters.")
   expect(await say('a\u0007b')).toBe("Names can't contain control characters.")
+  expect(await say('--json')).toBe("That name is reserved; pick another.")
   expect(verbRuns(spies.runs, 'rename')).toEqual([])
 })
 
@@ -165,4 +166,24 @@ test('hatch rejects unknown flags and bad values without running', dev, async ($
     expect(r.text).toContain('Usage: /purr-hatch')
   }
   expect(verbRuns(spies.runs, 'hatch')).toEqual([])
+})
+
+test('hatch with no frame afterwards forgets the old kitten', dev, async ($, on) => {
+  let hatched = false
+  on('tool.call', () => ({ result: 'file text' }))
+  const spies = await startReady($, on, {
+    run: argv => {
+      if (argv[1] === 'hatch') {
+        hatched = true
+        return ok('hatched\n')
+      }
+      if (argv[1] === 'frame' && hatched) return ok(fx.error('state_unavailable', 'state lock busy'), 1)
+      if (argv[1] === 'feed') return ok(fx.feed({ celebration: 'LevelUp', level: 2 }))
+      return defaultRun(argv)
+    },
+  })
+  expect((await $.command.run(cmd('purr-hatch', ''))).text).toBe('Hatched a new kitten.')
+  await $.tool.call({ tool: 'Read', file_path: '/x' })
+  await spies.clock.settle()
+  expect(spies.toasts).toEqual(['Your kitten reached level 2 ✦'])
 })

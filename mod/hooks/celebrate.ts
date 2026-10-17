@@ -66,13 +66,20 @@ function show($: Pick<EngineInterface, 'ui'>, text: string, notify: boolean): vo
 
 /**
  * One toast per binary result. A null or unknown `kind` is silent. `total` is
- * the lifetime tool-call count (Legendary's round number).
+ * the lifetime tool-call count (Legendary's round number); `level` is the
+ * result's own (a feed's), else the cached one.
  */
-export function announce($: Pick<EngineInterface, 'ui'>, rt: Runtime, kind: string | null, total = 0): void {
+export function announce(
+  $: Pick<EngineInterface, 'ui'>,
+  rt: Runtime,
+  kind: string | null,
+  total = 0,
+  level = rt.kitten?.level ?? 0,
+): void {
   const k = rt.kitten
   const t = celebrationToast(kind, {
     name: k?.name ?? '',
-    level: k?.level ?? 0,
+    level,
     total,
     toastStreaks: rt.options.toastStreaks,
   })
@@ -98,7 +105,7 @@ export async function onFeedResult($: CelebrateHost, rt: Runtime, r: FeedJson): 
       }
       debugLog($, 'hatch frame failed; announcing the feed result instead')
     }
-    announce($, rt, r.celebration, r.total_tool_calls)
+    announce($, rt, r.celebration, r.total_tool_calls, r.level)
   } catch (e) {
     debugLog($, `celebration failed: ${errText(e)}`)
   }

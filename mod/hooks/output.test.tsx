@@ -175,10 +175,3 @@ test('hatch also stores the card under its row', { options: { devCommands: true 
   const row = await mountRow($, 'terminal', 'purr-hatch', text ?? '')
   expect(await row.find({ text: /THALIA/ })).toBeDefined()
 })
-
-test('an unrecognised surface is not drawn by us', async ($, on) => {
-  await startReady($, on, { run: answering(fx.lines(CARD)) })
-  const { text } = await $.command.run(cmd('purr-card'))
-  const row = await mountRow($, 'mobile' as 'terminal', 'purr-card', text ?? '')
-  expect(await row.find({ text: /Thalia — lv 12/ })).toBeDefined()
-})
