@@ -166,6 +166,22 @@ pub fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Microsecond twin of [`now_secs`] for code that needs sub-second precision
+/// (the turn-cost grace window). PURR_NOW → whole seconds × 1e6.
+pub fn now_micros() -> u64 {
+    now_micros_from(now_override())
+}
+
+pub(crate) fn now_micros_from(override_secs: Option<u64>) -> u64 {
+    if let Some(n) = override_secs {
+        return n.saturating_mul(1_000_000);
+    }
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
+}
+
 fn parse_state(bytes: &[u8]) -> Option<State> {
     let s: State = serde_json::from_slice(bytes).ok()?;
     if s.version != 2 { return None; }
@@ -569,5 +585,18 @@ mod tests {
         assert_eq!(now_override_from(Some("")), None);
         assert_eq!(now_override_from(Some("soon")), None);
         assert_eq!(now_override_from(Some("-5")), None);
+    }
+
+    #[test]
+    fn now_micros_follows_the_override_in_whole_seconds() {
+        assert_eq!(now_micros_from(Some(1_800_000_000)), 1_800_000_000_000_000);
+        assert_eq!(now_micros_from(Some(u64::MAX)), u64::MAX, "saturates");
+    }
+
+    #[test]
+    fn now_micros_without_override_is_the_real_clock() {
+        let real = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+        let got = now_micros_from(None);
+        assert!(got >= real && got - real < 5_000_000, "{got} vs {real}");
     }
 }

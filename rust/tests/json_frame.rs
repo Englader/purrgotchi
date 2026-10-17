@@ -215,3 +215,13 @@ fn only_frame_advance_consumes_quips_and_runs_the_scheduler() {
     assert_eq!(q(&sb)["renders_remaining"], 5);
     assert!(sb.read_state()["scene_next_at"].as_u64().unwrap() > NOW, "scheduler bootstrapped");
 }
+
+#[test]
+fn statusline_turn_anchor_follows_purr_now() {
+    // cost.rs reads the PURR_NOW-aware clock, so renderer coexistence runs are
+    // deterministic end to end (no real-clock timestamp in the turn anchor).
+    let sb = sandbox("anchor_clock", json!({}));
+    statusline_at(&sb, NOW);
+    assert_eq!(std::fs::read_to_string(sb.state.join("turn-start-cost.txt")).unwrap(),
+               format!("0\n{NOW}.000000\n"));
+}
