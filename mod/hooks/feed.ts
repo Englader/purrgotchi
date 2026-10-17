@@ -9,6 +9,7 @@
 // at session start flushes too, so neither trigger relies on the other.
 import type { EngineInterface, On } from 'claude-code'
 
+import { onFeedResult } from './celebrate'
 import { errorCode, errText, okValue, runJson, TIMEOUT } from './binary'
 import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
@@ -81,9 +82,10 @@ async function sendFeed($: FeedHost, rt: Runtime, n: number): Promise<boolean> {
   const args = ['feed', '--json', '--count', String(n)]
   const out = await rt.serial.run(() => runJson<FeedJson>($, rt.bin, args, { timeoutMs: TIMEOUT.feed }))
 
-  if (okValue(out) !== null) {
+  const fed = okValue(out)
+  if (fed !== null) {
     q.retried = false
-    // Phase 2: celebrations (out.value.celebration) are handled here.
+    await onFeedResult($, rt, fed)
     return true
   }
   const code = errorCode(out)

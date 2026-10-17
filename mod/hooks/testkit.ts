@@ -111,6 +111,8 @@ export type EngineOptions = {
   run?: (argv: string[], init?: ProcessRunInit) => OpAnswer
   /** What `$.settings.read` answers (default `{}`); `'deny'` makes it reject. */
   settings?: object | 'deny'
+  /** What `ui.notify` answers (default: sent nowhere, `no-surface`); `'deny'` makes it reject. */
+  notify?: 'deny'
 }
 
 /** User settings shapes for the migration scan. */
@@ -147,7 +149,7 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   })
   on('ui.notify', ($, e) => {
     spies.notifies.push(e.text)
-    return { value: { isSent: false, reason: 'no-surface' } }
+    return o.notify === 'deny' ? { deny: 'notify unavailable' } : { value: { isSent: false, reason: 'no-surface' } }
   })
   on('ui.status', ($, e) => {
     spies.statuses.push(e.text)

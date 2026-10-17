@@ -106,17 +106,19 @@ const STATE_ERRORS: readonly string[] = ['no_kitten', 'state_unavailable', 'stat
 export async function handshake(
   $: ProcessHost,
   bin: string,
-): Promise<{ status: BinaryStatus; frame: FrameJson | null }> {
+): Promise<{ status: BinaryStatus; frame: FrameJson | null; noKitten: boolean }> {
   const out = await runJson<FrameJson>($, bin, ['frame', '--json'], { timeoutMs: TIMEOUT.handshake })
   if (out.kind === 'failed' && out.reason === 'rejected') {
-    return { status: { kind: 'missing', detail: out.detail }, frame: null }
+    return { status: { kind: 'missing', detail: out.detail }, frame: null, noKitten: false }
   }
   const frame = okValue(out)
   // Errors only a v1 binary can give about its own state are compatible too, with
   // no frame (not hatched yet, lock busy, or a corrupt state.json it reports).
   const code = errorCode(out)
   const compatible = frame !== null || (code !== null && STATE_ERRORS.includes(code))
-  return { status: { kind: compatible ? 'ready' : 'outdated', version: await readVersion($, bin) }, frame }
+  // Only `no_kitten` means "none yet"; a busy lock or corrupt state says nothing.
+  const noKitten = code === 'no_kitten'
+  return { status: { kind: compatible ? 'ready' : 'outdated', version: await readVersion($, bin) }, frame, noKitten }
 }
 
 /** One job at a time, in call order; a rejected job does not break the chain. */

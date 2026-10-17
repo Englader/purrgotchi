@@ -3,6 +3,7 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
 import { resolveBinary, Serial } from './binary'
+import type { KittenId } from './celebrate'
 import { FeedQueue } from './feed'
 import type { PurrOptions } from './options'
 import type { BinaryStatus } from '../types'
@@ -19,6 +20,10 @@ export type Runtime = {
   warned: Set<string>
   /** Tool calls counted but not yet sent to the binary. */
   feeds: FeedQueue
+  /** The cached kitten (null = unknown); levels and stages follow the feed results. */
+  kitten: KittenId | null
+  /** The handshake said `no_kitten`: the next successful feed hatched one. */
+  hadNoKitten: boolean
   /** The 2 s safety flush, started once per runtime when the binary is ready. */
   flushTimer?: Timer
 }
@@ -32,6 +37,8 @@ export function createRuntime(options: PurrOptions): Runtime {
     serial: new Serial(),
     warned: new Set(),
     feeds: new FeedQueue(),
+    kitten: null,
+    hadNoKitten: false,
   }
 }
 

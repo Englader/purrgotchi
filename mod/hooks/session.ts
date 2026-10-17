@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
 import { handshake } from './binary'
+import { kittenOf } from './celebrate'
 import { flushFeeds } from './feed'
 import { ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
@@ -54,8 +55,16 @@ const WARN = {
  * handshake; `warned` resets only with a fresh runtime (module reload).
  */
 export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{ frame: FrameJson | null }> {
-  const { status, frame } = await handshake($, rt.bin)
+  const { status, frame, noKitten } = await handshake($, rt.bin)
   rt.status = status
+  // state_unavailable / state_corrupt keep the last state: neither a kitten nor "none".
+  if (frame !== null) {
+    rt.kitten = kittenOf(frame)
+    rt.hadNoKitten = false
+  } else if (noKitten) {
+    rt.kitten = null
+    rt.hadNoKitten = true
+  }
   try {
     await writeBinary($, status)
   } catch {

@@ -3,9 +3,10 @@
 // …); the binary reads only what it needs. The prompt never waits on it.
 import type { On } from 'claude-code'
 
+import { onTurnResult } from './celebrate'
 import { flushFeeds } from './feed'
 import type { FeedHost } from './feed'
-import { runJson, TIMEOUT } from './binary'
+import { okValue, runJson, TIMEOUT } from './binary'
 import type { PurrOptions } from './options'
 import { ready } from './runtime'
 import type { Runtime } from './runtime'
@@ -28,10 +29,11 @@ export function turnEnv(o: PurrOptions): Record<string, string> | undefined {
 export async function runTurn($: FeedHost, rt: Runtime, stdin: string): Promise<void> {
   try {
     await flushFeeds($, rt)
-    // Phase 2: the TurnJson celebration is handled here.
-    await rt.serial.run(() =>
+    const out = await rt.serial.run(() =>
       runJson<TurnJson>($, rt.bin, ['turn', '--json'], { stdin, env: turnEnv(rt.options), timeoutMs: TIMEOUT.turn }),
     )
+    const r = okValue(out)
+    if (r !== null) onTurnResult($, rt, r)
   } catch {
     // observer
   }
