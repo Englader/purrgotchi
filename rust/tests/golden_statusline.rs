@@ -116,6 +116,27 @@ fn px_cases() -> Vec<Case> {
         Case { anchor: Some("1.25\n1000.000000\n"), env: &[("PURR_PIXELS", "1"), ("COLUMNS", "120")],
                ..px("px_life_narrow_is_ascii") },
     ]
+    .into_iter()
+    .chain(px_scene_cases())
+    .collect()
+}
+
+/// Pixel playground scenes: the states of the classic `scene_*` cases.
+fn px_scene_cases() -> Vec<Case> {
+    let scene = |kind: &str, ago: u64| json!({ "scene_kind": kind, "scene_started_at": NOW - ago,
+                                              "scene_duration_secs": 30, "scene_seed": 7 });
+    let px = |name, state| Case { dir: "statusline_px", state, env: &[("PURR_PIXELS", "1"), ("COLUMNS", "160")], ..case(name) };
+    vec![
+        px("px_scene_run_mid", scene("Run", 9)),
+        px("px_scene_zoomies_mid", scene("Zoomies", 9)),
+        px("px_scene_ballchase_mid", scene("BallChase", 5)),
+        Case { must_contain: &["gotcha!!"], ..px("px_scene_ballchase_finale", scene("BallChase", 27)) },
+        px("px_scene_butterfly_mid", scene("ButterflyChase", 9)),
+        px("px_scene_roll_mid", scene("Roll", 9)),
+        px("px_scene_yarn_mid", scene("YarnPush", 9)),
+        Case { env: &[("PURR_PIXELS", "1"), ("COLUMNS", "160"), ("PURR_PLAYGROUND", "0")],
+               ..px("px_scene_disabled_still_shows_life", scene("BallChase", 5)) },
+    ]
 }
 
 fn legendary() -> Value {

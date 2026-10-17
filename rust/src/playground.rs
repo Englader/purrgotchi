@@ -310,7 +310,7 @@ pub(crate) fn art_width(art: &[String]) -> usize {
     art.iter().map(|l| l.chars().count()).max().unwrap_or(0)
 }
 
-const RUN_SPEED: u64 = 3; // cells per second reads as a trot at 1 fps
+pub(crate) const RUN_SPEED: u64 = 3; // cells per second reads as a trot at 1 fps
 
 /// Horizontal cell budget every playground pose fits in (art test enforces <= 12).
 pub(crate) const CAT_W: usize = 12;
@@ -339,7 +339,7 @@ fn run_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     run_leg(canvas, elapsed * RUN_SPEED + seed % 97, blink);
 }
 
-const ZOOMIES_SPEED: u64 = 8;
+pub(crate) const ZOOMIES_SPEED: u64 = 8;
 
 fn zoomies_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     let (x, right) = run_leg(canvas, elapsed * ZOOMIES_SPEED + seed % 97, blink);
@@ -354,7 +354,7 @@ fn zoomies_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     }
 }
 
-const ROLL_SPEED: u64 = 3;
+pub(crate) const ROLL_SPEED: u64 = 3;
 
 fn roll_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     let span = canvas.width().saturating_sub(CAT_W);
@@ -363,7 +363,7 @@ fn roll_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     place_bottom(canvas, x as isize, &cat_art(key, blink), COL_CAT);
 }
 
-const BALL_SPEED: u64 = 4;
+pub(crate) const BALL_SPEED: u64 = 4;
 const CHASE_LAG_SECS: u64 = 2;
 
 fn ball_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink: u8) {
@@ -389,7 +389,7 @@ fn ball_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink
     }
 }
 
-const BUTTERFLY_SPEED: u64 = 2;
+pub(crate) const BUTTERFLY_SPEED: u64 = 2;
 
 fn butterfly_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, blink: u8) {
     let w = canvas.width();
@@ -419,7 +419,7 @@ fn butterfly_scene(canvas: &mut Canvas, elapsed: u64, duration: u64, seed: u64, 
     }
 }
 
-const YARN_SPEED: u64 = 2;
+pub(crate) const YARN_SPEED: u64 = 2;
 
 fn yarn_scene(canvas: &mut Canvas, elapsed: u64, seed: u64, blink: u8) {
     let w = canvas.width();

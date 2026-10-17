@@ -11,6 +11,7 @@ use crate::pixel;
 pub(crate) mod art;
 pub(crate) mod life;
 pub(crate) mod paint;
+pub(crate) mod scene;
 
 pub(crate) const PX_ROWS: usize = 6;
 pub(crate) const PX_H: usize = 12;
@@ -202,8 +203,10 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
-/// The 6 sprite-column rows. Idle life only for now; Tasks 7-8 put scenes,
-/// celebrations and the birthday ahead of it (the `kitten_view` priority).
+/// The 6 sprite-column rows, in `kitten_view` priority: a visible playground
+/// scene, else idle life. (`view.scene` is already `None` behind a
+/// celebration, the birthday, `PURR_PLAYGROUND=0` or a too-narrow strip.)
+/// Task 8 puts the celebration and birthday overlays ahead of the scene.
 pub(crate) fn cat_area(
     view: &crate::statusline::KittenView,
     st: &crate::state::State,
@@ -212,15 +215,32 @@ pub(crate) fn cat_area(
     mode: PixelMode,
     forced: Option<life::Behaviour>,
 ) -> Vec<String> {
-    encode(&life_canvas(st, view.mood, now, width, forced), mode)
+    let canvas = match &view.scene {
+        Some(sv) => scene_canvas(st, sv, now, width),
+        None => life_canvas(st, view.mood, now, width, forced),
+    };
+    encode(&canvas, mode)
+}
+
+fn cat_look(st: &crate::state::State, now: u64) -> paint::CatLook<'_> {
+    paint::CatLook { breed: &st.breed, rarity: &st.rarity, stage: crate::state::life_stage(st.level), tick: now }
+}
+
+/// A playground scene second; a shiny cat twinkles here too.
+fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now: u64, width: usize) -> PxCanvas {
+    let f = scene::scene_frame(sv.kind, sv.elapsed, sv.duration, sv.seed, width);
+    let mut c = scene::draw(&f, width, &cat_look(st, now));
+    if st.shiny && now.is_multiple_of(2) {
+        sparkle(&mut c, f.x, paint::CAT_MAX_W as i32, (now / 2) ^ st.birth_time);
+    }
+    c
 }
 
 /// The idle cat on a `width`-px stage, plus her sleep Z and shiny sparkle.
 fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, forced: Option<life::Behaviour>) -> PxCanvas {
     let span = width.saturating_sub(paint::CAT_MAX_W);
     let f = life::life_frame(now, st.birth_time, mood, span, forced);
-    let look = paint::CatLook { breed: &st.breed, rarity: &st.rarity, stage: crate::state::life_stage(st.level), tick: now };
-    let cat = paint::paint(f.pose, &look, f.facing_right, f.tail, f.blink);
+    let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink);
     let (w, top) = (cat.w as i32, (PX_H - cat.h) as i32);
     let mut c = PxCanvas::new(width);
     c.blit(&cat, f.x, top);
@@ -232,7 +252,7 @@ fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, for
         let zx = if f.facing_right { f.x + w - 4 + k } else { f.x + 4 - k - zw };
         c.blit(&z, zx, (top - 3 - k).max(0));
     }
-    if st.shiny && now % 2 == 0 {
+    if st.shiny && now.is_multiple_of(2) {
         sparkle(&mut c, f.x, w, (now / 2) ^ st.birth_time);
     }
     c
@@ -294,10 +314,28 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
 
 const SHEET_COLS: usize = 6;
 
-/// Dev verb `pixels sheet [--breed B] [--json]`: ANSI blocks with labels, or
-/// `{"title","cols","cells":[{"label","px":[[hex|null]]}]}` for `px_preview.py`.
+/// Dev verb `pixels sheet [--breed B] [--json]`: every pose and prop.
 pub(crate) fn sheet(breed: &str, json: bool) -> String {
-    let cells = sheet_cells(breed);
+    render_sheet(breed, sheet_cells(breed), SHEET_COLS, json)
+}
+
+/// Dev verb `pixels scene <run|zoomies|ball|butterfly|roll|yarn> [--width W]
+/// [--breed B] [--stage S] [--json]`: the 30 s `PURR_FORCE_SCENE` loop
+/// (duration 30, seed 42), one whole-stage cell per second.
+pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, breed: &str, stage: &str, json: bool) -> String {
+    let look = paint::CatLook { breed, rarity: canonical_rarity(breed), stage, tick: 0 };
+    let cells = (0..30u64)
+        .map(|e| {
+            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width), width, &look);
+            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+        })
+        .collect();
+    render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
+}
+
+/// Labelled cells as ANSI blocks, or
+/// `{"title","cols","cells":[{"label","px":[[hex|null]]}]}` for `px_preview.py`.
+fn render_sheet(title: &str, cells: Vec<(String, PxSprite)>, cols: usize, json: bool) -> String {
     if json {
         let cells: Vec<serde_json::Value> = cells
             .iter()
@@ -307,15 +345,15 @@ pub(crate) fn sheet(breed: &str, json: bool) -> String {
                 serde_json::json!({ "label": label, "px": px })
             })
             .collect();
-        return serde_json::json!({ "title": breed, "cols": SHEET_COLS, "cells": cells }).to_string();
+        return serde_json::json!({ "title": title, "cols": cols, "cells": cells }).to_string();
     }
-    const CW: usize = paint::CAT_MAX_W + 2;
-    let mut out = vec![breed.to_string()];
-    for chunk in cells.chunks(SHEET_COLS) {
+    let cw = cells.iter().map(|(_, s)| s.w).max().unwrap_or(0) + 2;
+    let mut out = vec![title.to_string()];
+    for chunk in cells.chunks(cols) {
         let encoded: Vec<Vec<String>> = chunk
             .iter()
             .map(|(_, s)| {
-                let mut c = PxCanvas::new(CW);
+                let mut c = PxCanvas::new(cw);
                 c.blit(s, 1, (PX_H - s.h) as i32);
                 encode(&c, PixelMode::Full)
             })
@@ -323,7 +361,7 @@ pub(crate) fn sheet(breed: &str, json: bool) -> String {
         for r in 0..PX_ROWS {
             out.push(encoded.iter().map(|e| e[r].as_str()).collect::<Vec<_>>().join(" "));
         }
-        out.push(chunk.iter().map(|(l, _)| format!("{:<CW$}", l.chars().take(CW).collect::<String>())).collect::<Vec<_>>().join(" "));
+        out.push(chunk.iter().map(|(l, _)| format!("{:<cw$}", l.chars().take(cw).collect::<String>())).collect::<Vec<_>>().join(" "));
     }
     out.join("\n")
 }
@@ -514,5 +552,50 @@ mod tests {
         let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None);
         assert_rows(&rows, 60, "cat_area");
         assert_eq!(rows, encode(&life_canvas(&st, "sleep", now, 60, None), PixelMode::Full));
+    }
+
+    /// A visible scene replaces idle life; `PURR_PLAYGROUND=0` (or a
+    /// celebration) hides it and the idle cat is back.
+    #[test]
+    fn cat_area_plays_the_scene_then_life_when_disabled() {
+        use crate::state::{CelebrationKind, PlaygroundScene};
+        use crate::statusline::{kitten_view, ViewInput};
+        let now = 1_800_000_010u64;
+        let mut st = crate::state::State::base(1_000);
+        st.last_fed_at = now - 60;
+        (st.scene_kind, st.scene_started_at, st.scene_duration_secs, st.scene_seed) = (PlaygroundScene::BallChase, now - 5, 30, 7);
+        let view = |st: &crate::state::State, playground_enabled| {
+            kitten_view(
+                &ViewInput { st, now: now as i64, frame: 0, ctx_pct: 0.0, forced_scene: None, playground_enabled, strip_width: Some(60) },
+                || None,
+            )
+        };
+        let v = view(&st, true);
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        assert_rows(&rows, 60, "scene");
+        let f = scene::scene_frame(PlaygroundScene::BallChase, 5, 30, 7, 60);
+        assert_eq!(rows, encode(&scene::draw(&f, 60, &cat_look(&st, now)), PixelMode::Full));
+        let life = encode(&life_canvas(&st, v.mood, now, 60, None), PixelMode::Full);
+        assert_ne!(rows, life);
+        let off = view(&st, false);
+        assert!(off.scene.is_none());
+        assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None), life);
+        st.celebration_kind = CelebrationKind::LevelUp;
+        assert!(view(&st, true).scene.is_none(), "T8 draws the overlay; until then the life cat");
+    }
+
+    #[test]
+    fn shiny_twinkles_in_scenes_too() {
+        let mut st = crate::state::State::base(1_000);
+        st.shiny = true;
+        let sv = crate::statusline::SceneView {
+            kind: crate::state::PlaygroundScene::Run, elapsed: 3, duration: 30, seed: 7, width: 60, finale: false,
+        };
+        let white = |now| {
+            let c = scene_canvas(&st, &sv, now, 60);
+            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == Some(crate::pixel::WHITE)))
+        };
+        assert!((1_800_000_000..1_800_000_040u64).step_by(2).any(white));
+        assert!(!(1_800_000_001..1_800_000_040u64).step_by(2).any(white));
     }
 }

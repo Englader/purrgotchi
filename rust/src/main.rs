@@ -131,8 +131,19 @@ fn main() {
                 println!("{}", px::sheet(breed, json));
                 process::exit(0);
             }
+            Some("scene") => {
+                let Some(kind) = playground::force_scene_from(args.get(3).map(String::as_str)) else {
+                    eprintln!("usage: purrgotchi pixels scene run|zoomies|ball|butterfly|roll|yarn [--width W] [--breed B] [--stage S] [--json]");
+                    process::exit(2);
+                };
+                let width = cli::flag_value(&args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
+                let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
+                println!("{}", px::scene_sheet(kind, width, breed, stage, json));
+                process::exit(0);
+            }
             _ => {
-                eprintln!("usage: purrgotchi pixels test|sheet [--breed B] [--json]");
+                eprintln!("usage: purrgotchi pixels test|sheet|scene [--breed B] [--json]");
                 process::exit(2);
             }
         },
