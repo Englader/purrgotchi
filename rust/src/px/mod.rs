@@ -9,6 +9,7 @@ use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
+pub(crate) mod art_small;
 pub(crate) mod band;
 pub(crate) mod fx;
 pub(crate) mod life;
@@ -46,10 +47,18 @@ impl PxHeight {
         }
     }
 
-    /// Widest painted sprite, outline included. The smaller heights keep the
-    /// 12-px width until their own art lands.
+    /// Widest painted sprite, outline included.
     pub fn cat_max_w(self) -> usize {
-        16
+        match self {
+            Self::H6 => 8,
+            Self::H8 => 11,
+            Self::H12 => 16,
+        }
+    }
+
+    /// `--height 6|8|12` of the `pixels` dev verbs.
+    pub fn from_px(px: usize) -> Option<Self> {
+        Self::from_rows(px / 2).filter(|h| h.px() == px)
     }
 }
 
@@ -301,8 +310,14 @@ fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, for
         // map), mirrored when she faces left; the top one is the dim frame.
         let z = art::prop(art::Prop::Z, u8::from(k == 2), h);
         let (k, zw) = (i32::from(k), z.w as i32);
-        let zx = if f.facing_right { f.x + w - 4 + k } else { f.x + 4 - k - zw };
-        c.blit(&z, zx, (top - 3 - k).max(0));
+        let (zx, zy) = match (h, f.facing_right) {
+            (PxHeight::H12, true) => (f.x + w - 4 + k, (top - 3 - k).max(0)),
+            (PxHeight::H12, false) => (f.x + 4 - k - zw, (top - 3 - k).max(0)),
+            // The small cats have no headroom: the Z drifts out past her nose.
+            (_, true) => (f.x + w + k, 0),
+            (_, false) => (f.x - k - zw, 0),
+        };
+        c.blit(&z, zx, zy);
     }
     if st.shiny && now.is_multiple_of(2) {
         sparkle(&mut c, f.x, w, (now / 2) ^ st.birth_time);
@@ -337,29 +352,28 @@ fn canonical_rarity(breed: &str) -> &'static str {
 /// `pixels sheet` cells for one breed: every pose × stage × facing
 /// (tail Curl, eyes open), then adult Sit with tail Up / Flick / blink, the
 /// tail-socket poses with tail Up, and every prop frame.
-fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
+fn sheet_cells(breed: &str, h: PxHeight) -> Vec<(String, PxSprite)> {
     use art::{ALL_POSES, Pose, Tail};
     use paint::{CatLook, paint};
-    const H12: PxHeight = PxHeight::H12;
     let rarity = canonical_rarity(breed);
     let look = |stage| CatLook { breed, rarity, stage, tick: 0 };
     let mut cells = Vec::new();
     for st in ["kitten", "young", "adult"] {
         for p in ALL_POSES {
             for f in [true, false] {
-                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false, H12)));
+                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false, h)));
             }
         }
     }
     for (label, tail, blink) in [("tail up", Tail::Up, false), ("tail flick", Tail::Flick, false), ("blink", Tail::Curl, true)] {
-        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink, H12)));
+        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink, h)));
     }
     for p in [Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave] {
-        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false, H12)));
+        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false, h)));
     }
     for p in art::ALL_PROPS {
         for f in 0..2 {
-            cells.push((format!("{p:?} {f}"), art::prop(p, f, H12)));
+            cells.push((format!("{p:?} {f}"), art::prop(p, f, h)));
         }
     }
     cells
@@ -367,20 +381,22 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
 
 const SHEET_COLS: usize = 6;
 
-/// Dev verb `pixels sheet [--breed B] [--json]`: every pose and prop.
-pub(crate) fn sheet(breed: &str, json: bool) -> String {
-    render_sheet(breed, sheet_cells(breed), SHEET_COLS, json)
+/// Dev verb `pixels sheet [--breed B] [--height 12|8|6] [--json]`: every pose
+/// and prop.
+pub(crate) fn sheet(breed: &str, h: PxHeight, json: bool) -> String {
+    let title = if h == PxHeight::H12 { breed.to_string() } else { format!("{breed} ({} px)", h.px()) };
+    render_sheet(&title, sheet_cells(breed, h), SHEET_COLS, json)
 }
 
 /// Dev verb `pixels scene <run|zoomies|ball|butterfly|roll|yarn> [--width W]
 /// [--breed B] [--stage S] [--json]`: the 30 s `PURR_FORCE_SCENE` loop
 /// (duration 30, seed 42), one whole-stage cell per second.
-pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, breed: &str, stage: &str, json: bool) -> String {
+pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, breed: &str, stage: &str, h: PxHeight, json: bool) -> String {
     let look = paint::CatLook { breed, rarity: canonical_rarity(breed), stage, tick: 0 };
     let cells = (0..30u64)
         .map(|e| {
-            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width, PxHeight::H12), width, &look, PxHeight::H12);
-            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: PxHeight::H12.px(), px: c.px })
+            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width, h), width, &look, h);
+            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: h.px(), px: c.px })
         })
         .collect();
     render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
@@ -389,7 +405,7 @@ pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, bre
 /// Dev verb `pixels celebrate <levelup|young|adult|streak|centurion|veteran|
 /// master|legendary|greeting|drop|birthday> [--width W] [--breed B] [--stage S]
 /// [--json]`: twelve consecutive seconds of the overlay.
-pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str, json: bool) -> Option<String> {
+pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str, h: PxHeight, json: bool) -> Option<String> {
     use crate::state::CelebrationKind as K;
     let o = fx::Overlay::pick(
         match name {
@@ -412,8 +428,8 @@ pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str
     let start = 1_800_000_000u64 / 6 * 6;
     let cells = (0..12u64)
         .map(|s| {
-            let c = fx::overlay_canvas(o, start + s, width, &look, PxHeight::H12);
-            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: PxHeight::H12.px(), px: c.px })
+            let c = fx::overlay_canvas(o, start + s, width, &look, h);
+            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: h.px(), px: c.px })
         })
         .collect();
     Some(render_sheet(&format!("{name} ({breed} {stage}, {width} px)"), cells, 6, json))
@@ -486,7 +502,8 @@ mod tests {
         }
         assert_eq!(PxHeight::from_rows(5), None);
         assert_eq!((PxHeight::H12.px(), PxHeight::H8.px(), PxHeight::H6.px()), (12, 8, 6));
-        assert_eq!(PxHeight::H12.cat_max_w(), 16);
+        assert_eq!((PxHeight::H12.cat_max_w(), PxHeight::H8.cat_max_w(), PxHeight::H6.cat_max_w()), (16, 11, 8));
+        assert_eq!((PxHeight::from_px(8), PxHeight::from_px(6), PxHeight::from_px(12), PxHeight::from_px(4)), (Some(PxHeight::H8), Some(PxHeight::H6), Some(PxHeight::H12), None));
     }
 
     #[test]

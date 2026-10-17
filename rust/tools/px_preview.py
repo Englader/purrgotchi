@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Render `purrgotchi pixels sheet --json` output to a PNG (dev tool, not shipped).
 
-usage: px_preview.py OUT.png [SHEET.json ...] [--scale N] [--only REGEX] [--cols N]
+usage: px_preview.py OUT.png [SHEET.json ...] [--scale N] [--only REGEX] [--cols N] [--snap]
 
 With no SHEET files, one sheet is read from stdin. Each sheet becomes a titled
 section; cells are nearest-neighbour upscaled on the near-black violet ground
 with their label underneath. --only keeps cells whose label matches REGEX.
+--snap rounds each channel to a multiple of 0x11, as the band's Raster does.
 """
 import json
 import re
@@ -26,7 +27,7 @@ def font(size):
 
 
 def main(argv):
-    args, files, scale, only, cols = argv[1:], [], 10, None, None
+    args, files, scale, only, cols, snap = argv[1:], [], 10, None, None, False
     out = args.pop(0)
     while args:
         a = args.pop(0)
@@ -36,6 +37,8 @@ def main(argv):
             only = re.compile(args.pop(0))
         elif a == "--cols":
             cols = int(args.pop(0))
+        elif a == "--snap":
+            snap = True
         else:
             files.append(a)
     sheets = [json.load(open(f)) for f in files] or [json.load(sys.stdin)]
@@ -70,6 +73,8 @@ def main(argv):
                 for x, v in enumerate(row):
                     if v:
                         col = tuple(int(v[k:k + 2], 16) for k in (1, 3, 5))
+                        if snap:
+                            col = tuple((c + 8) // 17 * 17 for c in col)
                         d.rectangle([left + x * scale, top + y * scale, left + (x + 1) * scale - 1, top + (y + 1) * scale - 1], fill=col)
             d.text((ox + scale // 2, oy + ch * scale + 2), c["label"], fill=TEXT, font=lab_f)
         y0 += nrows * cell_h

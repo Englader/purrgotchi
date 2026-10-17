@@ -342,7 +342,10 @@ const WAVE: [&str; 10] = [
 ];
 
 /// Interior slot map for a pose, facing right.
-pub(crate) fn pose_map(p: Pose, _h: PxHeight) -> &'static [&'static str] {
+pub(crate) fn pose_map(p: Pose, h: PxHeight) -> &'static [&'static str] {
+    if h != PxHeight::H12 {
+        return super::art_small::pose_map_small(p, h);
+    }
     match p {
         Pose::Sit => &SIT,
         Pose::Walk1 => &WALK1,
@@ -395,11 +398,11 @@ pub(crate) const ALL_PROPS: [Prop; 10] = [
     Prop::Z,
 ];
 
-const ORANGE: Rgb = Rgb(255, 140, 40);
+pub(super) const ORANGE: Rgb = Rgb(255, 140, 40);
 
 /// Rows of palette letters (`.` transparent) to a sprite. Unknown letters panic:
 /// the grids are static art.
-fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
+pub(super) fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
     let (w, h) = (rows[0].len(), rows.len());
     let px = rows
         .iter()
@@ -412,7 +415,10 @@ fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 /// A prop, already coloured. `frame` toggles the 2-frame flaps and flickers
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
 /// No outline: props are drawn over the cat's ground and sky.
-pub(crate) fn prop(p: Prop, frame: u8, _h: PxHeight) -> PxSprite {
+pub(crate) fn prop(p: Prop, frame: u8, h: PxHeight) -> PxSprite {
+    if h == PxHeight::H6 {
+        return super::art_small::prop_small(p, frame);
+    }
     let second = frame % 2 == 1;
     let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
     match (p, second) {

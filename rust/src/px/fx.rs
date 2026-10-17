@@ -111,8 +111,10 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
             confetti(&mut f, width, confetti_count(k), now, h)
         }
         Overlay::Celebration(Greeting) => {
-            // Over the cat's empty back corner, bobbing 1 px.
-            put(&mut f, width, Prop::Heart, 0, cx + 1, top + i32::from(frame), h);
+            // Over the cat's empty back corner, bobbing 1 px. The small cats
+            // have no room there, so it floats beside her back instead.
+            let x = if h == PxHeight::H12 { cx + 1 } else { cx - art::prop(Prop::Heart, 0, h).w as i32 - 1 };
+            put(&mut f, width, Prop::Heart, 0, x, top + i32::from(frame), h);
         }
         Overlay::Celebration(RandomDrop) => {
             // Falls from the top over 3 s (0, 4, 8 px), then glints on the ground.
@@ -125,7 +127,12 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
             confetti(&mut f, width, BIRTHDAY_CONFETTI, now, h);
             // On the head between the ears: brim over the ear tips, so 2 px
             // above her sprite (an adult has no headroom and wears it low).
-            put(&mut f, width, Prop::Hat, 0, cx + cw - 7, (top - 2).max(0), h);
+            let over_head = match h {
+                PxHeight::H12 => 7,
+                PxHeight::H8 => 6,
+                PxHeight::H6 => 5,
+            };
+            put(&mut f, width, Prop::Hat, 0, cx + cw - over_head, (top - 2).max(0), h);
         }
     }
     f

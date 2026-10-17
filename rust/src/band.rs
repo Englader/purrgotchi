@@ -7,6 +7,7 @@
 
 use crate::json::{error_json, read_fail_parts};
 use crate::px::band::{base64, pack_cells};
+use crate::px::PxHeight;
 use crate::state::{self, State};
 use crate::statusline::{kitten_view, ViewInput};
 use serde::Serialize;
@@ -24,7 +25,7 @@ pub const USAGE: &str =
 
 pub struct BandOpts {
     pub cols: usize,
-    pub rows: usize,
+    pub height: PxHeight,
     pub fps: u32,
     pub context_pct: f64,
     /// Dev/test: virtual start time and frame count (no sleeping).
@@ -42,9 +43,7 @@ pub fn parse_opts(args: &[String]) -> Result<BandOpts, String> {
         return Err(format!("--cols must be in 1..={MAX_COLS}, got {cols}"));
     }
     let rows: usize = num("--rows", value(args, "--rows")?.ok_or("--rows is required")?)?;
-    if rows != 6 {
-        return Err(format!("--rows must be 6, got {rows}"));
-    }
+    let height = PxHeight::from_rows(rows).ok_or_else(|| format!("--rows must be 3, 4 or 6, got {rows}"))?;
     let fps = value(args, "--fps")?.map_or(Ok(DEFAULT_FPS), |v| num::<u32>("--fps", v))?.clamp(15, 60);
     let context_pct = match value(args, "--context-pct")? {
         None => 0.0,
@@ -61,7 +60,7 @@ pub fn parse_opts(args: &[String]) -> Result<BandOpts, String> {
     if now_ms.is_some() != frames.is_some() {
         return Err("--now-ms and --frames go together".to_string());
     }
-    Ok(BandOpts { cols, rows, fps, context_pct, now_ms, frames })
+    Ok(BandOpts { cols, height, fps, context_pct, now_ms, frames })
 }
 
 #[derive(Serialize)]
@@ -106,7 +105,7 @@ pub fn run(o: &BandOpts) -> i32 {
     let mut emit = |line: &str| -> bool { writeln!(out, "{line}").and_then(|()| out.flush()).is_ok() };
 
     let state_dir = dir.to_string_lossy();
-    let hello = Hello { v: 1, hello: true, cols: o.cols, rows: o.rows, fps: o.fps, state_dir: &state_dir };
+    let hello = Hello { v: 1, hello: true, cols: o.cols, rows: o.height.rows(), fps: o.fps, state_dir: &state_dir };
     if !emit(&serde_json::to_string(&hello).unwrap_or_default()) {
         return 0;
     }
@@ -114,8 +113,6 @@ pub fn run(o: &BandOpts) -> i32 {
     let forced_scene = crate::playground::force_scene();
     let playground_enabled = crate::playground::enabled();
     let forced = crate::px::life::forced();
-    // parse_opts only admits row counts `from_rows` knows.
-    let height = crate::px::PxHeight::from_rows(o.rows).unwrap_or(crate::px::PxHeight::H12);
     let period_us = 1_000_000 / u64::from(o.fps);
 
     let start = Instant::now();
@@ -179,8 +176,8 @@ pub fn run(o: &BandOpts) -> i32 {
                     },
                     || None,
                 );
-                let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced, height);
-                cells = pack_cells(&canvas, o.rows);
+                let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced, o.height);
+                cells = pack_cells(&canvas, o.height.rows());
             }
             let due = last_sent.as_ref().is_none_or(|(c, at)| *c != cells || t.saturating_sub(*at) >= KEEPALIVE_MS);
             if due {

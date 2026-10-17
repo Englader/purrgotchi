@@ -53,10 +53,14 @@ fn fnv1a(s: &str) -> u64 {
     s.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3))
 }
 
-/// `--now-ms --frames` run: raw stdout.
+/// `--now-ms --frames` run at 6 rows: raw stdout.
 fn test_clock(sb: &Sandbox, cols: &str, now_ms: u64, frames: u64) -> Vec<u8> {
+    test_clock_rows(sb, cols, "6", now_ms, frames)
+}
+
+fn test_clock_rows(sb: &Sandbox, cols: &str, rows: &str, now_ms: u64, frames: u64) -> Vec<u8> {
     let (n, f) = (now_ms.to_string(), frames.to_string());
-    let out = sb.run(&["band", "--cols", cols, "--rows", "6", "--now-ms", &n, "--frames", &f], "", &[]);
+    let out = sb.run(&["band", "--cols", cols, "--rows", rows, "--now-ms", &n, "--frames", &f], "", &[]);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
     out.stdout
 }
@@ -128,6 +132,17 @@ fn band_exits_zero_when_stdout_closes() {
 }
 
 #[test]
+fn band_accepts_three_and_four_rows() {
+    let sb = Sandbox::with_state("band_rows", json!({}));
+    for rows in [3usize, 4] {
+        let text = String::from_utf8(test_clock_rows(&sb, "60", &rows.to_string(), NOW * 1000, 2)).unwrap();
+        let lines: Vec<Value> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines[0]["rows"].as_u64(), Some(rows as u64));
+        assert_eq!(b64_len(lines[1]["c"].as_str().expect("c")), 60 * rows * 12);
+    }
+}
+
+#[test]
 fn band_test_clock_is_deterministic() {
     let sb = Sandbox::with_state("band_det", json!({}));
     let t0 = NOW * 1000;
@@ -151,6 +166,7 @@ fn band_bad_args_exit_2() {
     let sb = Sandbox::with_state("band_bad", json!({}));
     for bad in [
         vec!["--cols", "60", "--rows", "5"],
+        vec!["--cols", "60", "--rows", "8"],
         vec!["--cols", "0", "--rows", "6"],
         vec!["--cols", "513", "--rows", "6"],
         vec!["--rows", "6"],
@@ -202,12 +218,15 @@ fn band_hash_golden() {
         ("celebration_levelup", json!({ "celebration_kind": "LevelUp", "levelup_renders_remaining": 2, "last_celebration_tick_at": NOW })),
     ];
     let mut lines = String::new();
-    for (name, patch) in cases {
-        let sb = Sandbox::with_state(&format!("band_gold_{name}"), patch);
-        let text = String::from_utf8(test_clock(&sb, "120", NOW * 1000, 60)).unwrap();
-        for l in text.lines().skip(1) {
-            let v: Value = serde_json::from_str(l).unwrap();
-            lines.push_str(&format!("{name}|{}|{}|{:016x}\n", v["f"], v["t"], fnv1a(v["c"].as_str().unwrap())));
+    // 6 rows first (the original lines), then the 8-px and 6-px cats.
+    for (rows, prefix) in [("6", ""), ("4", "rows4_"), ("3", "rows3_")] {
+        for (name, patch) in &cases {
+            let sb = Sandbox::with_state(&format!("band_gold_{prefix}{name}"), patch.clone());
+            let text = String::from_utf8(test_clock_rows(&sb, "120", rows, NOW * 1000, 60)).unwrap();
+            for l in text.lines().skip(1) {
+                let v: Value = serde_json::from_str(l).unwrap();
+                lines.push_str(&format!("{prefix}{name}|{}|{}|{:016x}\n", v["f"], v["t"], fnv1a(v["c"].as_str().unwrap())));
+            }
         }
     }
     let path = common::golden_path("band_hashes.txt");

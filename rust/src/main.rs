@@ -137,9 +137,19 @@ fn main() {
             }
             Some("sheet") => {
                 let (breed, _) = dev_look(&args);
-                println!("{}", px::sheet(breed, json));
+                println!("{}", px::sheet(breed, dev_height(&args), json));
                 process::exit(0);
             }
+            Some("downscale") => match dev_height(&args) {
+                px::PxHeight::H12 => {
+                    eprintln!("usage: purrgotchi pixels downscale --height 8|6");
+                    process::exit(2);
+                }
+                h => {
+                    print!("{}", px::art_small::downscale_source(h));
+                    process::exit(0);
+                }
+            },
             Some("scene") => {
                 let Some(kind) = playground::force_scene_from(args.get(3).map(String::as_str)) else {
                     eprintln!("usage: purrgotchi pixels scene run|zoomies|ball|butterfly|roll|yarn [--width W] [--breed B] [--stage S] [--json]");
@@ -147,13 +157,13 @@ fn main() {
                 };
                 let width = dev_width(&args);
                 let (breed, stage) = dev_look(&args);
-                println!("{}", px::scene_sheet(kind, width, breed, stage, json));
+                println!("{}", px::scene_sheet(kind, width, breed, stage, dev_height(&args), json));
                 process::exit(0);
             }
             Some("celebrate") => {
                 let width = dev_width(&args);
                 let (breed, stage) = dev_look(&args);
-                let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, json)) else {
+                let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, dev_height(&args), json)) else {
                     eprintln!("usage: purrgotchi pixels celebrate levelup|young|adult|streak|centurion|veteran|master|legendary|greeting|drop|birthday [--width W] [--breed B] [--stage S] [--json]");
                     process::exit(2);
                 };
@@ -161,7 +171,7 @@ fn main() {
                 process::exit(0);
             }
             _ => {
-                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate [--breed B] [--json]");
+                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate|downscale [--breed B] [--height 12|8|6] [--json]");
                 process::exit(2);
             }
         },
@@ -190,6 +200,15 @@ fn dev_width(args: &[String]) -> usize {
     let w = cli::flag_value(args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
     playground::clamp_strip(w).unwrap_or_else(|| {
         eprintln!("--width must be at least {} (capped at {})", playground::MIN_STRIP, playground::MAX_STRIP);
+        process::exit(2);
+    })
+}
+
+/// `--height 12|8|6` of the `pixels` dev verbs (default 12).
+fn dev_height(args: &[String]) -> px::PxHeight {
+    let Some(v) = cli::flag_value(args, "--height") else { return px::PxHeight::H12 };
+    v.parse().ok().and_then(px::PxHeight::from_px).unwrap_or_else(|| {
+        eprintln!("--height must be 12, 8 or 6, got {v:?}");
         process::exit(2);
     })
 }

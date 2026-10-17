@@ -23,12 +23,20 @@ pub(crate) const OUTLINE: Rgb = Rgb(0x5a, 0x3f, 0x8a);
 const RIM_CYAN: Rgb = Rgb(0x18, 0x67, 0x72);
 const RIM_MAGENTA: Rgb = Rgb(0x7d, 0x12, 0x7a);
 
-/// Tail layer offsets from `*`, facing right (−x is behind the cat).
-fn tail_offsets(t: Tail) -> &'static [(i32, i32)] {
-    match t {
-        Tail::Curl => &[(-1, 0), (-2, 1), (-3, 1), (-4, 0)],
-        Tail::Up => &[(-1, 0), (-2, -1), (-2, -2), (-2, -3), (-1, -4)],
-        Tail::Flick => &[(-1, 0), (-2, -1), (-2, -2), (-2, -3), (-3, -4)],
+/// Tail layer offsets from `*`, facing right (−x is behind the cat). The
+/// smaller cats grow the first 3 (8 px) or 2 (6 px) of them, except that their
+/// flick bends its tip back, so it still differs from `Up`.
+fn tail_offsets(t: Tail, h: PxHeight) -> &'static [(i32, i32)] {
+    match (t, h) {
+        (Tail::Curl, PxHeight::H12) => &[(-1, 0), (-2, 1), (-3, 1), (-4, 0)],
+        (Tail::Up, PxHeight::H12) => &[(-1, 0), (-2, -1), (-2, -2), (-2, -3), (-1, -4)],
+        (Tail::Flick, PxHeight::H12) => &[(-1, 0), (-2, -1), (-2, -2), (-2, -3), (-3, -4)],
+        (Tail::Curl, PxHeight::H8) => &[(-1, 0), (-2, 1), (-3, 1)],
+        (Tail::Up, PxHeight::H8) => &[(-1, 0), (-2, -1), (-2, -2)],
+        (Tail::Flick, PxHeight::H8) => &[(-1, 0), (-2, -1), (-3, -2)],
+        (Tail::Curl, PxHeight::H6) => &[(-1, 0), (-2, 1)],
+        (Tail::Up, PxHeight::H6) => &[(-1, 0), (-2, -1)],
+        (Tail::Flick, PxHeight::H6) => &[(-1, 0), (-1, -1)],
     }
 }
 
@@ -38,8 +46,8 @@ fn is_coat(s: u8) -> bool {
 }
 
 /// Slot grid (map coords, facing right) with the tail layer grown from `*`.
-fn slot_grid(p: Pose, stage: &str, tail: Tail, bushy: bool, h: PxHeight) -> (usize, usize, Vec<u8>) {
-    let rows = art::stage_rows(art::pose_map(p, h), stage);
+fn slot_grid(p: Pose, stage: &str, tail: Tail, bushy: bool, ph: PxHeight) -> (usize, usize, Vec<u8>) {
+    let rows = art::stage_rows(art::pose_map(p, ph), stage);
     let (w, h) = (rows[0].len(), rows.len());
     let mut g: Vec<u8> = rows.iter().flat_map(|r| r.bytes()).collect();
     if let Some(at) = g.iter().position(|&c| c == b'*') {
@@ -49,7 +57,7 @@ fn slot_grid(p: Pose, stage: &str, tail: Tail, bushy: bool, h: PxHeight) -> (usi
                 g[y as usize * w + x as usize] = b't';
             }
         };
-        for &(dx, dy) in tail_offsets(tail) {
+        for &(dx, dy) in tail_offsets(tail, ph) {
             put(sx + dx, sy + dy);
             if bushy {
                 match tail {
@@ -70,10 +78,11 @@ struct Ctx {
     w: usize,
     eye_x: Option<i32>,
     top_head: Option<i32>,
+    ph: PxHeight,
 }
 
 fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzzle: bool) -> Option<Rgb> {
-    let Ctx { w, eye_x, top_head } = *ctx;
+    let Ctx { w, eye_x, top_head, ph } = *ctx;
     let light = b.light.unwrap_or_else(|| pixel::mix(b.base, pixel::WHITE, 0.25));
     let mut c = match s {
         b'.' => return None,
@@ -93,7 +102,12 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
     let body = matches!(s, b'b' | b't' | b'*');
     let fur = body || matches!(s, b'h' | b'r');
     let top = s == b'h' && top_head == Some(y);
-    match b.pattern {
+    // At 6 px stripes and spots turn to noise: those coats go flat.
+    let pattern = match b.pattern {
+        Pattern::Tabby | Pattern::Spots | Pattern::Rosettes if ph == PxHeight::H6 => Pattern::Solid,
+        p => p,
+    };
+    match pattern {
         Pattern::Tabby => {
             // body stripes only: head stripes turn to noise at 12 px
             if body && (x + y) % 3 == 0 {
@@ -146,6 +160,7 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
         w,
         eye_x: slots.iter().enumerate().filter(|(_, c)| **c == b'e').map(|(i, _)| (i % w) as i32).max(),
         top_head: slots.iter().position(|&c| c == b'h').map(|i| (i / w) as i32),
+        ph,
     };
     let head_row = |y: usize| slots[y * w..(y + 1) * w].contains(&b'h');
     let mut col: Vec<Option<Rgb>> = (0..w * h)
@@ -160,11 +175,13 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
         }
     }
 
-    // 4. rim light: cyan leftmost, magenta rightmost coat px per row.
+    // 4. rim light: cyan leftmost, magenta rightmost coat px per row. The
+    // small cats skip short rows, so the face keeps its coat colour.
+    let rim_min = if ph == PxHeight::H12 { 3 } else { 5 };
     let mut out = col;
     for y in 0..h {
         let coat: Vec<usize> = (0..w).filter(|&x| is_coat(slots[at(x, y)])).collect();
-        if coat.len() >= 3 {
+        if coat.len() >= rim_min {
             let (l, r) = (at(coat[0], y), at(coat[coat.len() - 1], y));
             out[l] = Some(RIM_CYAN);
             out[r] = Some(RIM_MAGENTA);
@@ -304,6 +321,29 @@ mod tests {
     }
 
     #[test]
+    fn small_tails_differ_and_short_rows_skip_the_rim() {
+        for h in [PxHeight::H8, PxHeight::H6] {
+            let at = |t| paint(Pose::Sit, &look("Ginger", "adult"), true, t, false, h).px;
+            assert_ne!(at(Tail::Curl), at(Tail::Up), "{h:?}");
+            assert_ne!(at(Tail::Up), at(Tail::Flick), "{h:?}");
+            // The eye row is short: no rim on the face.
+            let s = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Curl, false, h);
+            let eye_row = (0..s.h).find(|&y| s.px[y * s.w..(y + 1) * s.w].contains(&Some(crate::colors::CYAN))).unwrap();
+            assert!(!s.px[eye_row * s.w..(eye_row + 1) * s.w].iter().any(|c| *c == Some(RIM_CYAN) || *c == Some(RIM_MAGENTA)), "{h:?}");
+        }
+    }
+
+    #[test]
+    fn six_px_coats_drop_stripes_and_spots() {
+        for b in ["Tabby", "Bengal", "Snow Leopard Cat"] {
+            let s = paint(Pose::Loaf, &CatLook { rarity: canonical_rarity(b), ..look(b, "adult") }, true, Tail::Curl, false, PxHeight::H6);
+            assert!(!s.px.contains(&Some(crate::pixel::breed(b).mark)), "{b}");
+        }
+        let s = paint(Pose::Loaf, &look("Tabby", "adult"), true, Tail::Curl, false, PxHeight::H8);
+        assert!(s.px.contains(&Some(crate::pixel::breed("Tabby").mark)), "8 px keeps the stripes");
+    }
+
+    #[test]
     fn legendary_eyes_cycle_with_tick() {
         let at = |tick| paint(Pose::Sit, &CatLook { rarity: "legendary", tick, ..look("Void Cat", "adult") }, true, Tail::Curl, false, H12).px;
         assert_ne!(at(0), at(1));
@@ -333,13 +373,13 @@ mod tests {
         out
     }
 
-    fn pxcat_lines() -> Vec<String> {
+    fn pxcat_lines(h: PxHeight) -> Vec<String> {
         use crate::px::art::ALL_TAILS;
         let mut lines = Vec::new();
         let mut push = |p: Pose, st: &str, f: bool, t: Tail, blink: bool, breed: &str, tick: u64| {
             let lk = CatLook { breed, rarity: canonical_rarity(breed), stage: st, tick };
             let face = if f { "right" } else { "left" };
-            let hash = crate::identity::fnv1a(&serialise(&paint(p, &lk, f, t, blink, H12)));
+            let hash = crate::identity::fnv1a(&serialise(&paint(p, &lk, f, t, blink, h)));
             lines.push(format!("{p:?}|{st}|{face}|{t:?}|{blink}|{breed}|{tick} {hash:016x}"));
         };
         for p in ALL_POSES {
@@ -371,14 +411,28 @@ mod tests {
     /// Art snapshot. Re-record with `UPDATE_GOLDEN=1 cargo test pxcat`.
     #[test]
     fn pxcat_snapshot() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/pxcat_hashes.txt");
-        let lines = pxcat_lines();
-        assert_eq!(lines.len(), 21 * 3 * 2 + 3 * 2 * 5 + 16 + 3 * 7);
+        check_pxcat("pxcat_hashes.txt", pxcat_lines(H12));
+    }
+
+    /// The 8-px and 6-px cats, in their own golden (the 12-px one is pinned).
+    #[test]
+    fn pxcat_small_snapshot() {
+        let lines = [PxHeight::H8, PxHeight::H6]
+            .into_iter()
+            .flat_map(|h| pxcat_lines(h).into_iter().map(move |l| format!("{}|{l}", h.px())))
+            .collect();
+        check_pxcat("pxcat_small_hashes.txt", lines);
+    }
+
+    fn check_pxcat(file: &str, lines: Vec<String>) {
+        let path = format!("{}/tests/golden/{file}", env!("CARGO_MANIFEST_DIR"));
+        let per_height = 21 * 3 * 2 + 3 * 2 * 5 + 16 + 3 * 7;
+        assert_eq!(lines.len() % per_height, 0);
         if std::env::var("UPDATE_GOLDEN").as_deref() == Ok("1") {
-            std::fs::write(path, lines.join("\n") + "\n").unwrap();
+            std::fs::write(&path, lines.join("\n") + "\n").unwrap();
             return;
         }
-        let golden = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e} (record with UPDATE_GOLDEN=1)"));
+        let golden = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e} (record with UPDATE_GOLDEN=1)"));
         let want: Vec<&str> = golden.lines().collect();
         let mismatches: Vec<String> = lines
             .iter()
@@ -389,7 +443,7 @@ mod tests {
             .collect();
         assert!(
             mismatches.is_empty() && want.len() == lines.len(),
-            "pxcat snapshot drift ({} golden lines, {} rendered); first mismatches:\n{}",
+            "{file} drift ({} golden lines, {} rendered); first mismatches:\n{}",
             want.len(),
             lines.len(),
             mismatches.join("\n")
