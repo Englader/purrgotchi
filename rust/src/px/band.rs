@@ -57,6 +57,7 @@ pub(crate) fn base64(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::px::PxHeight;
 
     fn cells(b: &[u8]) -> Vec<u32> {
         b.chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect()
@@ -78,7 +79,7 @@ mod tests {
     #[test]
     fn pack_cells_rules() {
         let (a, b) = (Rgb(0x10, 0x20, 0x30), Rgb(255, 0, 0));
-        let mut c = PxCanvas::new(2);
+        let mut c = PxCanvas::new(2, PxHeight::H12);
         c.set(0, 0, a);
         c.set(1, 1, b);
         let out = pack_cells(&c, 1);
@@ -90,7 +91,7 @@ mod tests {
 
     #[test]
     fn empty_canvas_is_terminal_default() {
-        let out = pack_cells(&PxCanvas::new(3), 6);
+        let out = pack_cells(&PxCanvas::new(3, PxHeight::H12), 6);
         assert_eq!(out.len(), 3 * 6 * 12);
         assert!(cells(&out).chunks(3).all(|c| c == [0x20, DEFAULT_COLOR, DEFAULT_COLOR]));
     }

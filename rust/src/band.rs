@@ -114,6 +114,8 @@ pub fn run(o: &BandOpts) -> i32 {
     let forced_scene = crate::playground::force_scene();
     let playground_enabled = crate::playground::enabled();
     let forced = crate::px::life::forced();
+    // parse_opts only admits row counts `from_rows` knows.
+    let height = crate::px::PxHeight::from_rows(o.rows).unwrap_or(crate::px::PxHeight::H12);
     let period_us = 1_000_000 / u64::from(o.fps);
 
     let start = Instant::now();
@@ -177,7 +179,7 @@ pub fn run(o: &BandOpts) -> i32 {
                     },
                     || None,
                 );
-                let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced);
+                let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced, height);
                 cells = pack_cells(&canvas, o.rows);
             }
             let due = last_sent.as_ref().is_none_or(|(c, at)| *c != cells || t.saturating_sub(*at) >= KEEPALIVE_MS);

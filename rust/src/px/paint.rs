@@ -2,7 +2,7 @@
 //! slots → colour, breed pattern, tail layer (before the pattern), flip,
 //! cyan/magenta rim, auto-outline, blink. Coats are flat (Gate B option D).
 
-use super::PxSprite;
+use super::{PxHeight, PxSprite};
 use super::art::{self, Pose, Tail};
 use crate::colors::Rgb;
 use crate::pixel::{self, Breed, Pattern, Rarity};
@@ -23,9 +23,6 @@ pub(crate) const OUTLINE: Rgb = Rgb(0x5a, 0x3f, 0x8a);
 const RIM_CYAN: Rgb = Rgb(0x18, 0x67, 0x72);
 const RIM_MAGENTA: Rgb = Rgb(0x7d, 0x12, 0x7a);
 
-/// Sprite width incl. outline, every pose and stage.
-pub(crate) const CAT_MAX_W: usize = 16;
-
 /// Tail layer offsets from `*`, facing right (−x is behind the cat).
 fn tail_offsets(t: Tail) -> &'static [(i32, i32)] {
     match t {
@@ -41,8 +38,8 @@ fn is_coat(s: u8) -> bool {
 }
 
 /// Slot grid (map coords, facing right) with the tail layer grown from `*`.
-fn slot_grid(p: Pose, stage: &str, tail: Tail, bushy: bool) -> (usize, usize, Vec<u8>) {
-    let rows = art::stage_rows(art::pose_map(p), stage);
+fn slot_grid(p: Pose, stage: &str, tail: Tail, bushy: bool, h: PxHeight) -> (usize, usize, Vec<u8>) {
+    let rows = art::stage_rows(art::pose_map(p, h), stage);
     let (w, h) = (rows[0].len(), rows.len());
     let mut g: Vec<u8> = rows.iter().flat_map(|r| r.bytes()).collect();
     if let Some(at) = g.iter().position(|&c| c == b'*') {
@@ -139,9 +136,9 @@ fn slot_colour(b: &Breed, look: &CatLook, ctx: &Ctx, s: u8, x: i32, y: i32, muzz
     Some(c)
 }
 
-pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, blink: bool) -> PxSprite {
+pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, blink: bool, ph: PxHeight) -> PxSprite {
     let b = pixel::breed(look.breed);
-    let (w, h, mut slots) = slot_grid(p, look.stage, tail, b.bushy);
+    let (w, h, mut slots) = slot_grid(p, look.stage, tail, b.bushy, ph);
     let at = |x: usize, y: usize| y * w + x;
 
     // 1–2. colour + pattern, in map coordinates.
@@ -216,6 +213,7 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
 #[cfg(test)]
 mod tests {
     use super::*;
+    const H12: PxHeight = PxHeight::H12;
     use crate::px::art::ALL_POSES;
 
     fn look(b: &'static str, st: &'static str) -> CatLook<'static> {
@@ -228,8 +226,8 @@ mod tests {
             for st in ["kitten", "young", "adult"] {
                 for f in [true, false] {
                     for t in crate::px::art::ALL_TAILS {
-                        let s = paint(p, &look("Ginger", st), f, t, false);
-                        assert!(s.w <= CAT_MAX_W && s.h <= 12, "{p:?} {st}");
+                        let s = paint(p, &look("Ginger", st), f, t, false, H12);
+                        assert!(s.w <= H12.cat_max_w() && s.h <= 12, "{p:?} {st}");
                         assert!((0..s.w).any(|x| s.px[(s.h - 1) * s.w + x].is_some()), "{p:?} {st}: nothing on the ground row");
                     }
                 }
@@ -239,7 +237,7 @@ mod tests {
 
     #[test]
     fn breath_is_subtle() {
-        let px = |p| paint(p, &look("Ginger", "adult"), true, Tail::Curl, false).px;
+        let px = |p| paint(p, &look("Ginger", "adult"), true, Tail::Curl, false, H12).px;
         for (a, b) in [(Pose::Loaf, Pose::LoafBreath), (Pose::Curl, Pose::CurlBreath)] {
             let d = px(a).iter().zip(px(b).iter()).filter(|(x, y)| x != y).count();
             assert!(d > 0 && d <= 6, "{a:?}: {d}");
@@ -248,14 +246,14 @@ mod tests {
 
     #[test]
     fn stages_scale() {
-        let h = |st| paint(Pose::Sit, &look("Ginger", st), true, Tail::Curl, false).h;
+        let h = |st| paint(Pose::Sit, &look("Ginger", st), true, Tail::Curl, false, H12).h;
         assert!(h("kitten") < h("young") && h("young") < h("adult"));
     }
 
     #[test]
     fn flip_mirrors_silhouette() {
-        let r = paint(Pose::Walk1, &look("Tabby", "adult"), true, Tail::Curl, false);
-        let l = paint(Pose::Walk1, &look("Tabby", "adult"), false, Tail::Curl, false);
+        let r = paint(Pose::Walk1, &look("Tabby", "adult"), true, Tail::Curl, false, H12);
+        let l = paint(Pose::Walk1, &look("Tabby", "adult"), false, Tail::Curl, false, H12);
         for y in 0..r.h {
             for x in 0..r.w {
                 assert_eq!(r.px[y * r.w + x].is_some(), l.px[y * l.w + (l.w - 1 - x)].is_some());
@@ -265,7 +263,7 @@ mod tests {
 
     #[test]
     fn rim_signature() {
-        let s = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Curl, false);
+        let s = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Curl, false, H12);
         let row = &s.px[4 * s.w..5 * s.w];
         let coat: Vec<_> = row.iter().flatten().filter(|c| **c != OUTLINE).collect();
         let (l, r) = (coat[0], coat[coat.len() - 1]);
@@ -275,7 +273,7 @@ mod tests {
 
     #[test]
     fn rim_stays_cyan_left_when_facing_left() {
-        let s = paint(Pose::Sit, &look("Ginger", "adult"), false, Tail::Curl, false);
+        let s = paint(Pose::Sit, &look("Ginger", "adult"), false, Tail::Curl, false, H12);
         let row = &s.px[4 * s.w..5 * s.w];
         let coat: Vec<_> = row.iter().flatten().filter(|c| **c != OUTLINE).collect();
         let (l, r) = (coat[0], coat[coat.len() - 1]);
@@ -285,29 +283,29 @@ mod tests {
     #[test]
     fn blink_hides_eyes() {
         let eye = crate::colors::CYAN;
-        assert!(paint(Pose::Sit, &look("Tabby", "adult"), true, Tail::Curl, false).px.contains(&Some(eye)));
-        assert!(!paint(Pose::Sit, &look("Tabby", "adult"), true, Tail::Curl, true).px.contains(&Some(eye)));
+        assert!(paint(Pose::Sit, &look("Tabby", "adult"), true, Tail::Curl, false, H12).px.contains(&Some(eye)));
+        assert!(!paint(Pose::Sit, &look("Tabby", "adult"), true, Tail::Curl, true, H12).px.contains(&Some(eye)));
     }
 
     #[test]
     fn unknown_or_empty_breed_is_ginger() {
-        let g = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Up, false).px;
-        assert_eq!(paint(Pose::Sit, &look("", "adult"), true, Tail::Up, false).px, g);
-        assert_eq!(paint(Pose::Sit, &look("Dragon", "elder"), true, Tail::Up, false).px, g);
+        let g = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Up, false, H12).px;
+        assert_eq!(paint(Pose::Sit, &look("", "adult"), true, Tail::Up, false, H12).px, g);
+        assert_eq!(paint(Pose::Sit, &look("Dragon", "elder"), true, Tail::Up, false, H12).px, g);
     }
 
     #[test]
     fn tails_differ_and_hetero_eyes() {
-        let at = |t| paint(Pose::Sit, &look("Ginger", "adult"), true, t, false).px;
+        let at = |t| paint(Pose::Sit, &look("Ginger", "adult"), true, t, false, H12).px;
         assert_ne!(at(Tail::Curl), at(Tail::Up));
         assert_ne!(at(Tail::Up), at(Tail::Flick));
-        let c = paint(Pose::Sit, &CatLook { rarity: "legendary", ..look("Chimera", "adult") }, true, Tail::Curl, false);
+        let c = paint(Pose::Sit, &CatLook { rarity: "legendary", ..look("Chimera", "adult") }, true, Tail::Curl, false, H12);
         assert!(c.px.contains(&Some(crate::pixel::NEON_MAGENTA)));
     }
 
     #[test]
     fn legendary_eyes_cycle_with_tick() {
-        let at = |tick| paint(Pose::Sit, &CatLook { rarity: "legendary", tick, ..look("Void Cat", "adult") }, true, Tail::Curl, false).px;
+        let at = |tick| paint(Pose::Sit, &CatLook { rarity: "legendary", tick, ..look("Void Cat", "adult") }, true, Tail::Curl, false, H12).px;
         assert_ne!(at(0), at(1));
         assert_eq!(at(0), at(7));
     }
@@ -341,7 +339,7 @@ mod tests {
         let mut push = |p: Pose, st: &str, f: bool, t: Tail, blink: bool, breed: &str, tick: u64| {
             let lk = CatLook { breed, rarity: canonical_rarity(breed), stage: st, tick };
             let face = if f { "right" } else { "left" };
-            let hash = crate::identity::fnv1a(&serialise(&paint(p, &lk, f, t, blink)));
+            let hash = crate::identity::fnv1a(&serialise(&paint(p, &lk, f, t, blink, H12)));
             lines.push(format!("{p:?}|{st}|{face}|{t:?}|{blink}|{breed}|{tick} {hash:016x}"));
         };
         for p in ALL_POSES {

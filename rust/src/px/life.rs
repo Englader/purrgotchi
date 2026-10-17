@@ -309,7 +309,7 @@ fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behavio
 
 /// Poses whose map has eyes to blink.
 fn has_eyes(p: Pose) -> bool {
-    super::art::pose_map(p).iter().any(|r| r.contains('e'))
+    super::art::pose_map(p, super::PxHeight::H12).iter().any(|r| r.contains('e'))
 }
 
 /// Alternates two poses every 2 s on the wall clock (breathing), so the
@@ -340,7 +340,7 @@ fn act_pose(b: Behaviour, k: u64, len: u64, now: u64, mood: &str) -> Pose {
 }
 
 /// The cat at second `now`. `seed` is the cat's `birth_time`, `span` the
-/// room for the sprite's left px (`stage width - CAT_MAX_W`). `forced`
+/// room for the sprite's left px (`stage width - cat_max_w`). `forced`
 /// replaces the mood picks (the walk between anchors stays), and a forced
 /// Sleep happens on the anchor, not the bed.
 pub(crate) fn life_frame(now: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) -> CatFrame {

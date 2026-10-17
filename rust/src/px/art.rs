@@ -2,7 +2,7 @@
 //! plus the small coloured props. Cat colours, outline and lighting are added
 //! by `paint.rs`.
 
-use super::PxSprite;
+use super::{PxHeight, PxSprite};
 use super::paint::OUTLINE;
 use crate::colors::{self, Rgb};
 use crate::pixel;
@@ -342,7 +342,7 @@ const WAVE: [&str; 10] = [
 ];
 
 /// Interior slot map for a pose, facing right.
-pub(crate) fn pose_map(p: Pose) -> &'static [&'static str] {
+pub(crate) fn pose_map(p: Pose, _h: PxHeight) -> &'static [&'static str] {
     match p {
         Pose::Sit => &SIT,
         Pose::Walk1 => &WALK1,
@@ -412,7 +412,7 @@ fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 /// A prop, already coloured. `frame` toggles the 2-frame flaps and flickers
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
 /// No outline: props are drawn over the cat's ground and sky.
-pub(crate) fn prop(p: Prop, frame: u8) -> PxSprite {
+pub(crate) fn prop(p: Prop, frame: u8, _h: PxHeight) -> PxSprite {
     let second = frame % 2 == 1;
     let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
     match (p, second) {
@@ -458,13 +458,14 @@ pub(crate) fn stage_rows<'a>(map: &'a [&'a str], stage: &str) -> Vec<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const H12: PxHeight = PxHeight::H12;
 
     const TAIL_LAYER_POSES: [Pose; 5] = [Pose::Sit, Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave];
 
     #[test]
     fn maps_are_rectangular_and_use_the_legend() {
         for p in ALL_POSES {
-            let rows = stage_rows(pose_map(p), "adult");
+            let rows = stage_rows(pose_map(p, H12), "adult");
             let w = rows[0].len();
             for r in &rows {
                 assert_eq!(r.len(), w, "{p:?}: ragged row {r:?}");
@@ -477,7 +478,7 @@ mod tests {
     #[test]
     fn one_tail_socket_where_the_tail_layer_grows() {
         for p in TAIL_LAYER_POSES {
-            let n = pose_map(p).iter().map(|r| r.matches('*').count()).sum::<usize>();
+            let n = pose_map(p, H12).iter().map(|r| r.matches('*').count()).sum::<usize>();
             assert_eq!(n, 1, "{p:?}");
         }
     }
@@ -496,11 +497,11 @@ mod tests {
         };
         for p in ALL_PROPS {
             for f in 0..2 {
-                let s = prop(p, f);
+                let s = prop(p, f, H12);
                 let (w, h) = size(p);
                 assert!(s.w <= w && s.h <= h && s.px.len() == s.w * s.h, "{p:?} f{f}: {}x{}", s.w, s.h);
                 assert!(s.px.iter().any(Option::is_some), "{p:?} f{f}: empty");
-                assert_eq!(s.px, prop(p, f).px, "{p:?} f{f}: not deterministic");
+                assert_eq!(s.px, prop(p, f, H12).px, "{p:?} f{f}: not deterministic");
             }
         }
     }
@@ -511,15 +512,15 @@ mod tests {
             if matches!(p, Prop::Ball | Prop::Yarn | Prop::Heart | Prop::Hat | Prop::Confetti) {
                 continue;
             }
-            assert_ne!(prop(p, 0).px, prop(p, 1).px, "{p:?}");
+            assert_ne!(prop(p, 0, H12).px, prop(p, 1, H12).px, "{p:?}");
         }
-        let hues: std::collections::HashSet<_> = (0u8..6).map(|f| prop(Prop::Confetti, f).px[0].map(|c| c.hex())).collect();
+        let hues: std::collections::HashSet<_> = (0u8..6).map(|f| prop(Prop::Confetti, f, H12).px[0].map(|c| c.hex())).collect();
         assert_eq!(hues.len(), 6);
     }
 
     #[test]
     fn stage_drop_rule() {
-        let m = pose_map(Pose::Sit);
+        let m = pose_map(Pose::Sit, H12);
         assert_eq!(stage_rows(m, "adult").len(), 10);
         assert_eq!(stage_rows(m, "young").len(), 9);
         assert_eq!(stage_rows(m, "kitten").len(), 8);
@@ -530,7 +531,7 @@ mod tests {
     #[test]
     fn kittens_are_smaller_than_adults() {
         for p in ALL_POSES {
-            let m = pose_map(p);
+            let m = pose_map(p, H12);
             assert!(stage_rows(m, "kitten").len() < stage_rows(m, "adult").len(), "{p:?}");
         }
     }
@@ -539,7 +540,7 @@ mod tests {
     fn every_pose_is_drawn() {
         for p in ALL_POSES {
             if p != Pose::Sit {
-                assert_ne!(pose_map(p), pose_map(Pose::Sit), "{p:?}");
+                assert_ne!(pose_map(p, H12), pose_map(Pose::Sit, H12), "{p:?}");
             }
         }
     }
@@ -548,7 +549,7 @@ mod tests {
     #[test]
     fn gait_frames_share_head_and_tail() {
         for (a, b, rows) in [(Pose::Walk1, Pose::Walk2, 6), (Pose::Run1, Pose::Run2, 7)] {
-            let (a, b) = (pose_map(a), pose_map(b));
+            let (a, b) = (pose_map(a, H12), pose_map(b, H12));
             assert_eq!(a[..rows], b[..rows]);
         }
     }

@@ -1,8 +1,8 @@
 //! Half-block pixel renderer for the statusline sprite column.
 //!
-//! A `PxCanvas` is `width x PX_H` pixels. Each terminal cell shows two
-//! vertically stacked pixels as `▀` (fg = top, bg = bottom), so `PX_ROWS`
-//! terminal rows carry `PX_H` pixel rows. Transparent cells are plain spaces
+//! A `PxCanvas` is `width x h.px()` pixels. Each terminal cell shows two
+//! vertically stacked pixels as `▀` (fg = top, bg = bottom), so `h.rows()`
+//! terminal rows carry `h.px()` pixel rows. Transparent cells are plain spaces
 //! with no background active. Every encoded row ends with `\x1b[0m`.
 
 use crate::colors::{self, Rgb};
@@ -15,21 +15,57 @@ pub(crate) mod life;
 pub(crate) mod paint;
 pub(crate) mod scene;
 
-pub(crate) const PX_ROWS: usize = 6;
-pub(crate) const PX_H: usize = 12;
+/// Canvas height in pixels: 12 (statusline, 6 rows), 8 (4 rows) or 6 (3 rows).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PxHeight {
+    H6,
+    H8,
+    H12,
+}
+
+impl PxHeight {
+    pub fn px(self) -> usize {
+        match self {
+            Self::H6 => 6,
+            Self::H8 => 8,
+            Self::H12 => 12,
+        }
+    }
+
+    /// Terminal rows: two pixels per row.
+    pub fn rows(self) -> usize {
+        self.px() / 2
+    }
+
+    pub fn from_rows(r: usize) -> Option<Self> {
+        match r {
+            3 => Some(Self::H6),
+            4 => Some(Self::H8),
+            6 => Some(Self::H12),
+            _ => None,
+        }
+    }
+
+    /// Widest painted sprite, outline included. The smaller heights keep the
+    /// 12-px width until their own art lands.
+    pub fn cat_max_w(self) -> usize {
+        16
+    }
+}
 
 /// Plain width of the bg test card rows.
 const CARD_W: usize = 24;
 
-/// `width x PX_H` pixel canvas; `None` is transparent.
+/// `width x h.px()` pixel canvas; `None` is transparent.
 pub(crate) struct PxCanvas {
     w: usize,
+    h: PxHeight,
     px: Vec<Option<Rgb>>,
 }
 
 impl PxCanvas {
-    pub fn new(w: usize) -> Self {
-        Self { w, px: vec![None; w * PX_H] }
+    pub fn new(w: usize, h: PxHeight) -> Self {
+        Self { w, h, px: vec![None; w * h.px()] }
     }
 
     pub fn width(&self) -> usize {
@@ -37,7 +73,7 @@ impl PxCanvas {
     }
 
     fn idx(&self, x: i32, y: i32) -> Option<usize> {
-        if x < 0 || y < 0 || x as usize >= self.w || y as usize >= PX_H {
+        if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h.px() {
             return None;
         }
         Some(y as usize * self.w + x as usize)
@@ -134,10 +170,10 @@ fn cell(t: Option<Rgb>, b: Option<Rgb>, mode: PixelMode) -> (char, Option<Rgb>, 
     }
 }
 
-/// Canvas to `PX_ROWS` ANSI rows. A reset is emitted only when the (fg, bg)
+/// Canvas to `c.h.rows()` ANSI rows. A reset is emitted only when the (fg, bg)
 /// state changes; every row ends with `\x1b[0m`.
 pub(crate) fn encode(c: &PxCanvas, mode: PixelMode) -> Vec<String> {
-    (0..PX_ROWS)
+    (0..c.h.rows())
         .map(|r| {
             let mut row = String::new();
             let mut state: (Option<Rgb>, Option<Rgb>) = (None, None);
@@ -174,8 +210,8 @@ pub(crate) fn test_card() -> Vec<String> {
     const N: usize = 10;
     let first = |c: &PxCanvas| encode(c, PixelMode::Full).swap_remove(0);
 
-    let mut a = PxCanvas::new(N);
-    let mut d = PxCanvas::new(N);
+    let mut a = PxCanvas::new(N, PxHeight::H12);
+    let mut d = PxCanvas::new(N, PxHeight::H12);
     for x in 0..N as i32 {
         a.set(x, 0, colors::CYAN);
         a.set(x, 1, colors::PINK);
@@ -184,7 +220,7 @@ pub(crate) fn test_card() -> Vec<String> {
         d.set(x, 1, pixel::mix(colors::PINK, colors::CYAN, t));
     }
 
-    let mut heart = PxCanvas::new(N);
+    let mut heart = PxCanvas::new(N, PxHeight::H12);
     let shape = [".XXX..XXX.", "XXXXXXXXXX", ".XXXXXXXX.", "...XXXX..."];
     for (y, line) in shape.iter().enumerate() {
         for (x, ch) in line.chars().enumerate() {
@@ -217,8 +253,9 @@ pub(crate) fn cat_area(
     width: usize,
     mode: PixelMode,
     forced: Option<life::Behaviour>,
+    h: PxHeight,
 ) -> Vec<String> {
-    encode(&cat_canvas(view, st, now, width, forced), mode)
+    encode(&cat_canvas(view, st, now, width, forced, h), mode)
 }
 
 /// The canvas behind [`cat_area`]; the cat band packs it into Raster cells.
@@ -228,11 +265,12 @@ pub(crate) fn cat_canvas(
     now: u64,
     width: usize,
     forced: Option<life::Behaviour>,
+    h: PxHeight,
 ) -> PxCanvas {
     match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
-        (Some(o), _) => fx::overlay_canvas(o, now, width, &cat_look(st, now)),
-        (None, Some(sv)) => scene_canvas(st, sv, now, width),
-        (None, None) => life_canvas(st, view.mood, now, width, forced),
+        (Some(o), _) => fx::overlay_canvas(o, now, width, &cat_look(st, now), h),
+        (None, Some(sv)) => scene_canvas(st, sv, now, width, h),
+        (None, None) => life_canvas(st, view.mood, now, width, forced, h),
     }
 }
 
@@ -241,27 +279,27 @@ fn cat_look(st: &crate::state::State, now: u64) -> paint::CatLook<'_> {
 }
 
 /// A playground scene second; a shiny cat twinkles here too.
-fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now: u64, width: usize) -> PxCanvas {
-    let f = scene::scene_frame(sv.kind, sv.elapsed, sv.duration, sv.seed, width);
-    let mut c = scene::draw(&f, width, &cat_look(st, now));
+fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now: u64, width: usize, h: PxHeight) -> PxCanvas {
+    let f = scene::scene_frame(sv.kind, sv.elapsed, sv.duration, sv.seed, width, h);
+    let mut c = scene::draw(&f, width, &cat_look(st, now), h);
     if st.shiny && now.is_multiple_of(2) {
-        sparkle(&mut c, f.x, paint::CAT_MAX_W as i32, (now / 2) ^ st.birth_time);
+        sparkle(&mut c, f.x, h.cat_max_w() as i32, (now / 2) ^ st.birth_time);
     }
     c
 }
 
 /// The idle cat on a `width`-px stage, plus her sleep Z and shiny sparkle.
-fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, forced: Option<life::Behaviour>) -> PxCanvas {
-    let span = width.saturating_sub(paint::CAT_MAX_W);
+fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, forced: Option<life::Behaviour>, h: PxHeight) -> PxCanvas {
+    let span = width.saturating_sub(h.cat_max_w());
     let f = life::life_frame(now, st.birth_time, mood, span, forced);
-    let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink);
-    let (w, top) = (cat.w as i32, (PX_H - cat.h) as i32);
-    let mut c = PxCanvas::new(width);
+    let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink, h);
+    let (w, top) = (cat.w as i32, (h.px() - cat.h) as i32);
+    let mut c = PxCanvas::new(width, h);
     c.blit(&cat, f.x, top);
     if let Some(k) = f.z {
         // Drifts up and away from the tucked head (right end of the Curl
         // map), mirrored when she faces left; the top one is the dim frame.
-        let z = art::prop(art::Prop::Z, u8::from(k == 2));
+        let z = art::prop(art::Prop::Z, u8::from(k == 2), h);
         let (k, zw) = (i32::from(k), z.w as i32);
         let zx = if f.facing_right { f.x + w - 4 + k } else { f.x + 4 - k - zw };
         c.blit(&z, zx, (top - 3 - k).max(0));
@@ -275,11 +313,11 @@ fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, for
 /// A shiny cat twinkles: a sparkle on even seconds at a free spot near her,
 /// a new spot every 2 s. Skipped when no candidate is free.
 fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64) {
-    let s = art::prop(art::Prop::Sparkle, 0);
+    let s = art::prop(art::Prop::Sparkle, 0, c.h);
     let (sw, sh) = (s.w as i32, s.h as i32);
     for i in 0..4 {
         let h = life::ihash(key ^ (i << 60));
-        let (sx, sy) = (x - sw + (h % (w + sw) as u64) as i32, ((h >> 20) % (PX_H as u64 - 4)) as i32);
+        let (sx, sy) = (x - sw + (h % (w + sw) as u64) as i32, ((h >> 20) % (c.h.px() as u64 - 4)) as i32);
         let inside = sx >= 0 && sx + sw <= c.width() as i32;
         if inside && (0..sh).all(|dy| (0..sw).all(|dx| c.get(sx + dx, sy + dy).is_none())) {
             c.blit(&s, sx, sy);
@@ -302,25 +340,26 @@ fn canonical_rarity(breed: &str) -> &'static str {
 fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
     use art::{ALL_POSES, Pose, Tail};
     use paint::{CatLook, paint};
+    const H12: PxHeight = PxHeight::H12;
     let rarity = canonical_rarity(breed);
     let look = |stage| CatLook { breed, rarity, stage, tick: 0 };
     let mut cells = Vec::new();
     for st in ["kitten", "young", "adult"] {
         for p in ALL_POSES {
             for f in [true, false] {
-                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false)));
+                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false, H12)));
             }
         }
     }
     for (label, tail, blink) in [("tail up", Tail::Up, false), ("tail flick", Tail::Flick, false), ("blink", Tail::Curl, true)] {
-        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink)));
+        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink, H12)));
     }
     for p in [Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave] {
-        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false)));
+        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false, H12)));
     }
     for p in art::ALL_PROPS {
         for f in 0..2 {
-            cells.push((format!("{p:?} {f}"), art::prop(p, f)));
+            cells.push((format!("{p:?} {f}"), art::prop(p, f, H12)));
         }
     }
     cells
@@ -340,8 +379,8 @@ pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, bre
     let look = paint::CatLook { breed, rarity: canonical_rarity(breed), stage, tick: 0 };
     let cells = (0..30u64)
         .map(|e| {
-            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width), width, &look);
-            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width, PxHeight::H12), width, &look, PxHeight::H12);
+            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: PxHeight::H12.px(), px: c.px })
         })
         .collect();
     render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
@@ -373,8 +412,8 @@ pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str
     let start = 1_800_000_000u64 / 6 * 6;
     let cells = (0..12u64)
         .map(|s| {
-            let c = fx::overlay_canvas(o, start + s, width, &look);
-            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+            let c = fx::overlay_canvas(o, start + s, width, &look, PxHeight::H12);
+            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: PxHeight::H12.px(), px: c.px })
         })
         .collect();
     Some(render_sheet(&format!("{name} ({breed} {stage}, {width} px)"), cells, 6, json))
@@ -400,12 +439,12 @@ fn render_sheet(title: &str, cells: Vec<(String, PxSprite)>, cols: usize, json: 
         let encoded: Vec<Vec<String>> = chunk
             .iter()
             .map(|(_, s)| {
-                let mut c = PxCanvas::new(cw);
-                c.blit(s, 1, (PX_H - s.h) as i32);
+                let mut c = PxCanvas::new(cw, PxHeight::H12);
+                c.blit(s, 1, (PxHeight::H12.px() - s.h) as i32);
                 encode(&c, PixelMode::Full)
             })
             .collect();
-        for r in 0..PX_ROWS {
+        for r in 0..PxHeight::H12.rows() {
             out.push(encoded.iter().map(|e| e[r].as_str()).collect::<Vec<_>>().join(" "));
         }
         out.push(chunk.iter().map(|(l, _)| format!("{:<cw$}", l.chars().take(cw).collect::<String>())).collect::<Vec<_>>().join(" "));
@@ -416,6 +455,7 @@ fn render_sheet(title: &str, cells: Vec<(String, PxSprite)>, cols: usize, json: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    const H12: PxHeight = PxHeight::H12;
     use colors::{CYAN, PINK};
 
     #[test]
@@ -438,8 +478,20 @@ mod tests {
     }
 
     #[test]
+    fn heights_size_the_canvas() {
+        for (h, rows) in [(PxHeight::H8, 4), (PxHeight::H6, 3), (PxHeight::H12, 6)] {
+            assert_eq!(encode(&PxCanvas::new(10, h), PixelMode::Full).len(), rows, "{h:?}");
+            assert_eq!(h.rows(), rows);
+            assert_eq!(PxHeight::from_rows(rows), Some(h));
+        }
+        assert_eq!(PxHeight::from_rows(5), None);
+        assert_eq!((PxHeight::H12.px(), PxHeight::H8.px(), PxHeight::H6.px()), (12, 8, 6));
+        assert_eq!(PxHeight::H12.cat_max_w(), 16);
+    }
+
+    #[test]
     fn full_cell_is_fg_top_bg_bottom() {
-        let mut c = PxCanvas::new(1);
+        let mut c = PxCanvas::new(1, H12);
         c.set(0, 0, CYAN);
         c.set(0, 1, PINK);
         let r = encode(&c, PixelMode::Full);
@@ -449,7 +501,7 @@ mod tests {
 
     #[test]
     fn fg_only_never_emits_bg() {
-        let mut c = PxCanvas::new(3);
+        let mut c = PxCanvas::new(3, H12);
         c.set(0, 0, CYAN);
         c.set(0, 1, PINK);
         c.set(1, 1, CYAN);
@@ -462,7 +514,7 @@ mod tests {
 
     #[test]
     fn fg_only_outline_top_keeps_bottom() {
-        let mut c = PxCanvas::new(1);
+        let mut c = PxCanvas::new(1, H12);
         c.set(0, 0, paint::OUTLINE);
         c.set(0, 1, PINK);
         let r = encode(&c, PixelMode::FgOnly);
@@ -475,7 +527,7 @@ mod tests {
         let mut rng = crate::identity::Lcg::new(7);
         for w in [1usize, 24, 60, 120] {
             for _ in 0..50 {
-                let mut c = PxCanvas::new(w);
+                let mut c = PxCanvas::new(w, H12);
                 for _ in 0..w * 4 {
                     let v = rng.next();
                     c.set((v % w as u64) as i32, ((v >> 8) % 12) as i32, Rgb(v as u8, (v >> 16) as u8, 9));
@@ -513,7 +565,7 @@ mod tests {
 
     #[test]
     fn canvas_clips_and_blits() {
-        let mut c = PxCanvas::new(2);
+        let mut c = PxCanvas::new(2, H12);
         c.set(-1, 0, CYAN);
         c.set(2, 0, CYAN);
         c.set(0, 12, CYAN);
@@ -533,7 +585,7 @@ mod tests {
     }
 
     fn assert_rows(rows: &[String], w: usize, what: &str) {
-        assert_eq!(rows.len(), PX_ROWS, "{what}");
+        assert_eq!(rows.len(), H12.rows(), "{what}");
         for r in rows {
             assert_eq!(crate::span::strip_ansi(r).chars().count(), w, "{what}");
             assert!(r.ends_with("\x1b[0m"), "{what}");
@@ -549,7 +601,7 @@ mod tests {
                 for mood in ["calm", "happy", "alert", "hungry", "panic", "sleep"] {
                     for m in [PixelMode::Full, PixelMode::FgOnly] {
                         for now in 1_800_000_000..1_800_000_120u64 {
-                            assert_rows(&encode(&life_canvas(&st, mood, now, w, None), m), w, &format!("{level} {w} {mood} {now}"));
+                            assert_rows(&encode(&life_canvas(&st, mood, now, w, None, H12), m), w, &format!("{level} {w} {mood} {now}"));
                         }
                     }
                 }
@@ -567,8 +619,8 @@ mod tests {
             // 1_800_000_012 is mid-block (dozing either way) and divisible by 3: Z k = 0, then 1.
             let ys: Vec<i32> = (1_800_000_012..1_800_000_014u64)
                 .map(|now| {
-                    let c = life_canvas(&st, "sleep", now, w, None);
-                    (0..PX_H as i32).find(|&y| (0..w as i32).any(|x| c.get(x, y) == Some(zc))).expect("a Z")
+                    let c = life_canvas(&st, "sleep", now, w, None, H12);
+                    (0..H12.px() as i32).find(|&y| (0..w as i32).any(|x| c.get(x, y) == Some(zc))).expect("a Z")
                 })
                 .collect();
             assert!(ys[1] < ys[0], "{seed} {w}: Z does not rise {ys:?}");
@@ -581,8 +633,8 @@ mod tests {
         let mut st = crate::state::State::base(1_000);
         st.breed = "Ginger".into();
         let has = |st: &crate::state::State, now| {
-            let c = life_canvas(st, "calm", now, 60, Some(life::Behaviour::Sit));
-            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == white))
+            let c = life_canvas(st, "calm", now, 60, Some(life::Behaviour::Sit), H12);
+            (0..60).any(|x| (0..H12.px() as i32).any(|y| c.get(x, y) == white))
         };
         assert!(!(1_800_000_000..1_800_000_060u64).any(|t| has(&st, t)), "plain cat sparkles");
         st.shiny = true;
@@ -602,9 +654,9 @@ mod tests {
             || None,
         );
         assert_eq!(view.mood, "sleep");
-        let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None, H12);
         assert_rows(&rows, 60, "cat_area");
-        assert_eq!(rows, encode(&life_canvas(&st, "sleep", now, 60, None), PixelMode::Full));
+        assert_eq!(rows, encode(&life_canvas(&st, "sleep", now, 60, None, H12), PixelMode::Full));
     }
 
     /// A visible scene replaces idle life; `PURR_PLAYGROUND=0` (or a
@@ -624,21 +676,21 @@ mod tests {
             )
         };
         let v = view(&st, true);
-        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None, H12);
         assert_rows(&rows, 60, "scene");
-        let f = scene::scene_frame(PlaygroundScene::BallChase, 5, 30, 7, 60);
-        assert_eq!(rows, encode(&scene::draw(&f, 60, &cat_look(&st, now)), PixelMode::Full));
-        let life = encode(&life_canvas(&st, v.mood, now, 60, None), PixelMode::Full);
+        let f = scene::scene_frame(PlaygroundScene::BallChase, 5, 30, 7, 60, H12);
+        assert_eq!(rows, encode(&scene::draw(&f, 60, &cat_look(&st, now), H12), PixelMode::Full));
+        let life = encode(&life_canvas(&st, v.mood, now, 60, None, H12), PixelMode::Full);
         assert_ne!(rows, life);
         let off = view(&st, false);
         assert!(off.scene.is_none());
-        assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None), life);
+        assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None, H12), life);
         st.celebration_kind = CelebrationKind::LevelUp;
         let v = view(&st, true);
         assert!(v.scene.is_none());
-        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None, H12);
         let o = fx::Overlay::Celebration(CelebrationKind::LevelUp);
-        assert_eq!(rows, encode(&fx::overlay_canvas(o, now, 60, &cat_look(&st, now)), PixelMode::Full));
+        assert_eq!(rows, encode(&fx::overlay_canvas(o, now, 60, &cat_look(&st, now), H12), PixelMode::Full));
         assert_ne!(rows, life);
     }
 
@@ -650,8 +702,8 @@ mod tests {
             kind: crate::state::PlaygroundScene::Run, elapsed: 3, duration: 30, seed: 7, width: 60, finale: false,
         };
         let white = |now| {
-            let c = scene_canvas(&st, &sv, now, 60);
-            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == Some(crate::pixel::WHITE)))
+            let c = scene_canvas(&st, &sv, now, 60, H12);
+            (0..60).any(|x| (0..H12.px() as i32).any(|y| c.get(x, y) == Some(crate::pixel::WHITE)))
         };
         assert!((1_800_000_000..1_800_000_040u64).step_by(2).any(white));
         assert!(!(1_800_000_001..1_800_000_040u64).step_by(2).any(white));
