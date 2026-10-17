@@ -491,10 +491,8 @@ pub fn run() {
 
     let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::strip_width()) {
         (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
-        // Opt-in preview (Task 4 stub; Task 6 swaps in idle life).
         (m @ (crate::px::PixelMode::Full | crate::px::PixelMode::FgOnly), Some(w)) => {
-            let pose = crate::px::preview_pose_from(std::env::var("PURR_FORCE_POSE").ok().as_deref());
-            Some(crate::px::cat_area(&st, now.max(0) as u64, w, pose, m))
+            Some(crate::px::cat_area(&view, &st, now.max(0) as u64, w, m, crate::px::life::forced()))
         }
         _ => None,
     };

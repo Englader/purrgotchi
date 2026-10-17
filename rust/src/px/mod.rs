@@ -9,6 +9,7 @@ use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
+pub(crate) mod life;
 pub(crate) mod paint;
 
 pub(crate) const PX_ROWS: usize = 6;
@@ -28,7 +29,6 @@ impl PxCanvas {
         Self { w, px: vec![None; w * PX_H] }
     }
 
-    #[allow(dead_code)] // used by the sprite tasks
     pub fn width(&self) -> usize {
         self.w
     }
@@ -47,13 +47,11 @@ impl PxCanvas {
         }
     }
 
-    #[allow(dead_code)] // used by the sprite tasks
     pub fn get(&self, x: i32, y: i32) -> Option<Rgb> {
         self.idx(x, y).and_then(|i| self.px[i])
     }
 
     /// Clipped sprite blit; `None` pixels are transparent.
-    #[allow(dead_code)] // used by the sprite tasks
     pub fn blit(&mut self, s: &PxSprite, x: i32, y: i32) {
         for sy in 0..s.h {
             for sx in 0..s.w {
@@ -65,7 +63,6 @@ impl PxCanvas {
     }
 }
 
-#[allow(dead_code)] // used by the sprite tasks
 pub(crate) struct PxSprite {
     pub w: usize,
     pub h: usize,
@@ -205,48 +202,56 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
-/// `PURR_FORCE_POSE` values the Task 4 preview understands. Task 6 replaces
-/// this with the full behaviour list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PreviewPose {
-    Sit,
-    Wander,
+/// The 6 sprite-column rows. Idle life only for now; Tasks 7-8 put scenes,
+/// celebrations and the birthday ahead of it (the `kitten_view` priority).
+pub(crate) fn cat_area(
+    view: &crate::statusline::KittenView,
+    st: &crate::state::State,
+    now: u64,
+    width: usize,
+    mode: PixelMode,
+    forced: Option<life::Behaviour>,
+) -> Vec<String> {
+    encode(&life_canvas(st, view.mood, now, width, forced), mode)
 }
 
-pub(crate) fn preview_pose_from(v: Option<&str>) -> PreviewPose {
-    match v.map(str::trim) {
-        Some("wander" | "walk") => PreviewPose::Wander,
-        _ => PreviewPose::Sit,
-    }
-}
-
-/// Task 4 stub of the sprite column (Gate B live check): Sit with a tail
-/// flick and blinks, or `wander` (Walk1/Walk2 at 2 px/s, ping-pong across the
-/// stage). Pure in `(state, now, width)`; Task 6 replaces it with idle life.
-pub(crate) fn cat_area(st: &crate::state::State, now: u64, width: usize, pose: PreviewPose, mode: PixelMode) -> Vec<String> {
-    use art::{Pose, Tail};
-    let look = paint::CatLook {
-        breed: &st.breed,
-        rarity: &st.rarity,
-        stage: crate::state::life_stage(st.level),
-        tick: now,
-    };
+/// The idle cat on a `width`-px stage, plus her sleep Z and shiny sparkle.
+fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, forced: Option<life::Behaviour>) -> PxCanvas {
     let span = width.saturating_sub(paint::CAT_MAX_W);
-    let (p, x, right, tail, blink) = match pose {
-        PreviewPose::Sit => {
-            let tail = if now % 5 == 0 { Tail::Flick } else if now % 10 < 5 { Tail::Curl } else { Tail::Up };
-            (Pose::Sit, span / 3, true, tail, now % 7 == 0)
-        }
-        PreviewPose::Wander => {
-            let t = now.wrapping_mul(2);
-            let walk = if now % 2 == 0 { Pose::Walk1 } else { Pose::Walk2 };
-            (walk, crate::playground::tri(t, span), crate::playground::tri_rising(t, span), Tail::Curl, false)
-        }
-    };
-    let s = paint::paint(p, &look, right, tail, blink);
+    let f = life::life_frame(now, st.birth_time, mood, span, forced);
+    let look = paint::CatLook { breed: &st.breed, rarity: &st.rarity, stage: crate::state::life_stage(st.level), tick: now };
+    let cat = paint::paint(f.pose, &look, f.facing_right, f.tail, f.blink);
+    let (w, top) = (cat.w as i32, (PX_H - cat.h) as i32);
     let mut c = PxCanvas::new(width);
-    c.blit(&s, x as i32, (PX_H - s.h) as i32);
-    encode(&c, mode)
+    c.blit(&cat, f.x, top);
+    if let Some(k) = f.z {
+        // Drifts up and away from the tucked head (right end of the Curl
+        // map), mirrored when she faces left; the top one is the dim frame.
+        let z = art::prop(art::Prop::Z, u8::from(k == 2));
+        let (k, zw) = (i32::from(k), z.w as i32);
+        let zx = if f.facing_right { f.x + w - 4 + k } else { f.x + 4 - k - zw };
+        c.blit(&z, zx, (top - 3 - k).max(0));
+    }
+    if st.shiny && now % 2 == 0 {
+        sparkle(&mut c, f.x, w, (now / 2) ^ st.birth_time);
+    }
+    c
+}
+
+/// A shiny cat twinkles: a sparkle on even seconds at a free spot near her,
+/// a new spot every 2 s. Skipped when no candidate is free.
+fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64) {
+    let s = art::prop(art::Prop::Sparkle, 0);
+    let (sw, sh) = (s.w as i32, s.h as i32);
+    for i in 0..4 {
+        let h = life::ihash(key ^ (i << 60));
+        let (sx, sy) = (x - sw + (h % (w + sw) as u64) as i32, ((h >> 20) % (PX_H as u64 - 4)) as i32);
+        let inside = sx >= 0 && sx + sw <= c.width() as i32;
+        if inside && (0..sh).all(|dy| (0..sw).all(|dx| c.get(sx + dx, sy + dy).is_none())) {
+            c.blit(&s, sx, sy);
+            return;
+        }
+    }
 }
 
 /// The rarity a breed always hatches with (sheet previews only).
@@ -431,37 +436,83 @@ mod tests {
     #[test]
     fn test_card_shape() {
         let r = test_card();
-        assert_eq!(r.len(), 6);
-        for row in &r {
-            assert_eq!(crate::span::strip_ansi(row).chars().count(), 24);
-            assert!(row.ends_with("\x1b[0m"));
-        }
+        assert_rows(&r, CARD_W, "test card");
         assert!(r[0].contains("\x1b[48;2;234;0;217m"));
         assert!(r[1].contains("\x1b[48;2;243;243;27m"));
     }
 
+    fn assert_rows(rows: &[String], w: usize, what: &str) {
+        assert_eq!(rows.len(), PX_ROWS, "{what}");
+        for r in rows {
+            assert_eq!(crate::span::strip_ansi(r).chars().count(), w, "{what}");
+            assert!(r.ends_with("\x1b[0m"), "{what}");
+        }
+    }
+
     #[test]
-    fn preview_cat_area_shape() {
+    fn life_rows_keep_their_shape() {
         let mut st = crate::state::State::base(1_000);
-        for level in [1, 10, 50] {
-            st.level = level;
+        for (level, shiny, breed) in [(1, false, "Ginger"), (10, true, "Void Cat"), (50, true, ""), (50, false, "Dragon")] {
+            (st.level, st.shiny, st.breed) = (level, shiny, breed.to_string());
             for w in [24usize, 60, 120] {
-                for pose in [PreviewPose::Sit, PreviewPose::Wander] {
+                for mood in ["calm", "happy", "alert", "hungry", "panic", "sleep"] {
                     for m in [PixelMode::Full, PixelMode::FgOnly] {
                         for now in 1_800_000_000..1_800_000_120u64 {
-                            let rows = cat_area(&st, now, w, pose, m);
-                            assert_eq!(rows.len(), PX_ROWS);
-                            for r in &rows {
-                                assert_eq!(crate::span::strip_ansi(r).chars().count(), w);
-                                assert!(r.ends_with("\x1b[0m"));
-                            }
+                            assert_rows(&encode(&life_canvas(&st, mood, now, w, None), m), w, &format!("{level} {w} {mood} {now}"));
                         }
                     }
                 }
             }
         }
-        assert_eq!(preview_pose_from(Some("wander")), PreviewPose::Wander);
-        assert_eq!(preview_pose_from(Some("junk")), PreviewPose::Sit);
-        assert_eq!(preview_pose_from(None), PreviewPose::Sit);
+    }
+
+    /// The sleeping cat gets a Z over her head, on the canvas, both facings.
+    #[test]
+    fn sleep_shows_a_rising_z() {
+        let zc = crate::pixel::NEON_CYAN;
+        let mut st = crate::state::State::base(1_000);
+        for (seed, w) in [(1_000u64, 24usize), (1_008, 24), (1_000, 120), (1_008, 60)] {
+            st.birth_time = seed;
+            // 1_800_000_012 is mid-block (dozing either way) and divisible by 3: Z k = 0, then 1.
+            let ys: Vec<i32> = (1_800_000_012..1_800_000_014u64)
+                .map(|now| {
+                    let c = life_canvas(&st, "sleep", now, w, None);
+                    (0..PX_H as i32).find(|&y| (0..w as i32).any(|x| c.get(x, y) == Some(zc))).expect("a Z")
+                })
+                .collect();
+            assert!(ys[1] < ys[0], "{seed} {w}: Z does not rise {ys:?}");
+        }
+    }
+
+    #[test]
+    fn shiny_twinkles_on_even_seconds_only() {
+        let white = Some(crate::pixel::WHITE);
+        let mut st = crate::state::State::base(1_000);
+        st.breed = "Ginger".into();
+        let has = |st: &crate::state::State, now| {
+            let c = life_canvas(st, "calm", now, 60, Some(life::Behaviour::Sit));
+            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == white))
+        };
+        assert!(!(1_800_000_000..1_800_000_060u64).any(|t| has(&st, t)), "plain cat sparkles");
+        st.shiny = true;
+        assert!((1_800_000_000..1_800_000_060u64).step_by(2).filter(|&t| has(&st, t)).count() > 20);
+        assert!(!(1_800_000_001..1_800_000_060u64).step_by(2).any(|t| has(&st, t)));
+    }
+
+    /// The statusline entry point, through a real `kitten_view`.
+    #[test]
+    fn cat_area_uses_the_view_mood() {
+        use crate::statusline::{kitten_view, ViewInput};
+        let mut st = crate::state::State::base(1_000);
+        st.last_fed_at = 1;
+        let now = 1_800_000_010u64;
+        let view = kitten_view(
+            &ViewInput { st: &st, now: now as i64, frame: 0, ctx_pct: 0.0, forced_scene: None, playground_enabled: true, strip_width: Some(60) },
+            || None,
+        );
+        assert_eq!(view.mood, "sleep");
+        let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None);
+        assert_rows(&rows, 60, "cat_area");
+        assert_eq!(rows, encode(&life_canvas(&st, "sleep", now, 60, None), PixelMode::Full));
     }
 }

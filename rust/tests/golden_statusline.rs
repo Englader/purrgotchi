@@ -95,11 +95,27 @@ fn cases() -> Vec<Case> {
 
 /// Opt-in pixel-cat cases (goldens under `statusline_px/`).
 fn px_cases() -> Vec<Case> {
-    vec![Case {
-        dir: "statusline_px",
-        env: &[("PURR_PIXELS", "test"), ("COLUMNS", "160")],
-        ..case("pixel_test_card")
-    }]
+    let px = |name| Case { dir: "statusline_px", env: &[("PURR_PIXELS", "1")], ..case(name) };
+    vec![
+        Case { env: &[("PURR_PIXELS", "test"), ("COLUMNS", "160")], ..px("pixel_test_card") },
+        // Idle life. Times are picked to show distinct poses: walking (block start),
+        // running, curled with a Z, grooming, loafing.
+        Case { must_contain: &["MOOD: calm"], ..px("px_life_calm") },
+        Case { now: NOW + 12, state: json!({ "rarity": "epic", "last_fed_at": NOW - 30_000 }),
+               must_contain: &["MOOD: sleep"], ..px("px_life_sleep_epic") },
+        Case { now: NOW + 9, payload: Some(json!({ "context_window": { "used_percentage": 92.0 } })),
+               must_contain: &["MOOD: panic"], ..px("px_life_panic") },
+        Case { now: NOW + 7 * 3600 + 1,
+               state: json!({ "rarity": "rare", "level": 20, "total_tool_calls": 960, "last_milestone_celebrated": 500 }),
+               payload: Some(json!({ "context_window": { "used_percentage": 55.0 } })),
+               branch: Some("feat/v4.0.0-claude-code-mod-json-surface"),
+               must_contain: &["MOOD: alert"], ..px("px_life_young_rare_frame1") },
+        Case { now: NOW + 20, env: &[("PURR_PIXELS", "fg")], ..px("px_life_fg_mode") },
+        Case { now: NOW + 9, env: &[("PURR_PIXELS", "1"), ("PURR_FORCE_POSE", "groom")], ..px("px_life_forced_groom") },
+        // Too narrow for a stage: the classic sprite, byte for byte (checked below).
+        Case { anchor: Some("1.25\n1000.000000\n"), env: &[("PURR_PIXELS", "1"), ("COLUMNS", "120")],
+               ..px("px_life_narrow_is_ascii") },
+    ]
 }
 
 fn legendary() -> Value {
@@ -228,6 +244,9 @@ fn statusline_goldens() {
         if c.name == "quip_hidden_behind_celebration" {
             let q: Value = serde_json::from_slice(&std::fs::read(sb.state.join("llm-quip.json")).unwrap()).unwrap();
             assert_eq!(q["renders_remaining"], 6, "quip must not burn behind a celebration");
+        }
+        if c.name == "px_life_narrow_is_ascii" {
+            assert_golden(&format!("{CLASSIC_DIR}/calm_common_offpeak.ansi"), &bytes);
         }
         assert_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
     }
