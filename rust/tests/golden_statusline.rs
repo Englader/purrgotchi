@@ -118,7 +118,31 @@ fn px_cases() -> Vec<Case> {
     ]
     .into_iter()
     .chain(px_scene_cases())
+    .chain(px_celebrate_cases())
     .collect()
+}
+
+/// Pixel celebration and birthday overlays: the states of the classic
+/// `celebration_*` cases (EvolvingYoung on its odd, white-flash second).
+fn px_celebrate_cases() -> Vec<Case> {
+    let px = |name, state| Case { dir: "statusline_px", state, env: &[("PURR_PIXELS", "1"), ("COLUMNS", "160")], ..case(name) };
+    let quip = json!({ "quip": "the cat watches", "generated_at": NOW - 10, "renders_remaining": 6, "last_render_at": 0 });
+    vec![
+        px("px_celebrate_levelup", celebration("LevelUp")),
+        Case { now: NOW + 1, ..px("px_celebrate_evolving_young_flash", { let mut s = celebration("EvolvingYoung"); merge(&mut s, json!({ "level": 10, "total_tool_calls": 450 })); s }) },
+        px("px_celebrate_evolving_adult", { let mut s = celebration("EvolvingAdult"); merge(&mut s, json!({ "level": 30, "total_tool_calls": 1500 })); s }),
+        px("px_celebrate_streak", celebration("Streak")),
+        px("px_celebrate_milestone_centurion", celebration("MilestoneCenturion")),
+        px("px_celebrate_milestone_veteran", celebration("MilestoneVeteran")),
+        px("px_celebrate_milestone_master", celebration("MilestoneMaster")),
+        px("px_celebrate_milestone_legendary", celebration("MilestoneLegendary")),
+        px("px_celebrate_greeting", celebration("Greeting")),
+        Case { now: NOW + 1, ..px("px_celebrate_greeting_wave", celebration("Greeting")) },
+        px("px_celebrate_random_drop", celebration("RandomDrop")),
+        px("px_birthday", json!({ "birth_time": NOW - 365 * DAY })),
+        // A quip shows in the speech row (pink); the pixel cat is the idle one.
+        Case { quip: Some(quip), must_contain: &["\"the cat watches\""], ..px("px_quip_keeps_pixel_cat", json!({})) },
+    ]
 }
 
 /// Pixel playground scenes: the states of the classic `scene_*` cases.

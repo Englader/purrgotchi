@@ -9,6 +9,7 @@ use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
+pub(crate) mod fx;
 pub(crate) mod life;
 pub(crate) mod paint;
 pub(crate) mod scene;
@@ -203,10 +204,10 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
-/// The 6 sprite-column rows, in `kitten_view` priority: a visible playground
-/// scene, else idle life. (`view.scene` is already `None` behind a
-/// celebration, the birthday, `PURR_PLAYGROUND=0` or a too-narrow strip.)
-/// Task 8 puts the celebration and birthday overlays ahead of the scene.
+/// The 6 sprite-column rows, in `kitten_view` priority: a celebration, the
+/// birthday, a visible playground scene, else idle life. (`view.scene` is
+/// already `None` behind the first two, `PURR_PLAYGROUND=0` or a too-narrow
+/// strip.)
 pub(crate) fn cat_area(
     view: &crate::statusline::KittenView,
     st: &crate::state::State,
@@ -215,9 +216,10 @@ pub(crate) fn cat_area(
     mode: PixelMode,
     forced: Option<life::Behaviour>,
 ) -> Vec<String> {
-    let canvas = match &view.scene {
-        Some(sv) => scene_canvas(st, sv, now, width),
-        None => life_canvas(st, view.mood, now, width, forced),
+    let canvas = match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
+        (Some(o), _) => fx::overlay_canvas(o, now, width, &cat_look(st, now)),
+        (None, Some(sv)) => scene_canvas(st, sv, now, width),
+        (None, None) => life_canvas(st, view.mood, now, width, forced),
     };
     encode(&canvas, mode)
 }
@@ -331,6 +333,39 @@ pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, bre
         })
         .collect();
     render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
+}
+
+/// Dev verb `pixels celebrate <levelup|young|adult|streak|centurion|veteran|
+/// master|legendary|greeting|drop|birthday> [--width W] [--breed B] [--stage S]
+/// [--json]`: twelve consecutive seconds of the overlay.
+pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str, json: bool) -> Option<String> {
+    use crate::state::CelebrationKind as K;
+    let o = fx::Overlay::pick(
+        match name {
+            "levelup" => K::LevelUp,
+            "young" => K::EvolvingYoung,
+            "adult" => K::EvolvingAdult,
+            "streak" => K::Streak,
+            "centurion" => K::MilestoneCenturion,
+            "veteran" => K::MilestoneVeteran,
+            "master" => K::MilestoneMaster,
+            "legendary" => K::MilestoneLegendary,
+            "greeting" => K::Greeting,
+            "drop" => K::RandomDrop,
+            "birthday" => K::None,
+            _ => return None,
+        },
+        name == "birthday",
+    )?;
+    let look = paint::CatLook { breed, rarity: canonical_rarity(breed), stage, tick: 0 };
+    let start = 1_800_000_000u64 / 6 * 6;
+    let cells = (0..12u64)
+        .map(|s| {
+            let c = fx::overlay_canvas(o, start + s, width, &look);
+            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+        })
+        .collect();
+    Some(render_sheet(&format!("{name} ({breed} {stage}, {width} px)"), cells, 6, json))
 }
 
 /// Labelled cells as ANSI blocks, or
@@ -581,7 +616,12 @@ mod tests {
         assert!(off.scene.is_none());
         assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None), life);
         st.celebration_kind = CelebrationKind::LevelUp;
-        assert!(view(&st, true).scene.is_none(), "T8 draws the overlay; until then the life cat");
+        let v = view(&st, true);
+        assert!(v.scene.is_none());
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        let o = fx::Overlay::Celebration(CelebrationKind::LevelUp);
+        assert_eq!(rows, encode(&fx::overlay_canvas(o, now, 60, &cat_look(&st, now)), PixelMode::Full));
+        assert_ne!(rows, life);
     }
 
     #[test]

@@ -142,8 +142,19 @@ fn main() {
                 println!("{}", px::scene_sheet(kind, width, breed, stage, json));
                 process::exit(0);
             }
+            Some("celebrate") => {
+                let width = cli::flag_value(&args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+                let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
+                let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
+                let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, json)) else {
+                    eprintln!("usage: purrgotchi pixels celebrate levelup|young|adult|streak|centurion|veteran|master|legendary|greeting|drop|birthday [--width W] [--breed B] [--stage S] [--json]");
+                    process::exit(2);
+                };
+                println!("{sheet}");
+                process::exit(0);
+            }
             _ => {
-                eprintln!("usage: purrgotchi pixels test|sheet|scene [--breed B] [--json]");
+                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate [--breed B] [--json]");
                 process::exit(2);
             }
         },
