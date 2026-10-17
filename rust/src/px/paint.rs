@@ -239,6 +239,15 @@ mod tests {
     }
 
     #[test]
+    fn breath_is_subtle() {
+        let px = |p| paint(p, &look("Ginger", "adult"), true, Tail::Curl, false).px;
+        for (a, b) in [(Pose::Loaf, Pose::LoafBreath), (Pose::Curl, Pose::CurlBreath)] {
+            let d = px(a).iter().zip(px(b).iter()).filter(|(x, y)| x != y).count();
+            assert!(d > 0 && d <= 6, "{a:?}: {d}");
+        }
+    }
+
+    #[test]
     fn stages_scale() {
         let h = |st| paint(Pose::Sit, &look("Ginger", st), true, Tail::Curl, false).h;
         assert!(h("kitten") < h("young") && h("young") < h("adult"));

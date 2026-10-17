@@ -257,18 +257,17 @@ fn canonical_rarity(breed: &str) -> &'static str {
         .unwrap_or("common")
 }
 
-/// `pixels sheet` cells for one breed: every drawn pose × stage × facing
-/// (tail Curl, eyes open), then adult Sit with tail Up / Flick / blink.
+/// `pixels sheet` cells for one breed: every pose × stage × facing
+/// (tail Curl, eyes open), then adult Sit with tail Up / Flick / blink, the
+/// tail-socket poses with tail Up, and every prop frame.
 fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
     use art::{ALL_POSES, Pose, Tail};
     use paint::{CatLook, paint};
     let rarity = canonical_rarity(breed);
     let look = |stage| CatLook { breed, rarity, stage, tick: 0 };
-    let drawn = ALL_POSES.into_iter().filter(|&p| p == Pose::Sit || !std::ptr::eq(art::pose_map(p), art::pose_map(Pose::Sit)));
-    let drawn: Vec<Pose> = drawn.collect();
     let mut cells = Vec::new();
     for st in ["kitten", "young", "adult"] {
-        for &p in &drawn {
+        for p in ALL_POSES {
             for f in [true, false] {
                 cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false)));
             }
@@ -276,6 +275,14 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
     }
     for (label, tail, blink) in [("tail up", Tail::Up, false), ("tail flick", Tail::Flick, false), ("blink", Tail::Curl, true)] {
         cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink)));
+    }
+    for p in [Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave] {
+        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false)));
+    }
+    for p in art::ALL_PROPS {
+        for f in 0..2 {
+            cells.push((format!("{p:?} {f}"), art::prop(p, f)));
+        }
     }
     cells
 }
