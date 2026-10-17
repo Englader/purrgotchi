@@ -143,9 +143,9 @@ pub fn apply(
 ///    retries the same delta — no double-count.
 /// 5. **Then save state.** If this fails, we lose at most one render's delta
 ///    — never duplicate. See spec §2 write-order rationale.
-pub fn accumulate_from_payload(session_id: &str, cur: f64) -> f64 {
+pub fn accumulate_from_payload(session_id: &str, cur: f64) {
     if session_id.is_empty() {
-        return 0.0;
+        return;
     }
     let now = crate::state::now_secs();
     let path = crate::paths::cost_sessions_file();
@@ -155,29 +155,28 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) -> f64 {
     // whole-struct state save could clobber a concurrent feed hook's
     // increments. A missed lock just skips this render; the next one retries
     // the same delta.
-    let Some(_lock) = crate::state::acquire_lock() else { return 0.0 };
+    let Some(_lock) = crate::state::acquire_lock() else { return };
     let mut sessions = load_at(&path);
 
     let mut state = match crate::state::load() {
         Some(s) => s,
-        None => return 0.0, // not yet hatched — nothing to accumulate against
+        None => return, // not yet hatched — nothing to accumulate against
     };
 
     let outcome = apply(&mut sessions, &mut state, session_id, cur, now, MAX_AGE_SECS);
 
     if !outcome.sidecar_dirty && outcome.credit == 0.0 {
-        return 0.0; // steady-state no-op render — zero disk writes
+        return; // steady-state no-op render — zero disk writes
     }
 
     // Sidecar first.
     if outcome.sidecar_dirty && save_at(&path, &sessions).is_err() {
-        return 0.0;
+        return;
     }
     // Only credit the lifetime field on disk if we actually moved the needle.
-    if outcome.credit > 0.0 && crate::state::save_atomic(&state).is_err() {
-        return 0.0;
+    if outcome.credit > 0.0 {
+        let _ = crate::state::save_atomic(&state);
     }
-    outcome.credit
 }
 
 #[cfg(test)]
