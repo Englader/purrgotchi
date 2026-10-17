@@ -1,6 +1,51 @@
-// Composition root (stub): the band lands in Task 1.4.
-import type { Register } from 'claude-code'
+// Composition root: the cat band above the prompt.
+import type { EngineInterface, Register } from 'claude-code'
+
+import { B, KEY, MIN_COLS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
+import type { BandHost } from './band'
+
+const RECONCILE_MS = 100
+
+/** `PURR_BAND_STATS`: the dev counters file, rewritten once a second. */
+async function writeStats($: Pick<EngineInterface, 'fs' | 'clock'>, path: string): Promise<void> {
+  try {
+    await $.fs.write(path, statsJson(await $.clock.now()))
+  } catch {
+    // dev only
+  }
+}
+
+async function startBand($: BandHost & Pick<EngineInterface, 'env' | 'fs' | 'process' | 'clock' | 'ui'>): Promise<void> {
+  await prepareBand($)
+  $.clock.every(RECONCILE_MS, () => reconcile($))
+  const stats = (await $.env.get('PURR_BAND_STATS'))?.trim()
+  if (stats !== undefined && stats !== '') $.clock.every(1000, () => void writeStats($, stats))
+  // The band rendered before the options were read: draw it again.
+  $.ui.invalidate('ui.render')
+}
 
 export const register: Register = on => {
-  on('session.start', async ($, e, next) => next(e))
+  on('session.start', async ($, e, next) => {
+    const r = await next(e)
+    await startBand($)
+    return r
+  })
+
+  // `/clear` keeps the child: session.end does nothing.
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next(e)
+    if (e.props.hasSurvey || B.opts === null || B.bin === null || e.props.bodyColumns < MIN_COLS) {
+      B.rows = 0
+      return next(e)
+    }
+    const rows = pickRows(B.opts.rows, e.props.maxRows)
+    B.rows = rows
+    if (rows === 0) return next(e)
+    B.requestId = e.requestId
+    B.cols = Math.min(512, e.props.bodyColumns)
+    const fits = B.cells !== null && B.helloCols === B.cols && B.helloRows === rows
+    const { Raster } = $.ui.resolve(e)
+    return Raster({ key: KEY, columns: B.cols, rows, cells: fits && B.cells !== null ? B.cells : blankCells(B.cols, rows) })
+  })
 }

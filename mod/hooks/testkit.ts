@@ -89,6 +89,11 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     spies.blits.push({ requestId: b.requestId, ...(b.key !== undefined && { key: b.key }), ...(b.cells !== undefined && { cells: b.cells }) })
     return { value: o.blit?.(spies.blits.length) ?? {} }
   })
+  // The engine's own band (what `next(e)` reaches): an empty Text.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: [''] })
+  })
   on('process.run', ($, e) => {
     const argv = [...e.argv]
     spies.runs.push(argv)
