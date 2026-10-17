@@ -8,6 +8,7 @@ mod cost_acc;
 mod debug;
 mod events;
 mod frame;
+mod heartbeat;
 mod hatch;
 mod hooks;
 mod identity;
