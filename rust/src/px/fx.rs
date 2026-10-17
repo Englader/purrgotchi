@@ -105,7 +105,7 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook) -> Sc
         Overlay::Celebration(EvolvingYoung | EvolvingAdult) => sparkles(&mut f, width, 2, now, cx, cw),
         Overlay::Celebration(Streak) => {
             let fh = art::prop(Prop::Flame, 0).h as i32;
-            put(&mut f, width, Prop::Flame, frame, cx - 3, H - fh);
+            put(&mut f, width, Prop::Flame, frame, cx - 4, H - fh);
             put(&mut f, width, Prop::Flame, frame ^ 1, cx + cw + 1, H - fh);
         }
         Overlay::Celebration(k @ (MilestoneCenturion | MilestoneVeteran | MilestoneMaster | MilestoneLegendary)) => {

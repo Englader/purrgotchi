@@ -423,12 +423,12 @@ pub(crate) fn prop(p: Prop, frame: u8) -> PxSprite {
         (Prop::Coin, false) => grid(&[".GG.", "GGGG", "GGGG", ".GG."], &[('G', gold)]),
         (Prop::Coin, true) => grid(&[".wG.", "GGGG", "GGGG", ".GG."], &[('G', gold), ('w', pixel::WHITE)]),
         (Prop::Heart, _) => grid(&[".H.H.", "HHHHH", ".HHH.", "..H.."], &[('H', pink)]),
-        (Prop::Hat, _) => grid(&[".Y.", ".M.", "MMM", "MMM"], &[('Y', yellow), ('M', wing)]),
+        (Prop::Hat, _) => grid(&[".Y.", ".M.", "MWM", "CCC"], &[('Y', yellow), ('M', wing), ('W', pixel::WHITE), ('C', z)]),
         (Prop::Sparkle, false) => grid(&[".W.", "WWW", ".W."], &[('W', pixel::WHITE)]),
         (Prop::Sparkle, true) => grid(&["...", ".W.", "..."], &[('W', pixel::WHITE)]),
         (Prop::Confetti, _) => PxSprite { w: 1, h: 1, px: vec![Some(colors::RAINBOW[frame as usize % colors::RAINBOW.len()])] },
-        (Prop::Flame, false) => grid(&[".O", "OO", "YO"], &[('O', flame), ('Y', yellow)]),
-        (Prop::Flame, true) => grid(&["OO", "YO"], &[('O', flame), ('Y', yellow)]),
+        (Prop::Flame, false) => grid(&["..O", ".OO", "OOO", "OYO", "OOO"], &[('O', flame), ('Y', yellow)]),
+        (Prop::Flame, true) => grid(&[".O.", "OO.", "OOO", "OYO", "OOO"], &[('O', flame), ('Y', yellow)]),
         (Prop::Z, false) => grid(&["ZZ.", ".Z.", ".ZZ"], &[('Z', z)]),
         (Prop::Z, true) => grid(&["ZZ", ".Z"], &[('Z', pixel::mix(z, OUTLINE, 0.5))]),
     }
@@ -492,7 +492,7 @@ mod tests {
             Prop::Heart => (5, 4),
             Prop::Hat => (3, 4),
             Prop::Confetti => (1, 1),
-            Prop::Flame => (2, 3),
+            Prop::Flame => (3, 5),
         };
         for p in ALL_PROPS {
             for f in 0..2 {

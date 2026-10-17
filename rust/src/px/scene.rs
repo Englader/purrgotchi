@@ -172,6 +172,8 @@ enum Beat {
     Land,
     Turn,
     Look,
+    /// Head up, following the butterfly (it hovers or drifts behind her nose).
+    Watch,
     Swat,
 }
 
@@ -268,7 +270,7 @@ fn ball(e: u64, seed: u64, w: usize) -> SceneFrame {
         Beat::Crouch => Pose::Crouch,
         Beat::Leap | Beat::Land => Pose::Pounce,
         Beat::Turn => Pose::Turn,
-        Beat::Still | Beat::Look | Beat::Swat => Pose::Sit,
+        Beat::Still | Beat::Look | Beat::Watch | Beat::Swat => Pose::Sit,
     };
     let mut f = SceneFrame::cat(pose, c.x, c.right);
     if c.beat == Beat::Leap {
@@ -327,7 +329,7 @@ fn butterfly_cat(to: u64, seed: u64, w: usize) -> Cat {
             _ => {
                 let s = dx.clamp(0, DASH);
                 let beat = match s {
-                    0 => Beat::Still,
+                    0 => Beat::Watch,
                     1 | 2 => Beat::Chase,
                     _ => Beat::Dash,
                 };
@@ -344,7 +346,7 @@ fn butterfly(e: u64, seed: u64, w: usize) -> SceneFrame {
     let pose = match c.beat {
         Beat::Dash => gait(e, Pose::Run1, Pose::Run2),
         Beat::Chase => gait(e, Pose::Walk1, Pose::Walk2),
-        Beat::Look => Pose::Look,
+        Beat::Look | Beat::Watch => Pose::Look,
         Beat::Swat => Pose::Cheer,
         Beat::Still => Pose::Sit,
         Beat::Turn => Pose::Turn,
@@ -545,8 +547,10 @@ mod tests {
         }
         for w in [60usize, 120] {
             let poses: Vec<Pose> = (0..36u64).map(|e| scene_pose(ButterflyChase, e, 40, 7, w)).collect();
-            let at = poses.iter().position(|&p| p == Pose::Look).expect("looks up");
-            assert_eq!(poses[at + 1], Pose::Cheer, "{w}: swat after the look: {poses:?}");
+            assert!(poses.windows(2).any(|p| p == [Pose::Look, Pose::Cheer]), "{w}: swat after the look: {poses:?}");
+            // never a dead stretch: she follows it with her head, a turn or a swat
+            let idle = poses.windows(3).filter(|p| p.iter().all(|&q| q == Pose::Sit)).count();
+            assert_eq!(idle, 0, "{w}: sits through the pass: {poses:?}");
         }
     }
 
