@@ -77,8 +77,8 @@ fn frame_sprite_and_speech_match_the_statusline() {
     let sb = Sandbox::with_state("frame_vs_statusline", json!({}));
     let payload = serde_json::to_string(&base_payload(sb.home.to_str().unwrap())).unwrap();
     let n = NOW.to_string();
-    // statusline mutates nothing that matters here (no celebration, no quip, scene not due).
-    let hud = strip_ansi(&String::from_utf8(sb.run(&["statusline"], &payload, &[("PURR_NOW", &n)]).stdout).unwrap());
+    // The frame JSON describes the classic ASCII cat, so pin the statusline to it (pixel mode is the default).
+    let hud = strip_ansi(&String::from_utf8(sb.run(&["statusline"], &payload, &[("PURR_NOW", &n), ("PURR_PIXELS", "0")]).stdout).unwrap());
     let (v, _) = run_json(&sb, &["frame", "--json", "--context-pct", "20"], "");
     let rows: Vec<&str> = hud.lines().collect();
     for (i, row) in rows.iter().enumerate().take(6) {

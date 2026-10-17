@@ -21,7 +21,7 @@ struct Case {
     quip: Option<Value>,
     env: &'static [(&'static str, &'static str)],
     must_contain: &'static [&'static str], // checked on the ANSI-stripped output
-    raw_contain: &'static [&'static str],  // checked on the raw bytes (colour escapes)
+    raw_contain: &'static [&'static str],  // raw-byte colour escapes, checked on the classic (PURR_PIXELS=0) output
 }
 
 fn case(name: &'static str) -> Case {
@@ -280,9 +280,6 @@ fn statusline_goldens() {
         }
         assert!(lines[6].starts_with(&format!("{PINK}╚")), "{}: row 6", c.name);
         let plain = strip_ansi(&text);
-        for needle in c.raw_contain {
-            assert!(text.contains(needle), "{}: missing raw {needle:?}", c.name);
-        }
         for needle in c.must_contain {
             assert!(plain.contains(needle), "{}: missing {needle:?} in\n{plain}", c.name);
         }
@@ -298,7 +295,8 @@ fn statusline_goldens() {
 }
 
 /// One-off recorder for NEW statusline goldens. Never overwrites an existing
-/// file, so it cannot paper over a regression. Usage (pre-change binary only!):
+/// file, so it cannot paper over a regression. A re-record = git mv/delete the
+/// directory, run this, then eyeball the new files. Usage:
 ///   cargo test --test golden_statusline -- --ignored record_missing_statusline_goldens
 #[test]
 #[ignore = "recorder: writes golden files that do not exist yet; run by hand"]
@@ -338,20 +336,11 @@ fn card_goldens() {
 }
 
 /// Where the classic (pixel cat off) goldens live.
-const CLASSIC_DIR: &str = "statusline";
+const CLASSIC_DIR: &str = "statusline_ascii";
 
 /// Rows 0-5 cut after the box's right border, row 6 whole; every line `\n`-terminated.
 fn box_rows(text: &str) -> String {
     text.lines().enumerate().map(|(i, l)| common::box_prefix(l, i)).collect::<Vec<_>>().join("\n") + "\n"
-}
-
-#[test]
-#[ignore = "one-off: derive statusline_box/ from the classic goldens"]
-fn derive_box_goldens() {
-    for c in cases() {
-        let classic = std::fs::read_to_string(common::golden_path(&format!("{CLASSIC_DIR}/{}.ansi", c.name))).unwrap();
-        common::record_missing_golden(&format!("statusline_box/{}.ansi", c.name), box_rows(&classic).as_bytes());
-    }
 }
 
 /// The HUD box is frozen: whatever the sprite column draws, the box bytes of
@@ -372,6 +361,11 @@ fn statusline_pixels_off_is_classic() {
     for c in cases() {
         for extra in [&[("PURR_PIXELS", "0")][..], &[("NO_COLOR", "1"), ("PURR_PIXELS", "1")][..]] {
             let (bytes, _sb) = run_case_with(&c, extra);
+            // The ASCII sprite's rainbow hue is a classic-only colour.
+            let text = String::from_utf8_lossy(&bytes);
+            for needle in c.raw_contain {
+                assert!(text.contains(needle), "{}: missing raw {needle:?}", c.name);
+            }
             assert_golden(&format!("{CLASSIC_DIR}/{}.ansi", c.name), &bytes);
         }
     }

@@ -79,8 +79,8 @@ pub(crate) enum PixelMode {
     Test,
 }
 
-/// Task 9 flips this once the user has judged the bg test card.
-pub(crate) const DEFAULT_MODE: PixelMode = PixelMode::Off;
+/// Pixel cat on by default (Gate A: the 24-bit bg test card rendered). Opt out with `PURR_PIXELS=0` or `NO_COLOR`.
+pub(crate) const DEFAULT_MODE: PixelMode = PixelMode::Full;
 
 /// Pure parse of `PURR_PIXELS` / `NO_COLOR`. A non-empty `NO_COLOR` wins.
 pub(crate) fn mode_from(pixels: Option<&str>, no_color: Option<&str>, default: PixelMode) -> PixelMode {
