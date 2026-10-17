@@ -232,7 +232,8 @@ test('/purr opens the pane asked', async ($, on) => {
   const spies = await startReady($, on)
   spies.opens.length = 0
   const r = await $.command.run(cmd('purr'))
-  expect(spies.opens).toEqual([{ id: 'kitten', title: 'Purrgotchi', columns: 58, focus: true, closeOnEscape: true }])
+  // ASCII sprite (6) beside the 7-row info column: 3 + 7 + 1 + 4 + 3 + 1.
+  expect(spies.opens).toEqual([{ id: 'kitten', title: 'Purrgotchi', columns: 58, rows: 19, focus: true, closeOnEscape: true }])
   expect(r.text?.startsWith('Opened')).toBe(true)
   expect(r.exitCode).toBeUndefined()
 })
@@ -254,7 +255,31 @@ test('/purr works with a missing binary', async ($, on) => {
 
 test('auto-open on start for dock + openPaneOnStart', async ($, on) => {
   const spies = await startReady($, on)
-  expect(spies.opens).toEqual([{ id: 'kitten', title: 'Purrgotchi', columns: 58 }])
+  expect(spies.opens).toEqual([{ id: 'kitten', title: 'Purrgotchi', columns: 58, rows: 19 }])
+})
+
+test('/purr asks for the full height of the pixel pane, scene included', async ($, on) => {
+  const hud: HudJson = {
+    total_tool_calls: 610,
+    xp_pct: 20,
+    last_fed_at: 1_792_000_000 - 12,
+    stars: '★★★☆☆',
+    name_fg: '#b45cff',
+    peak: { label: 'OFF PEAK', range: '8PM-2PM', is_peak: false },
+  }
+  const scene: SceneJson = { kind: 'Run', elapsed: 1, duration: 8, finale: false, width: 54, rows: [[{ text: '.' }], [{ text: '.' }]] }
+  const spies = await startReady($, on, { run: answering(fx.frame({ hud, pixels: MAINE_PIXELS, scene })) })
+  spies.opens.length = 0
+  await $.command.run(cmd('purr'))
+  // border + header 3, sprite 16, speech 1, scene 2, session 4, limits 3, buttons 1
+  expect(spies.opens.map(o => o.rows)).toEqual([30])
+})
+
+test('/purr before any kitten asks for the pixel pane height', async ($, on) => {
+  const spies = await startReady($, on, { run: answering(fx.noKitten) })
+  spies.opens.length = 0
+  await $.command.run(cmd('purr'))
+  expect(spies.opens.map(o => o.rows)).toEqual([28])
 })
 
 test('no auto-open without openPaneOnStart', { options: { openPaneOnStart: false } }, async ($, on) => {

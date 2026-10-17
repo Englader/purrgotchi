@@ -39,6 +39,37 @@ const CHROME = 4
 /** The pixel sprite is 32 columns: beside it the info column needs 19 and the gap is 3. */
 const SIDE_BY_SIDE_PIXELS = CHROME + 32 + 3 + 19
 
+/**
+ * The full layout's text rows, part by part (`paneTree`, side by side): the
+ * rounded border and the header; the speech line; the SESSION rule, two rows
+ * of pairs and ctx; the LIMITS rule and its 5h / 7d rows; the buttons.
+ */
+const ROWS = { chrome: 2 + 1, speech: 1, session: 1 + 2 + 1, limits: 1 + 2, buttons: 1 } as const
+/** The pixel sprite: 32 pixel rows, two to a text row. */
+const PIXEL_SPRITE_ROWS = 16
+/** The info column: name, rarity, breed, stage, bond, coin, mood, plus xp and fed with `hud`. */
+const infoRows = (f: FrameJson) => 7 + (f.hud !== undefined ? 2 : 0)
+
+/**
+ * The body rows the whole pane needs inline (an inline pane opens a third of
+ * the screen tall otherwise, cutting off the session, limits and buttons).
+ * Without a kitten yet, as tall as one with the pixel sprite.
+ */
+function paneRows(f: FrameJson | null): number {
+  const kitten = f === null ? PIXEL_SPRITE_ROWS : Math.max(f.pixels !== undefined ? PIXEL_SPRITE_ROWS : f.sprite.length, infoRows(f))
+  const scene = f?.scene?.rows.length ?? 0
+  return ROWS.chrome + kitten + ROWS.speech + scene + ROWS.session + ROWS.limits + ROWS.buttons
+}
+
+/** `paneRows` for the frame stored now. Never throws. */
+async function wantedRows($: EngineInterface): Promise<number> {
+  try {
+    return paneRows(await readFrame($))
+  } catch {
+    return paneRows(null)
+  }
+}
+
 type Verb = 'pet' | 'treat' | 'play'
 const BUTTONS: readonly { verb: Verb; hotkey: string }[] = [
   { verb: 'pet', hotkey: 'p' },
@@ -277,7 +308,8 @@ async function drawPane($: EngineInterface, rt: Runtime, e: PaneEvent): Promise<
 
 /** `/purr`: an asked open, placed at any width (docked in fullscreen from 110 columns). */
 async function openPane($: EngineInterface) {
-  const r = await $.ui.open({ id: PANE_ID, title: TITLE, columns: PANE_COLUMNS, focus: true, closeOnEscape: true })
+  const rows = await wantedRows($)
+  const r = await $.ui.open({ id: PANE_ID, title: TITLE, columns: PANE_COLUMNS, rows, focus: true, closeOnEscape: true })
   if (r.isPlaced) return { text: 'Opened the Purrgotchi pane (p pet · t treat · y play).' }
   return { text: `Couldn't open the pane: ${r.reason}` }
 }
@@ -295,7 +327,7 @@ function openFailed() {
 export async function autoOpenPane($: EngineInterface, rt: Runtime): Promise<void> {
   if (rt.options.layout !== 'dock' || !rt.options.openPaneOnStart) return
   try {
-    await $.ui.open({ id: PANE_ID, title: TITLE, columns: PANE_COLUMNS })
+    await $.ui.open({ id: PANE_ID, title: TITLE, columns: PANE_COLUMNS, rows: await wantedRows($) })
   } catch (e) {
     debugLog($, `pane not opened: ${errText(e)}`)
   }
