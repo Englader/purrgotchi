@@ -178,8 +178,7 @@ impl ActionJson {
     }
 }
 
-/// `frame --json` (spec §3.1/§4.3). Phase 3b adds `pixels` (32×32 of
-/// "#rrggbb" | null) as an additive field — `v` stays 1.
+/// `frame --json` (spec §3.1/§4.3).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrameJson {
     pub v: u32,
@@ -208,12 +207,9 @@ pub struct FrameJson {
     pub celebration: Option<CelebrationJson>,
     /// Additive HUD data (xp, stars, name colour, peak window, last feed).
     pub hud: HudJson,
-    /// `--pixels` only: 32 rows of 32 `"#rrggbb"` | null (`pixels[y][x]`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pixels: Option<Vec<Vec<Option<String>>>>,
 }
 
-/// Everything the pane shows that is not already a top-level `frame` field,
+/// Everything the HUD shows that is not already a top-level `frame` field,
 /// so scripts never re-implement game rules.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HudJson {
@@ -325,7 +321,6 @@ mod tests {
                 name_fg: "#0abdc6".into(),
                 peak: PeakJson { label: "OFF PEAK".into(), range: "8PM-2PM".into(), is_peak: false },
             },
-            pixels: None,
         };
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains(r#""scene":null"#) && s.contains(r#""celebration":null"#), "{s}");

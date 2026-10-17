@@ -1,5 +1,5 @@
-//! `purrgotchi frame --json` — one render of the kitten for the mod's pane
-//! (spec §3.1, §4.3). Read-only unless `--advance`.
+//! `purrgotchi frame --json` — one render of the kitten as JSON
+//! (spec §3.1, §4.3). Reads state without writing it, unless `--advance`.
 
 use crate::colors::Attr;
 use crate::json::{CelebrationJson, FrameJson, HudJson, PeakJson, SceneJson, V};
@@ -9,7 +9,7 @@ use crate::statusline::{advance, kitten_view, KittenView, ViewInput, CELEBRATION
 
 #[derive(Clone, Copy)]
 pub struct FrameOpts {
-    /// Strip/pane width in cells (the mod passes the pane's `bodyColumns`).
+    /// Strip width in cells (clamped like the statusline's cat column).
     /// None → the statusline's COLUMNS / PURR_PLAYGROUND_WIDTH logic.
     pub width: Option<usize>,
     /// Animation tick; sprite parity is `tick % 2`. None → now.
@@ -17,10 +17,8 @@ pub struct FrameOpts {
     /// Context-window fill 0..=100 (drives panic/alert moods). Clamped.
     pub context_pct: f64,
     /// Also run the wall-clock timers (celebration countdown, scene
-    /// scheduler) and consume the quip — for pane-only setups.
+    /// scheduler) and consume the quip, as the statusline does.
     pub advance: bool,
-    /// Also emit the generated 32x32 pixel sprite as `pixels`.
-    pub pixels: bool,
 }
 
 pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
@@ -44,7 +42,6 @@ pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
     Ok(FrameOpts {
         width, tick, context_pct,
         advance: crate::cli::has_flag(args, "--advance"),
-        pixels: crate::cli::has_flag(args, "--pixels"),
     })
 }
 
@@ -74,7 +71,7 @@ pub fn render_once(opts: &FrameOpts) -> Result<FrameJson, ReadFail> {
         },
         || if opts.advance { crate::quip_cache::consume() } else { crate::quip_cache::peek() },
     );
-    let json = build(&st, now, tick, &view, opts.pixels);
+    let json = build(&st, now, tick, &view);
     if opts.advance {
         advance(&st, now, view.is_birthday, forced_scene, playground_enabled);
     }
@@ -94,7 +91,7 @@ pub fn run(opts: &FrameOpts) -> i32 {
     }
 }
 
-pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: bool) -> FrameJson {
+pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView) -> FrameJson {
     let sprite = (0..crate::playground::ROWS)
         .map(|i| {
             let line = view.sprite_lines.get(i).cloned().unwrap_or_default();
@@ -139,17 +136,6 @@ pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: 
         scene,
         celebration,
         hud: hud(st, &view.rarity_attrs),
-        pixels: pixels.then(|| {
-            crate::pixel::grid_hex(&crate::pixel::render(&crate::pixel::PixelOpts {
-                breed: &st.breed,
-                rarity: &st.rarity,
-                stage: state::life_stage(st.level),
-                mood: view.mood,
-                frame: view.frame,
-                shiny: st.shiny,
-                tick,
-            }))
-        }),
     }
 }
 
@@ -204,12 +190,6 @@ mod tests {
                 assert!(fg.len() == 7 && fg.starts_with('#') && fg[1..].chars().all(|c| c.is_ascii_hexdigit()), "{r}: {fg}");
             }
         }
-    }
-
-    #[test]
-    fn parse_opts_pixels_flag() {
-        assert!(!parse_opts(&a(&["p", "frame", "--json"])).unwrap().pixels);
-        assert!(parse_opts(&a(&["p", "frame", "--json", "--pixels"])).unwrap().pixels);
     }
 
     #[test]

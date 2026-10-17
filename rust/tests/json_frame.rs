@@ -237,56 +237,6 @@ fn frame_hud_contract() {
     assert_eq!(hud["peak"]["is_peak"].as_bool(), Some(label == "PEAK"));
 }
 
-fn pixels_ok(v: &Value) {
-    let rows = v["pixels"].as_array().expect("pixels array");
-    assert_eq!(rows.len(), 32);
-    for row in rows {
-        let row = row.as_array().unwrap();
-        assert_eq!(row.len(), 32);
-        for px in row {
-            if let Some(s) = px.as_str() {
-                assert!(s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')), "{s}");
-            } else {
-                assert!(px.is_null());
-            }
-        }
-    }
-}
-
-#[test]
-fn frame_pixels_contract() {
-    let sb = Sandbox::with_state("frame_pixels", json!({}));
-    let a = at(&sb, &["frame", "--json", "--pixels"], NOW);
-    let v: Value = serde_json::from_slice(&a.stdout).unwrap();
-    pixels_ok(&v);
-    assert_eq!(v["pixels"][0][0], Value::Null);
-    let b = at(&sb, &["frame", "--json", "--pixels"], NOW);
-    assert_eq!(a.stdout, b.stdout, "deterministic at a fixed PURR_NOW");
-}
-
-#[test]
-fn frame_without_pixels_flag_has_no_pixels_key() {
-    let sb = Sandbox::with_state("frame_nopixels", json!({}));
-    let (v, _) = run_json(&sb, &["frame", "--json"], "");
-    assert!(v.get("pixels").is_none());
-}
-
-#[test]
-fn frame_pixels_mood_follows_context() {
-    let sb = Sandbox::with_state("frame_pixels_ctx", json!({}));
-    let (panic, _) = run_json(&sb, &["frame", "--json", "--pixels", "--context-pct", "95"], "");
-    let (calm, _) = run_json(&sb, &["frame", "--json", "--pixels", "--context-pct", "5"], "");
-    assert_ne!(panic["pixels"], calm["pixels"]);
-}
-
-#[test]
-fn frame_pixels_is_read_only() {
-    let sb = Sandbox::with_state("frame_pixels_ro", levelup());
-    let before = sb.snapshot();
-    at(&sb, &["frame", "--json", "--pixels"], NOW);
-    assert_eq!(sb.snapshot(), before);
-}
-
 #[test]
 fn pixels_dev_verbs_clamp_odd_widths() {
     let sb = Sandbox::new("pixels_odd_width");

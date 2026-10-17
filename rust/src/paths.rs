@@ -24,7 +24,7 @@ pub fn state_dir() -> PathBuf {
 }
 
 /// Pure twin of [`state_dir`]. A non-empty, absolute `PURR_STATE_DIR` replaces the whole
-/// `~/.claude/purrgotchi` path (dev/test backdoor — keep out of README), so
+/// `~/.claude/purrgotchi` path (an advanced/testing knob, documented in the README), so
 /// tests never have to fake HOME.
 pub(crate) fn state_dir_from(override_dir: Option<std::ffi::OsString>, home: PathBuf) -> PathBuf {
     match override_dir {

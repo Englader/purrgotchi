@@ -15,8 +15,7 @@ pub(crate) struct CatLook<'a> {
 }
 
 /// Outline and dark-line colour (Gate B option D). Documented fallback if it
-/// is too loud next to the HUD box: `#4a3475`. (`pixel::OUTLINE` stays the
-/// near-black violet of the classic renderer.)
+/// is too loud next to the HUD box: `#4a3475`.
 pub(crate) const OUTLINE: Rgb = Rgb(0x5a, 0x3f, 0x8a);
 
 /// Rim light pixels, flat on every coat (blending turned light and orange coats
