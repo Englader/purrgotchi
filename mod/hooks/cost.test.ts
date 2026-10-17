@@ -65,7 +65,25 @@ test('lifetime total shows in pane', async ($, on) => {
     requestId: 'kitten',
     props: paneProps(58),
   })
-  expect(await pane.find({ text: /cost \$0\.12 session · total \$3\.42/ })).toBeDefined()
+  expect(await pane.find({ text: /cost \$0\.12 · all \$3\.42/ })).toBeDefined()
+})
+
+test('a large lifetime total still fits its half-width pane cell', async ($, on) => {
+  const big: NonNullable<EngineOptions['run']> = argv =>
+    argv[1] === 'cost' ? ok(fx.cost({ lifetime_cost_usd: 1234.56 })) : defaultRun(argv)
+  const spies = await startReady($, on, { run: big })
+  await spies.clock.settle()
+  await $.session.measure({ ...measure, cost: { usd: 12.34 }, changed: ['cost'] })
+  await spies.clock.settle()
+  const pane = await $.ui.mount({
+    plugin: 'purrgotchi',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'kitten',
+    props: paneProps(58),
+  })
+  // inner 54, so each paired cell is 27 wide and truncates beyond it.
+  expect(await pane.find({ text: /^cost (?=.*1234\.56).{1,22}$/ })).toBeDefined()
 })
 
 test('cost error keeps the pane without a total', async ($, on) => {
