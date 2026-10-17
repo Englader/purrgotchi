@@ -146,10 +146,43 @@ pub fn life_stage(level: u64) -> &'static str {
     }
 }
 
+/// Dev/test clock override (keep out of README): PURR_NOW=<unix seconds>.
+/// Unset → the real clock; behaviour is unchanged.
+pub fn now_override() -> Option<u64> {
+    now_override_from(std::env::var("PURR_NOW").ok().as_deref())
+}
+
+pub(crate) fn now_override_from(v: Option<&str>) -> Option<u64> {
+    // 0 means "no clock" and anything past this bound overflows the i64
+    // arithmetic (seconds → µs, age deltas) downstream; both fall back to the
+    // real clock instead of poisoning time-dependent state.
+    const MAX_NOW_SECS: u64 = (i64::MAX / 1_000_000) as u64;
+    v?.trim().parse::<u64>().ok().filter(|n| (1..=MAX_NOW_SECS).contains(n))
+}
+
 pub fn now_secs() -> u64 {
+    if let Some(n) = now_override() {
+        return n;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Microsecond twin of [`now_secs`] for code that needs sub-second precision
+/// (the turn-cost grace window). PURR_NOW → whole seconds × 1e6.
+pub fn now_micros() -> u64 {
+    now_micros_from(now_override())
+}
+
+pub(crate) fn now_micros_from(override_secs: Option<u64>) -> u64 {
+    if let Some(n) = override_secs {
+        return n.saturating_mul(1_000_000);
+    }
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
         .unwrap_or(0)
 }
 
@@ -184,6 +217,42 @@ pub fn load_outcome() -> LoadOutcome {
         },
         Err(e) if e.kind() == io::ErrorKind::NotFound => LoadOutcome::Missing,
         Err(_) => LoadOutcome::Unreadable,
+    }
+}
+
+/// Why a read-only command could not show the kitten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadFail {
+    /// No state.json — genuinely nothing hatched yet.
+    Missing,
+    /// Still unreadable after the retries (e.g. a Windows sharing violation).
+    Unreadable,
+    /// state.json exists but is not valid v2 state.
+    Corrupt,
+}
+
+/// `load_outcome()` with a short retry for transient `Unreadable` results
+/// (2 x 15ms), shared by `hatch::load_or_hatch` and the read-only commands.
+pub fn load_outcome_retry() -> LoadOutcome {
+    let mut outcome = load_outcome();
+    for _ in 0..2 {
+        if !matches!(outcome, LoadOutcome::Unreadable) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        outcome = load_outcome();
+    }
+    outcome
+}
+
+/// For read-only commands: the kitten, or exactly why it could not be shown.
+/// Never writes. A transient lock error must not look like "no kitten".
+pub fn load_for_read() -> Result<State, ReadFail> {
+    match load_outcome_retry() {
+        LoadOutcome::Loaded(s) => Ok(s),
+        LoadOutcome::Missing => Err(ReadFail::Missing),
+        LoadOutcome::Unreadable => Err(ReadFail::Unreadable),
+        LoadOutcome::Corrupt => Err(ReadFail::Corrupt),
     }
 }
 
@@ -542,5 +611,42 @@ mod tests {
         assert_eq!(back.scene_kind, PlaygroundScene::BallChase);
         assert_eq!(back.scene_last_kind, PlaygroundScene::Roll);
         assert_eq!(back.scene_next_at, 2500);
+    }
+
+    #[test]
+    fn now_override_parses_unix_seconds() {
+        assert_eq!(now_override_from(Some("1800000000")), Some(1_800_000_000));
+        assert_eq!(now_override_from(Some(" 42 ")), Some(42));
+    }
+
+    #[test]
+    fn now_override_ignores_absent_or_garbage() {
+        assert_eq!(now_override_from(None), None);
+        assert_eq!(now_override_from(Some("")), None);
+        assert_eq!(now_override_from(Some("soon")), None);
+        assert_eq!(now_override_from(Some("-5")), None);
+    }
+
+    #[test]
+    fn now_override_rejects_zero_and_values_that_overflow_i64_micros() {
+        assert_eq!(now_override_from(Some("0")), None);
+        assert_eq!(now_override_from(Some("18446744073709551615")), None);
+        assert_eq!(now_override_from(Some("9223372036854775807")), None);
+        let max = (i64::MAX / 1_000_000) as u64;
+        assert_eq!(now_override_from(Some(&max.to_string())), Some(max));
+        assert_eq!(now_override_from(Some(&(max + 1).to_string())), None);
+    }
+
+    #[test]
+    fn now_micros_follows_the_override_in_whole_seconds() {
+        assert_eq!(now_micros_from(Some(1_800_000_000)), 1_800_000_000_000_000);
+        assert_eq!(now_micros_from(Some(u64::MAX)), u64::MAX, "saturates");
+    }
+
+    #[test]
+    fn now_micros_without_override_is_the_real_clock() {
+        let real = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+        let got = now_micros_from(None);
+        assert!(got >= real && got - real < 5_000_000, "{got} vs {real}");
     }
 }

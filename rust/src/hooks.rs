@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::bond::{self, PetResult};
+use crate::json::ActionJson;
 use crate::colors::{C_BOLD, C_PINK, C_RESET, C_YELLOW};
 use crate::paths;
 use crate::state::{self, CelebrationKind, life_stage};
@@ -44,23 +45,87 @@ pub fn detect_celebration(prev_level: u64, new_level: u64) -> Option<(Celebratio
     Some((kind, renders))
 }
 
-pub fn feed() {
-    let _ = feed_inner();
+/// What one `apply_feed_dispatch` call detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FeedTick {
+    pub detected: Option<(CelebrationKind, u8)>,
+    pub dropped: bool,
 }
 
-fn feed_inner() -> Option<()> {
-    state::locked_update(|s| {
-        let drop_seed = state::now_secs() ^ s.total_tool_calls;
-        apply_feed_dispatch(s, drop_seed);
-        s.last_fed_at = state::now_secs();
-    })
-    .ok()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FeedBatch {
+    pub celebration: Option<CelebrationKind>,
+    pub dropped: bool,
+}
+
+/// Priority for picking one celebration out of a `--count` batch. Mirrors the
+/// detection order inside `apply_feed_dispatch`.
+pub(crate) fn celebration_rank(k: CelebrationKind) -> u8 {
+    match k {
+        CelebrationKind::MilestoneCenturion
+        | CelebrationKind::MilestoneVeteran
+        | CelebrationKind::MilestoneMaster
+        | CelebrationKind::MilestoneLegendary => 4,
+        CelebrationKind::EvolvingYoung | CelebrationKind::EvolvingAdult => 3,
+        CelebrationKind::LevelUp => 2,
+        CelebrationKind::Streak => 1,
+        CelebrationKind::RandomDrop | CelebrationKind::Greeting | CelebrationKind::None => 0,
+    }
+}
+
+/// Credit `count` tool calls in one locked write. `count == 1` is exactly the
+/// classic `feed`. For larger batches the state ends up holding the
+/// highest-ranked celebration of the batch (ties -> the later one), so a streak
+/// can't overwrite a milestone that happened earlier in the same batch.
+pub(crate) fn apply_feed_batch(s: &mut crate::state::State, count: u32, now: u64) -> FeedBatch {
+    let mut best: Option<(CelebrationKind, u8)> = None;
+    let mut dropped = false;
+    for _ in 0..count {
+        let seed = now ^ s.total_tool_calls;
+        let tick = apply_feed_dispatch(s, seed);
+        dropped |= tick.dropped;
+        if let Some((k, r)) = tick.detected
+            && best.is_none_or(|(b, _)| celebration_rank(k) >= celebration_rank(b))
+        {
+            best = Some((k, r));
+        }
+    }
+    if let Some((k, r)) = best {
+        s.celebration_kind = k;
+        s.levelup_renders_remaining = r;
+    }
+    s.last_fed_at = now;
+    FeedBatch { celebration: best.map(|(k, _)| k), dropped }
+}
+
+/// Exit code: 0 always for classic (a Claude Code hook must never fail); under
+/// `--json` an error line means exit 1.
+pub fn feed_cmd(count: u32, json: bool) -> i32 {
+    let now = state::now_secs();
+    let res = state::locked_update(|s| {
+        let b = apply_feed_batch(s, count, now);
+        crate::json::FeedJson {
+            v: crate::json::V,
+            ok: true,
+            celebration: b.celebration,
+            level: s.level,
+            stage: life_stage(s.level).to_string(),
+            coins: s.coins,
+            total_tool_calls: s.total_tool_calls,
+            drop: b.dropped,
+            count,
+        }
+    });
+    if !json {
+        return 0; // classic feed stays silent, success or not
+    }
+    crate::json::print_or_unavailable("feed", res)
 }
 
 fn apply_feed_dispatch(
     state: &mut crate::state::State,
     drop_seed: u64,
-) {
+) -> FeedTick {
     let prev_total = state.total_tool_calls;
     state.total_tool_calls = state.total_tool_calls.saturating_add(1);
     state.coins = state.coins.saturating_add(1);
@@ -70,6 +135,7 @@ fn apply_feed_dispatch(
     state.streak_count = state.streak_count.saturating_add(1);
 
     let mut detected: Option<(crate::state::CelebrationKind, u8)> = None;
+    let dropped = crate::events::roll_random_drop_with_seed(drop_seed);
 
     if let Some((kind, watermark)) = crate::events::detect_milestone(
         prev_total, state.total_tool_calls, state.last_milestone_celebrated,
@@ -83,7 +149,7 @@ fn apply_feed_dispatch(
             crate::state::CelebrationKind::Streak,
             crate::events::STREAK_RENDERS,
         ));
-    } else if crate::events::roll_random_drop_with_seed(drop_seed) {
+    } else if dropped {
         detected = Some((
             crate::state::CelebrationKind::RandomDrop,
             crate::events::RANDOM_DROP_RENDERS,
@@ -92,7 +158,7 @@ fn apply_feed_dispatch(
 
     // Drop coins are applied unconditionally — even if a higher-priority
     // celebration eclipses the drop's speech bubble, the wallet still gets +10.
-    if crate::events::roll_random_drop_with_seed(drop_seed) {
+    if dropped {
         state.coins = state.coins.saturating_add(crate::events::RANDOM_DROP_REWARD);
     }
 
@@ -100,9 +166,11 @@ fn apply_feed_dispatch(
         state.celebration_kind = kind;
         state.levelup_renders_remaining = renders;
     }
+
+    FeedTick { detected, dropped }
 }
 
-pub fn turn() {
+pub fn turn_cmd(json: bool) -> i32 {
     use std::io::Read;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
@@ -111,33 +179,35 @@ pub fn turn() {
     } else {
         serde_json::from_str(&input).unwrap_or_default()
     };
-    let _ = turn_inner(&payload);
+    let greeted = state::locked_update(|s| apply_turn_dispatch(s, state::now_secs()));
     let _ = fs::remove_file(paths::turn_anchor_file_for(&payload.session_id));
     // Pre-v3.7.0 binaries wrote a single global anchor; clear it too.
     let _ = fs::remove_file(paths::turn_anchor_file());
     state::sweep_stale_files();
-    maybe_spawn_react(&payload);
+    let react_spawned = maybe_spawn_react(&payload);
+    if !json {
+        return 0;
+    }
+    let res = greeted.map(|celebration| crate::json::TurnJson { v: crate::json::V, ok: true, celebration, react_spawned });
+    crate::json::print_or_unavailable("turn", res)
 }
 
-fn turn_inner(_payload: &crate::payload::Payload) -> Option<()> {
-    state::locked_update(|s| apply_turn_dispatch(s, state::now_secs())).ok()
-}
-
-fn maybe_spawn_react(payload: &crate::payload::Payload) {
+fn maybe_spawn_react(payload: &crate::payload::Payload) -> bool {
     // Pre-spawn gate: if no provider is configured, skip the fork.
     // The full auth check (provider's *_API_KEY env var) happens inside
     // the worker via provider.complete() and is also a silent no-op.
     if crate::llm::select::current_provider().is_err() {
-        return;
+        return false;
     }
     if payload.transcript_path.is_empty() {
-        return;
+        return false;
     }
     let seed = state::now_secs() ^ fnv1a_session(&payload.session_id);
     if !should_fire_react(seed) {
-        return;
+        return false;
     }
     crate::spawn::detached_self(&["react", &payload.transcript_path]);
+    true
 }
 
 fn fnv1a_session(s: &str) -> u64 {
@@ -145,39 +215,84 @@ fn fnv1a_session(s: &str) -> u64 {
     crate::identity::fnv1a(s)
 }
 
-fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) {
+fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) -> Option<CelebrationKind> {
     let prev_last_turn = state.last_turn_at;
     state.streak_count = 0;
+    let mut greeted = None;
     if crate::events::should_greet(prev_last_turn, now) {
         state.celebration_kind = crate::state::CelebrationKind::Greeting;
         state.levelup_renders_remaining = crate::events::GREETING_RENDERS;
+        greeted = Some(CelebrationKind::Greeting);
     }
     state.last_turn_at = now;
+    greeted
 }
 
-pub fn rename(new_name: &str) -> i32 {
+/// stderr line, plus an `ActionJson` with result "error" under `--json`.
+/// Print-only: callers differ on the exit code.
+fn action_error(text: &str, json: bool) {
+    eprintln!("{text}");
+    if json {
+        crate::json::print(&ActionJson::new(false, "error", text));
+    }
+}
+
+/// Returns the exit code: 1 under `--json` (ok:false), unchanged 0 for classic.
+fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) -> i32 {
+    action_error(&format!("{cmd}: could not update state: {e}"), json);
+    i32::from(json)
+}
+
+pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
     if new_name.is_empty() {
-        eprintln!("rename: name cannot be empty");
+        action_error("rename: name cannot be empty", json);
         return 1;
     }
     match state::locked_update(|s| s.name = new_name.to_string()) {
         Ok(()) => {
-            println!("kitten renamed to: {new_name}");
+            let text = format!("kitten renamed to: {new_name}");
+            if json {
+                let mut j = ActionJson::new(true, "renamed", &text);
+                j.name = Some(new_name.to_string());
+                crate::json::print(&j);
+            } else {
+                println!("{text}");
+            }
             0
         }
         Err(e) => {
-            eprintln!("rename: failed to write state.json: {e}");
+            action_error(&format!("rename: failed to write state.json: {e}"), json);
             1
         }
     }
 }
 
-pub fn pet() {
+pub fn pet_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     match state::locked_update(|s| (s.name.clone(), bond::try_pet(s, now))) {
-        Ok((name, result)) => println!("{}", format_pet_message(&name, &result)),
-        Err(e) => eprintln!("pet: could not update state: {e}"),
+        Ok((name, result)) => {
+            let msg = format_pet_message(&name, &result);
+            if json { crate::json::print(&pet_json(&msg, &result)); } else { println!("{msg}"); }
+        }
+        Err(e) => return report_action_error("pet", &e, json),
     }
+    0
+}
+
+pub(crate) fn pet_json(msg: &str, r: &PetResult) -> ActionJson {
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    match r {
+        PetResult::Applied { old, new, capped } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+        }
+        PetResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+    }
+    j
 }
 
 fn format_pet_message(name: &str, result: &PetResult) -> String {
@@ -203,7 +318,7 @@ fn format_pet_message(name: &str, result: &PetResult) -> String {
     }
 }
 
-pub fn play() {
+pub fn play_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_play(s, now);
@@ -211,14 +326,40 @@ pub fn play() {
         // empty pockets, she still wants to play. Bond/coin outcomes above are
         // untouched.
         crate::playground::start_scene_now(s, now);
-        (s.name.clone(), result, s.last_played_at)
+        (s.name.clone(), result, s.last_played_at, s.scene_kind)
     });
     match outcome {
-        Ok((name, result, last_played_at)) => {
-            println!("{}", format_play_message(&name, &result, last_played_at));
+        Ok((name, result, last_played_at, scene)) => {
+            let msg = format_play_message(&name, &result, last_played_at);
+            if json { crate::json::print(&play_json(&msg, &result, scene)); } else { println!("{msg}"); }
         }
-        Err(e) => eprintln!("play: could not update state: {e}"),
+        Err(e) => return report_action_error("play", &e, json),
     }
+    0
+}
+
+pub(crate) fn play_json(msg: &str, r: &crate::bond::PlayResult, scene: crate::state::PlaygroundScene) -> ActionJson {
+    use crate::bond::PlayResult;
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    j.scene = Some(scene);
+    match r {
+        PlayResult::Applied { old, new, capped, cost } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+            j.cost = Some(*cost);
+        }
+        PlayResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+        PlayResult::InsufficientCoins { need, have } => {
+            j.result = "insufficient_coins".into();
+            j.need = Some(*need);
+            j.have = Some(*have);
+        }
+    }
+    j
 }
 
 fn format_play_message(
@@ -262,7 +403,7 @@ fn play_applied_variant(name: &str, last_played_at: u64) -> String {
     }
 }
 
-pub fn treat() {
+pub fn treat_cmd(json: bool) -> i32 {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_treat(s, now);
@@ -270,10 +411,36 @@ pub fn treat() {
     });
     match outcome {
         Ok((name, result, last_treated_at)) => {
-            println!("{}", format_treat_message(&name, &result, last_treated_at));
+            let msg = format_treat_message(&name, &result, last_treated_at);
+            if json { crate::json::print(&treat_json(&msg, &result)); } else { println!("{msg}"); }
         }
-        Err(e) => eprintln!("treat: could not update state: {e}"),
+        Err(e) => return report_action_error("treat", &e, json),
     }
+    0
+}
+
+pub(crate) fn treat_json(msg: &str, r: &crate::bond::TreatResult) -> ActionJson {
+    use crate::bond::TreatResult;
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    match r {
+        TreatResult::Applied { old, new, capped, cost, was_hungry } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+            j.cost = Some(*cost);
+            j.was_hungry = Some(*was_hungry);
+        }
+        TreatResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+        TreatResult::InsufficientCoins { need, have } => {
+            j.result = "insufficient_coins".into();
+            j.need = Some(*need);
+            j.have = Some(*have);
+        }
+    }
+    j
 }
 
 fn format_treat_message(
@@ -339,16 +506,17 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
     }
 }
 
-pub fn stats() {
-    let s = match crate::state::load() {
-        Some(s) => s,
-        None => {
-            eprintln!("No kitten hatched yet. Run: purrgotchi hatch");
-            std::process::exit(1);
-        }
-    };
-    let now = state::now_secs();
-    print!("{}", format_stats_card(&s, now));
+/// Exit code: 1 when the kitten could not be loaded.
+pub fn stats_cmd(json: bool) -> i32 {
+    let Some(s) = crate::json::load_for_read(json) else { return 1 };
+    let text = format_stats_card(&s, state::now_secs());
+    if json {
+        crate::json::print_lines(&text);
+    } else {
+        // --plain is accepted and identical: the stats card has never had colour.
+        print!("{text}");
+    }
+    0
 }
 
 fn format_stats_card(s: &crate::state::State, now: u64) -> String {
@@ -935,5 +1103,123 @@ mod tests {
         assert_eq!(s.celebration_kind, crate::state::CelebrationKind::None);
         assert_eq!(s.levelup_renders_remaining, 0);
         assert_eq!(s.streak_count, 2);
+    }
+
+    #[test]
+    fn dispatch_returns_the_celebration_it_detected() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.last_milestone_celebrated = 0;
+        let t = super::apply_feed_dispatch(&mut s, 999_999_999);
+        assert_eq!(t.detected, Some((CelebrationKind::MilestoneCenturion, crate::events::MILESTONE_RENDERS)));
+        assert!(!t.dropped);
+    }
+
+    #[test]
+    fn dispatch_reports_none_while_an_older_celebration_is_still_running() {
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 50;
+        s.level = 2;
+        s.streak_count = 1;
+        s.celebration_kind = CelebrationKind::LevelUp;
+        s.levelup_renders_remaining = 2;
+        let t = super::apply_feed_dispatch(&mut s, 999_999_999);
+        assert_eq!(t.detected, None, "must not echo the state's running celebration");
+        assert_eq!(s.celebration_kind, CelebrationKind::LevelUp);
+    }
+
+    #[test]
+    fn dispatch_reports_drop() {
+        let seed = (0..1000u64).find(|s| crate::events::roll_random_drop_with_seed(*s)).unwrap();
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 50;
+        s.level = 2;
+        let t = super::apply_feed_dispatch(&mut s, seed);
+        assert!(t.dropped);
+        assert_eq!(t.detected, Some((CelebrationKind::RandomDrop, crate::events::RANDOM_DROP_RENDERS)));
+    }
+
+    #[test]
+    fn batch_of_one_is_exactly_the_classic_feed() {
+        let now = 1_800_000_000u64;
+        let mut a = crate::state::State::base(0);
+        a.total_tool_calls = 37;
+        let mut b = a.clone();
+        let seed = now ^ a.total_tool_calls;
+        super::apply_feed_dispatch(&mut a, seed);
+        a.last_fed_at = now;
+        super::apply_feed_batch(&mut b, 1, now);
+        assert_eq!(serde_json::to_value(&a).unwrap(), serde_json::to_value(&b).unwrap());
+    }
+
+    #[test]
+    fn batch_keeps_highest_ranked_celebration_not_the_last() {
+        // call 1 -> 100th tool call (Centurion); call 5 -> 5-streak. Last-wins
+        // would leave Streak; the batch must keep the milestone.
+        let mut s = crate::state::State::base(0);
+        s.total_tool_calls = 99;
+        s.level = 2;
+        s.last_milestone_celebrated = 0;
+        let b = super::apply_feed_batch(&mut s, 5, 1_800_000_000);
+        assert_eq!(b.celebration, Some(CelebrationKind::MilestoneCenturion));
+        assert_eq!(s.celebration_kind, CelebrationKind::MilestoneCenturion);
+        assert_eq!(s.levelup_renders_remaining, crate::events::MILESTONE_RENDERS);
+        assert_eq!(s.total_tool_calls, 104);
+        assert_eq!(s.streak_count, 5);
+        assert_eq!(s.last_fed_at, 1_800_000_000);
+    }
+
+    #[test]
+    fn celebration_rank_mirrors_dispatch_priority() {
+        use CelebrationKind::*;
+        let r = super::celebration_rank;
+        assert!(r(MilestoneLegendary) > r(EvolvingAdult));
+        assert!(r(EvolvingYoung) > r(LevelUp));
+        assert!(r(LevelUp) > r(Streak));
+        assert!(r(Streak) > r(RandomDrop));
+    }
+
+    #[test]
+    fn turn_dispatch_reports_greeting() {
+        let mut s = crate::state::State::base(0);
+        s.last_turn_at = 1_000_000;
+        assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600), Some(CelebrationKind::Greeting));
+        assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600 + 60), None);
+    }
+
+    #[test]
+    fn pet_json_applied_has_bond_fields_and_plain_message() {
+        let r = PetResult::Applied { old: 50, new: 65, capped: false };
+        let j = super::pet_json(&format_pet_message("Thalia", &r), &r);
+        assert!(j.ok);
+        assert_eq!(j.result, "applied");
+        assert_eq!((j.bond_old, j.bond_new, j.capped), (Some(50), Some(65), Some(false)));
+        assert!(!j.message.contains('\x1b'), "{:?}", j.message);
+        assert!(j.message.contains("Thalia purrs contentedly. Bond: 50 \u{2192} 65 (+15)"), "{:?}", j.message);
+    }
+
+    #[test]
+    fn pet_json_cooldown() {
+        let r = PetResult::Cooldown { wait_secs: 600 };
+        let j = super::pet_json(&format_pet_message("Thalia", &r), &r);
+        assert_eq!((j.ok, j.result.as_str(), j.wait_secs), (true, "cooldown", Some(600)));
+    }
+
+    #[test]
+    fn play_json_insufficient_coins_still_reports_scene() {
+        let r = PlayResult::InsufficientCoins { need: 50, have: 10 };
+        let j = super::play_json(&format_play_message("Thalia", &r, 0), &r, crate::state::PlaygroundScene::Roll);
+        assert_eq!(j.result, "insufficient_coins");
+        assert_eq!((j.need, j.have), (Some(50), Some(10)));
+        assert_eq!(j.scene, Some(crate::state::PlaygroundScene::Roll));
+    }
+
+    #[test]
+    fn treat_json_applied_not_hungry() {
+        let r = TreatResult::Applied { old: 60, new: 60, capped: false, cost: TREAT_COST, was_hungry: false };
+        let j = super::treat_json(&format_treat_message("Thalia", &r, 0), &r);
+        assert_eq!(j.result, "applied");
+        assert_eq!((j.was_hungry, j.cost), (Some(false), Some(TREAT_COST)));
+        assert!(!j.message.contains('\x1b'));
     }
 }

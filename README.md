@@ -1,17 +1,19 @@
 # Purrgotchi
 
-A cyberpunk-themed Claude Code statusline with a persistent tamagotchi kitten companion.
+A cyberpunk Claude Code statusline with a persistent tamagotchi kitten.
 
-Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and a stat row — alongside a pixel-art cat whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earns coins per tool call, levels up, evolves through life stages, builds bond through interaction, celebrates milestones, and (optionally) speaks LLM-generated mood-contextual dialogue that reacts to what you just did.
+![Purrgotchi v4: idle life, ball scene, level-up, sleep](docs/superpowers/plans/assets/2026-10-17-pixel-cat/v4-demo.gif)
+
+Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and a stat row — alongside a live, 1 fps pixel-art cat (24-bit half-block graphics) whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earns coins per tool call, levels up, evolves through life stages, builds bond through interaction, celebrates milestones, and (optionally) speaks LLM-generated mood-contextual dialogue that reacts to what you just did.
 
 ---
 
 ## Requirements
 
 - **Rust toolchain** (any recent stable; tested on 1.78+) — `rustup install stable`.
-- **Claude Code** ([anthropic.com/claude-code](https://www.anthropic.com/claude-code)) — Purrgotchi runs as its statusline + hooks.
-- **`jq`** (installer dependency) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux.
-- **Bash** to run `install.sh`. On Windows, use Git Bash, MSYS2, or WSL.
+- **Claude Code** ([anthropic.com/claude-code](https://www.anthropic.com/claude-code)).
+  - Runs as the statusline + hooks on any recent Claude Code (playground scenes need ≥ 2.1.153).
+- **`jq`** and **Bash** (for `install.sh`) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux. On Windows, use Git Bash, MSYS2, or WSL.
 - **(Optional) An LLM provider API key** — Anthropic, Gemini, or OpenAI — to enable AI-generated personality blurbs and in-character react quips. Without one, Purrgotchi falls back to a curated static phrase pool with no errors.
 
 Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS builds compile cleanly via `cargo build --release` but are not yet exercised in production.
@@ -19,6 +21,8 @@ Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS bu
 ---
 
 ## Install
+
+The statusline + feed/turn hooks:
 
 ```bash
 git clone https://github.com/Englader/purrgotchi.git
@@ -34,7 +38,7 @@ bash install.sh
 3. Creates the state directory at `~/.claude/purrgotchi/`.
 4. Merges the statusline + `PostToolUse` (feed) + `UserPromptSubmit` (turn) hooks into `settings.json`, all pointing at `rust/target/release/purrgotchi.exe`.
 
-**Restart Claude Code after install** so the new settings take effect.
+**Restart Claude Code after install** so the new settings take effect. To drop the feed/turn hooks again later while keeping the statusline, run `bash install.sh --uninstall-hooks`.
 
 ### Manual wiring (reference)
 
@@ -62,20 +66,19 @@ If you'd rather edit `~/.claude/settings.json` by hand:
 
 Note that `refreshInterval` sits **inside** the `statusLine` object — Claude Code ignores it anywhere else. It re-runs the statusline every second even while the session idles, which is what makes the kitten actually animate.
 
-### Optional: a CLI wrapper
+### Optional: the `purr` wrapper
 
-For quick interactive commands (`purrgotchi pet`, `purrgotchi card`, etc.), add a small wrapper to your `PATH`. On Windows / Git Bash:
+Commands are plain shell commands. A tiny wrapper on your `PATH` turns them into `purr <verb>`, and inside Claude Code you run them with the `!` shell prefix (e.g. `! purr pet`):
 
 ```bash
-mkdir -p ~/.local/bin
-cat > ~/.local/bin/purr <<'EOF'
+mkdir -p ~/.local/bin && cat > ~/.local/bin/purr <<'EOF'
 #!/usr/bin/env bash
-exec "$HOME/path/to/purrgotchi/rust/target/release/purrgotchi.exe" "$@"
+exec "${PURRGOTCHI_BIN:-$(command -v purrgotchi || echo "$HOME/path/to/purrgotchi/rust/target/release/purrgotchi")}" "$@"
 EOF
 chmod +x ~/.local/bin/purr
 ```
 
-Now `purr card`, `purr stats`, `purr pet`, etc. work from any directory.
+Set `PURRGOTCHI_BIN` to point it at a specific binary, or edit the fallback path. Then `! purr pet`, `! purr play`, `! purr treat`, `! purr card`, `! purr stats` and `! purr rename <name>` work from any session.
 
 ---
 
@@ -114,6 +117,20 @@ cp .env.example .env
 Purrgotchi reads `.env` from **`~/.claude/purrgotchi/.env`** only (`install.sh` copies the repo's `.env` there on first install). It deliberately does not load `.env` from the current directory — hooks run with the cwd of whatever project you have open, and a stranger repo's `.env` should never be able to inject keys or config. Process-level environment variables (e.g. shell-exported) win over `.env` values. `PURR_LLM_PROVIDER` is **required**; `PURR_LLM_MODEL` is optional and defaults to the cheapest fast model for each provider. Daily LLM cost runs roughly **$0.01–$0.06** at typical Claude Code usage rates.
 
 After hatching with no provider configured, you'll see a one-line stderr hint reminding you these env vars exist. Configure later via `purrgotchi rename`-style on-disk edits — no restart of the kitten needed.
+
+---
+
+## Your pixel cat
+
+Since v4.0.0 the cat to the right of the HUD box is drawn as pixel art, 6 rows tall (12 pixels via `▀` half-blocks with 24-bit colour), with a speech line below. Claude Code re-runs the statusline every second when `statusLine.refreshInterval` is `1` (the installer sets it), so she moves at 1 fps.
+
+- **Idle life** — she wanders, runs, grooms, stretches, loafs, curls up asleep with a Z, and more, in 30-second blocks. What she does depends on her mood: a sleeping cat stays curled up, a hungry one looks about and meows, and a panicking one (context nearly full) runs back and forth. The same poses are painted in each breed's own colours with a rarity rim.
+- **Moods** — calm, happy, alert, hungry, panic and sleep, driven by context-window pressure, how recently she was fed, and how recently you petted or played with her.
+- **Scenes** — every few minutes she plays in the open space to the right: ball, butterfly, zoomies, rolling, yarn. The pixel cat pounces, misses, and catches or loses her toy mid-scene. `! purr play` starts one right away. See [Playground scenes](#playground-scenes).
+- **Celebrations** — level-ups, evolutions, tool-call streaks, milestones (100 / 500 / 1000 calls), the daily greeting, random coin drops and birthdays each get their own pixel overlay.
+- **Fallbacks** — it needs a terminal with 24-bit colour and about 125+ columns. On a narrower terminal, with `PURR_PIXELS=0`, or with `NO_COLOR` set, you get the classic ASCII cat instead. The HUD box itself is identical in every mode.
+
+To check that your terminal renders background colours, run `purrgotchi pixels test` (or set `PURR_PIXELS=test` for the statusline).
 
 ---
 
@@ -166,8 +183,13 @@ A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, tr
 | `purrgotchi pet` | +15 bond, 4h cooldown, 120s happy mood window |
 | `purrgotchi play` | 50 coins, +20 bond, 6h cooldown, 180s happy mood window |
 | `purrgotchi treat` | 25 coins, +5 bond, 4h cooldown, 120s happy; resets hunger |
+| `purrgotchi hatch [--rarity R]` | Hatches the kitten explicitly (normally automatic on first run) |
 | `purrgotchi rename <name>` | Renames the kitten in `state.json` (personality re-templates at render time) |
+| `purrgotchi frame [--json] [--width N] [--advance]` | JSON snapshot of the kitten (scripting/debug; reads state without writing it unless `--advance`, which also runs the timers) |
+| `purrgotchi pixels test\|sheet\|scene\|celebrate` | Pixel cat tools: `test` prints the background-colour test card; `sheet`, `scene` and `celebrate` preview art (add `--json` for a machine-readable dump) |
 | `purrgotchi --version` | Prints the crate version |
+
+Every action command (`feed`, `turn`, `pet`, `play`, `treat`, `rename`, `stats`, `card`) also takes `--json` for a versioned machine-readable result (for scripts), and `feed --count N` batches N tool calls into one call. Set `PURR_STATE_DIR` to an absolute path to run against a throwaway state directory instead of `~/.claude/purrgotchi/`.
 
 ### Events and celebrations
 
@@ -194,6 +216,7 @@ row), and `purr play` starts one immediately.
   terminals the playground simply stays off — nothing breaks.
 - To turn scenes off entirely, add `PURR_PLAYGROUND=0` to
   `~/.claude/purrgotchi/.env`.
+- Scenes are drawn in pixel art by default and fall back to ASCII along with the rest of the cat.
 
 ---
 
@@ -207,9 +230,11 @@ row), and `purr play` starts one immediately.
 ## Customize
 
 - **Rename the kitten:** `purrgotchi rename "NewName"`.
-- **Add sprites:** drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild.
+- **Add ASCII sprites:** drop new `<mood>_<frame>.txt` files into `sprites/`, add branches in `rust/src/sprites.rs`, rebuild. The pixel art lives in `rust/src/px/`.
 - **Add static phrases:** edit the per-mood arrays in `rust/src/speech.rs`, rebuild.
 - **Tweak colors:** edit the constants at the top of `rust/src/colors.rs`.
+- **Pixel cat mode:** `PURR_PIXELS=0` restores the classic ASCII cat; `PURR_PIXELS=fg` uses foreground colours only (no background colour, for terminals that mangle it); `PURR_PIXELS=1` forces full pixel mode; `PURR_PIXELS=test` shows a colour test card. A non-empty `NO_COLOR` always forces the ASCII cat. Put these in `~/.claude/purrgotchi/.env` or export them in your shell.
+- **Playground:** `PURR_PLAYGROUND=0` disables scenes; `PURR_PLAYGROUND_WIDTH=<columns>` sets the width of the cat/playground column itself (clamped to 24..120, nothing subtracted for the HUD box), for hosts that do not report `COLUMNS`. It also lets the pixel cat draw when `COLUMNS` is missing; without either, you get the ASCII cat.
 - **Debug logging:** set `PURR_DEBUG=1` (or pass `--debug`) to write timestamped lines to `~/.claude/purrgotchi/debug.log` — covers LLM call latency, token counts, react worker outcomes, watchdog events, and statusline render timing. Enable system-wide by appending `--debug` to the `statusLine.command` in `~/.claude/settings.json` and restarting Claude Code.
 
 ---
@@ -233,4 +258,4 @@ Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI cal
 - **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
 - **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
 
-All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v3.8.0** (playground scenes).
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.0.0** (live pixel-art cat; `PURR_PIXELS=0` keeps the classic ASCII cat — see the [CHANGELOG](./CHANGELOG.md) for migration notes).

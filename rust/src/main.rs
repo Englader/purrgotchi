@@ -1,22 +1,28 @@
 mod bond;
 mod card;
+mod cli;
 mod colors;
 mod cost;
 mod cost_acc;
 mod debug;
 mod events;
+mod frame;
 mod hatch;
 mod hooks;
 mod identity;
+mod json;
 mod llm;
 mod mood;
 mod paths;
 mod payload;
+mod pixel;
 mod playground;
+mod px;
 mod quip_cache;
 mod react;
 mod render;
 mod spawn;
+mod span;
 mod speech;
 mod sprites;
 
@@ -32,50 +38,39 @@ fn main() {
     // Code has open, so a cwd .env would let any repo silently inject HOME,
     // provider selection, or API keys. Process-set vars take precedence
     // (dotenvy default behaviour). Missing file is a no-op.
-    let _ = dotenvy::from_path(paths::env_file());
+    paths::load_trusted_env();
 
     let args: Vec<String> = env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
 
     debug::log(&format!("invoke cmd={cmd}"));
 
+    let json = cli::has_flag(&args, "--json");
     match cmd {
         "statusline" => {
             statusline::run();
             process::exit(0);
         }
         "feed" => {
-            hooks::feed();
-            process::exit(0);
+            let count = match cli::opt_value(&args, "--count").map(|v| v.map_or(Some(1), cli::parse_count)) {
+                Ok(Some(n)) => n,
+                _ => {
+                    bad_args("feed", &format!("--count must be an integer in 1..={}", cli::MAX_FEED_COUNT), json);
+                    process::exit(2);
+                }
+            };
+            process::exit(hooks::feed_cmd(count, json));
         }
-        "turn" => {
-            hooks::turn();
-            process::exit(0);
-        }
+        "turn" => process::exit(hooks::turn_cmd(json)),
         "rename" => {
-            let name = args.get(2).map(String::as_str).unwrap_or("");
-            process::exit(hooks::rename(name));
+            let name = cli::positionals(&args, &["--json"], &[]).first().copied().unwrap_or("");
+            process::exit(hooks::rename_cmd(name, json));
         }
-        "card" => {
-            card::run();
-            process::exit(0);
-        }
-        "pet" => {
-            hooks::pet();
-            process::exit(0);
-        }
-        "play" => {
-            hooks::play();
-            process::exit(0);
-        }
-        "treat" => {
-            hooks::treat();
-            process::exit(0);
-        }
-        "stats" => {
-            hooks::stats();
-            process::exit(0);
-        }
+        "card" => process::exit(card::run_cmd(json, cli::has_flag(&args, "--plain"))),
+        "pet" => process::exit(hooks::pet_cmd(json)),
+        "play" => process::exit(hooks::play_cmd(json)),
+        "treat" => process::exit(hooks::treat_cmd(json)),
+        "stats" => process::exit(hooks::stats_cmd(json)),
         "react" => {
             let transcript_path = args.get(2).map(String::as_str).unwrap_or("");
             react::run(transcript_path);
@@ -118,13 +113,79 @@ fn main() {
             hatch::run(&opts);
             process::exit(0);
         }
+        "frame" => match frame::parse_opts(&args) {
+            Ok(opts) => process::exit(frame::run(&opts)),
+            Err(msg) => {
+                bad_args("frame", &msg, json);
+                eprintln!("usage: purrgotchi frame [--json] [--width N] [--tick T] [--context-pct P] [--advance]");
+                process::exit(2);
+            }
+        },
+        "pixels" => match args.get(2).map(String::as_str) {
+            Some("test") => {
+                println!("{}", px::test_card().join("\n"));
+                process::exit(0);
+            }
+            Some("sheet") => {
+                let (breed, _) = dev_look(&args);
+                println!("{}", px::sheet(breed, json));
+                process::exit(0);
+            }
+            Some("scene") => {
+                let Some(kind) = playground::force_scene_from(args.get(3).map(String::as_str)) else {
+                    eprintln!("usage: purrgotchi pixels scene run|zoomies|ball|butterfly|roll|yarn [--width W] [--breed B] [--stage S] [--json]");
+                    process::exit(2);
+                };
+                let width = dev_width(&args);
+                let (breed, stage) = dev_look(&args);
+                println!("{}", px::scene_sheet(kind, width, breed, stage, json));
+                process::exit(0);
+            }
+            Some("celebrate") => {
+                let width = dev_width(&args);
+                let (breed, stage) = dev_look(&args);
+                let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, json)) else {
+                    eprintln!("usage: purrgotchi pixels celebrate levelup|young|adult|streak|centurion|veteran|master|legendary|greeting|drop|birthday [--width W] [--breed B] [--stage S] [--json]");
+                    process::exit(2);
+                };
+                println!("{sheet}");
+                process::exit(0);
+            }
+            _ => {
+                eprintln!("usage: purrgotchi pixels test|sheet|scene|celebrate [--breed B] [--json]");
+                process::exit(2);
+            }
+        },
         "--version" | "-V" => {
             println!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|feed|turn|rename|hatch|card|pet|play|treat|stats|react>");
+            eprintln!("usage: purrgotchi <statusline|frame|pixels|feed|turn|rename|hatch|card|pet|play|treat|stats|react> [--json]");
             process::exit(2);
         }
     }
+}
+
+/// Bad CLI arguments: the classic `<cmd>: <detail>` line on stderr, plus a
+/// `bad_args` error object on stdout under `--json`. Caller exits 2.
+fn bad_args(cmd: &str, detail: &str, json: bool) {
+    eprintln!("{cmd}: {detail}");
+    if json {
+        json::print_bad_args(&format!("{cmd}: {detail}"));
+    }
+}
+
+/// `--width` of the `pixels` dev verbs, clamped like the statusline's cat column.
+fn dev_width(args: &[String]) -> usize {
+    let w = cli::flag_value(args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+    playground::clamp_strip(w).unwrap_or_else(|| {
+        eprintln!("--width must be at least {} (capped at {})", playground::MIN_STRIP, playground::MAX_STRIP);
+        process::exit(2);
+    })
+}
+
+/// `--breed` / `--stage` of the `pixels` dev verbs.
+fn dev_look(args: &[String]) -> (&str, &str) {
+    (cli::flag_value(args, "--breed").unwrap_or("Ginger"), cli::flag_value(args, "--stage").unwrap_or("adult"))
 }

@@ -1,4 +1,5 @@
-use crate::colors::{C_PINK, C_RESET};
+use crate::colors::PINK;
+use crate::span::{fg, plain, width, Span};
 
 fn display_width(s: &str) -> usize {
     s.chars().count()
@@ -121,7 +122,7 @@ pub fn short_cwd(full_path: &str, home: &str) -> String {
 /// leading `...` (the same shape short_cwd gives paths). For fields whose end
 /// carries the meaning — paths, git branch names — so a long value can never
 /// overflow its fixed card column and shove the box border out of alignment.
-/// `pad_col` only pads short content; it never trims, so callers must shorten
+/// `pad_spans` only pads short content; it never trims, so callers must shorten
 /// oversized values here first.
 pub fn truncate_tail(s: &str, max: usize) -> String {
     let count = display_width(s);
@@ -136,39 +137,36 @@ pub fn truncate_tail(s: &str, max: usize) -> String {
     format!("...{tail}")
 }
 
-pub fn pad_col(plain: &str, ansi: &str, width: usize) -> (String, String) {
-    let len = display_width(plain);
-    let pad = width.saturating_sub(len);
-    let spaces = " ".repeat(pad);
-    (format!("{plain}{spaces}"), format!("{ansi}{spaces}"))
+/// Pad a span row with plain spaces up to `w` columns. Never trims —
+/// callers shorten oversized values first (see `truncate_tail`).
+pub fn pad_spans(mut spans: Vec<Span>, w: usize) -> Vec<Span> {
+    let pad = w.saturating_sub(width(&spans));
+    spans.push(plain(" ".repeat(pad)));
+    spans
 }
 
-pub fn anchor_col(
-    lp: &str,
-    la: &str,
-    rp: &str,
-    ra: &str,
-    width: usize,
-) -> (String, String) {
-    let ll = display_width(lp);
-    let rl = display_width(rp);
-    let half_l = width.saturating_sub(3) / 2;
-    let half_r = width.saturating_sub(3) - half_l;
-    let l_pad = half_l.saturating_sub(ll);
-    let r_pad = half_r.saturating_sub(rl);
-    let lp_spaces = " ".repeat(l_pad);
-    let rp_spaces = " ".repeat(r_pad);
-    (
-        format!("{lp}{lp_spaces} │ {rp}{rp_spaces}"),
-        format!("{la}{lp_spaces} {C_PINK}│{C_RESET} {ra}{rp_spaces}"),
-    )
+/// Anchored column: left block, pink `│` at the column midpoint, right block.
+pub fn anchor_spans(mut left: Vec<Span>, right: Vec<Span>, w: usize) -> Vec<Span> {
+    let half_l = w.saturating_sub(3) / 2;
+    let half_r = w.saturating_sub(3) - half_l;
+    let l_pad = half_l.saturating_sub(width(&left));
+    let r_pad = half_r.saturating_sub(width(&right));
+    left.push(plain(format!("{} ", " ".repeat(l_pad))));
+    left.push(fg("│", PINK));
+    left.push(plain(" "));
+    left.extend(right);
+    left.push(plain(" ".repeat(r_pad)));
+    left
 }
 
-pub fn close_row(plain: &str, ansi: &str, box_width: usize) -> String {
-    let len = display_width(plain);
-    let pad = box_width.saturating_sub(len);
-    let spaces = " ".repeat(pad);
-    format!("{C_PINK}║{C_RESET}{ansi}{spaces}{C_PINK}║{C_RESET}")
+/// Close a HUD row: `║` + inner + padding + `║`, bars in pink.
+pub fn close_row_spans(inner: Vec<Span>, box_width: usize) -> Vec<Span> {
+    let pad = box_width.saturating_sub(width(&inner));
+    let mut row = vec![fg("║", PINK)];
+    row.extend(inner);
+    row.push(plain(" ".repeat(pad)));
+    row.push(fg("║", PINK));
+    row
 }
 
 pub fn pad_sprite(s: &str, sw: usize) -> String {
@@ -254,5 +252,34 @@ mod tests {
         assert_eq!(format_ymd(1_677_628_800), "2023-03-01");
         // 2023-02-28 UTC = 1,677,542,400
         assert_eq!(format_ymd(1_677_542_400), "2023-02-28");
+    }
+
+    use crate::colors::{CYAN, PINK};
+    use crate::span::{dim, fg, plain, to_ansi, width};
+
+    #[test]
+    fn pad_spans_appends_plain_spaces() {
+        let r = pad_spans(vec![dim("A:"), plain(" "), fg("b", CYAN)], 6);
+        assert_eq!(to_ansi(&r), "\x1b[2mA:\x1b[0m \x1b[38;2;10;189;198mb\x1b[0m  ");
+    }
+
+    #[test]
+    fn pad_spans_never_trims_and_pads_empty() {
+        assert_eq!(width(&pad_spans(vec![plain("0123456789")], 4)), 10);
+        assert_eq!(to_ansi(&pad_spans(vec![], 3)), "   ");
+    }
+
+    #[test]
+    fn anchor_spans_matches_legacy_bytes() {
+        // legacy anchor_col("L","L","R","R",9).1 == "L" + "  " + " " + PINK│RESET + " " + "R" + "  "
+        let r = anchor_spans(vec![plain("L")], vec![plain("R")], 9);
+        assert_eq!(to_ansi(&r), format!("L   {}│\x1b[0m R  ", PINK.ansi()));
+        assert_eq!(width(&r), 9);
+    }
+
+    #[test]
+    fn close_row_spans_wraps_in_pink_bars() {
+        let r = close_row_spans(vec![plain("x")], 3);
+        assert_eq!(to_ansi(&r), format!("{p}║\x1b[0mx  {p}║\x1b[0m", p = PINK.ansi()));
     }
 }

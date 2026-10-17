@@ -10,6 +10,8 @@
 #   5. Prints verification instructions
 #
 # Safe to run multiple times — it's idempotent.
+#
+# bash install.sh --uninstall-hooks removes the feed/turn hooks and keeps statusLine.
 
 set -euo pipefail
 
@@ -23,6 +25,92 @@ case "${OSTYPE:-}" in
     *)                    BIN_EXT="" ;;
 esac
 RUST_BIN="$REPO_DIR/rust/target/release/purrgotchi${BIN_EXT}"
+
+usage() {
+    echo "usage: bash install.sh                    # wire statusLine + feed/turn hooks"
+    echo "       bash install.sh --uninstall-hooks  # remove purrgotchi feed/turn hooks, keep statusLine"
+}
+
+MODE="install"
+case "${1:-}" in
+    "")                MODE="install" ;;
+    --uninstall-hooks) MODE="uninstall-hooks" ;;
+    -h|--help)         usage; exit 0 ;;
+    *)                 echo "unknown option: $1"; usage; exit 2 ;;
+esac
+
+# --- Uninstall hooks ---------------------------------------------------------
+# Removes the feed/turn hooks so nothing feeds the kitten. statusLine is kept
+# (it never counts anything). Needs only jq — never the compiled binary.
+if [ "$MODE" = "uninstall-hooks" ]; then
+    echo "Purrgotchi: removing feed/turn hooks from $SETTINGS (statusLine is kept)"
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "  MISSING: jq (https://jqlang.github.io/jq/download/)"
+        exit 1
+    fi
+    if [ ! -f "$SETTINGS" ]; then
+        echo "  No settings.json — nothing to do."
+        exit 0
+    fi
+    if ! jq empty "$SETTINGS" 2>/dev/null; then
+        echo "  ERROR: $SETTINGS is not valid JSON. Fix it (or restore a .bak) and re-run."
+        exit 1
+    fi
+    # Match ONLY what install.sh writes: PostToolUse entries with matcher "*"
+    # running `"<bin>" feed`, and UserPromptSubmit running `"<bin>" turn`
+    # (<bin> = .../purrgotchi[.exe], optionally quoted; or the `purr` wrapper).
+    # A user's own hook that merely mentions "purrgotchi" is never touched.
+    BIN_RE='^\s*("([^"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?"|([^\s"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?)\s+'
+    HOOK_DEFS='
+      def is_purr($verb): ((.command // "") | test($re + $verb + "(\\s|$)"));
+      def entry_ok($needstar): ((.matcher == "*") or ($needstar | not));
+    '
+    COUNT_FILTER="$HOOK_DEFS"'
+      [ (.hooks | objects | .PostToolUse | arrays | .[] | objects | select(entry_ok(true))
+          | .hooks | arrays | .[] | objects | select(is_purr("feed"))),
+        (.hooks | objects | .UserPromptSubmit | arrays | .[] | objects | select(entry_ok(false))
+          | .hooks | arrays | .[] | objects | select(is_purr("turn"))) ] | length'
+    # Only entries/arrays/objects this run emptied are pruned; pre-existing
+    # empty ones are left alone.
+    UNINSTALL_FILTER="$HOOK_DEFS"'
+      def strip($verb; $needstar):
+        [ .[] | if (type == "object") and ((.hooks | type) == "array") and entry_ok($needstar) then
+                  (.hooks) as $h
+                  | ($h | map(select(((type == "object") and is_purr($verb)) | not))) as $kept
+                  | if ($kept | length) == 0 and ($h | length) > 0 then empty else .hooks = $kept end
+                else . end ];
+      def fix($k; $verb; $needstar):
+        if (.[$k] | type) == "array" then
+          (.[$k]) as $old | (.[$k] | strip($verb; $needstar)) as $new
+          | if ($new | length) == 0 and ($old | length) > 0 then del(.[$k]) else .[$k] = $new end
+        else . end;
+      if (.hooks | type) != "object" then . else
+        .hooks |= (fix("PostToolUse"; "feed"; true) | fix("UserPromptSubmit"; "turn"; false))
+        | if .hooks == {} then del(.hooks) else . end
+      end'
+    FOUND="$(jq --arg re "$BIN_RE" "$COUNT_FILTER" "$SETTINGS" 2>/dev/null || echo ERR)"
+    if [ "$FOUND" = "ERR" ]; then
+        echo "  ERROR: could not scan settings.json with jq. Settings unchanged."
+        exit 1
+    fi
+    if [ "$FOUND" = "0" ]; then
+        echo "  No purrgotchi hooks found — settings.json unchanged."
+        exit 0
+    fi
+    if ! jq --arg re "$BIN_RE" "$UNINSTALL_FILTER" "$SETTINGS" > "${SETTINGS}.new" 2>/dev/null \
+       || ! jq empty "${SETTINGS}.new" 2>/dev/null; then
+        rm -f "${SETTINGS}.new"
+        echo "  ERROR: could not rewrite settings.json with jq. Settings unchanged."
+        exit 1
+    fi
+    BACKUP="${SETTINGS}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp "$SETTINGS" "$BACKUP"
+    echo "  Backup: $BACKUP"
+    mv "${SETTINGS}.new" "$SETTINGS"
+    echo "  Removed $FOUND purrgotchi feed/turn hook(s). statusLine left in place."
+    echo "  To rollback: cp \"$BACKUP\" \"$SETTINGS\""
+    exit 0
+fi
 
 echo "=============================================="
 echo "  Purrgotchi installer"
