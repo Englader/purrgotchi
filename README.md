@@ -2,6 +2,8 @@
 
 A cyberpunk Claude Code statusline with a persistent tamagotchi kitten.
 
+![Purrgotchi v4: idle life, ball scene, level-up, sleep](docs/superpowers/plans/assets/2026-10-17-pixel-cat/v4-demo.gif)
+
 Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and a stat row — alongside a live, 1 fps pixel-art cat (24-bit half-block graphics) whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earns coins per tool call, levels up, evolves through life stages, builds bond through interaction, celebrates milestones, and (optionally) speaks LLM-generated mood-contextual dialogue that reacts to what you just did.
 
 ---
