@@ -19,14 +19,15 @@ eval "$(bash mod/scripts/dev-sandbox.sh "$tmp/sandbox")"
 
 dts="mod/.claude-plugin/types/claude-code/index.d.ts"
 log="$tmp/purr-debug.log"
-touch "$tmp/start"
 
 timeout -k 3 25 script -qfc \
   "claude --plugin-dir ./mod --setting-sources project,local --debug-file '$log'" \
   "$tmp/purr-tty.log" </dev/null >/dev/null || true
 
-if [ ! -f "$dts" ] || [ ! "$dts" -nt "$tmp/start" ]; then
-  echo "lay-types: $dts was not (re)written by this run." >&2
+# The engine logs "type root of <plugin> ... wrote <files>" (or "wrote nothing"
+# when the laid types are already current); either means this engine laid them.
+if [ ! -f "$dts" ] || ! grep -q "type root of purrgotchi" "$log" 2>/dev/null; then
+  echo "lay-types: the engine did not lay $dts in this run." >&2
   echo "lay-types: debug log: $log   tty log: $tmp/purr-tty.log" >&2
   echo "lay-types: (a trust or login prompt in the pty can block the load; check the tty log)" >&2
   exit 1
@@ -36,6 +37,6 @@ if [ ! -f mod/tsconfig.json ]; then
   printf '{ "extends": "./.claude-plugin/types/tsconfig.json" }\n' > mod/tsconfig.json
 fi
 
-grep -m1 "type root of purrgotchi" "$log" >&2 || true
+grep -m1 -o "type root of purrgotchi.*" "$log" >&2
 echo "lay-types: $dts $(wc -c < "$dts") bytes"
 echo "lay-types: $(claude --version)"
