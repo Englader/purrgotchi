@@ -22,8 +22,22 @@ export type CelebrationKind =
 
 export type PlaygroundScene = 'Run' | 'Zoomies' | 'BallChase' | 'ButterflyChase' | 'Roll' | 'YarnPush'
 
-/** Known codes: no_kitten, state_unavailable, bad_input, empty_quip, write_failed. */
-export type ErrorJson = { v: 1; ok: false; error: string; message: string }
+/** Error codes the binary emits; any other string is a generic failure. */
+export type ErrorCode =
+  | 'no_kitten'
+  | 'state_unavailable'
+  | 'state_corrupt'
+  | 'bad_input'
+  | 'bad_args'
+  | 'empty_quip'
+  | 'write_failed'
+
+/**
+ * Any `ok: false` object with an `error` code. Under `--json` every one exits
+ * non-zero (1, or 2 for `bad_args`), so stdout is parsed whatever the exit
+ * code. `bad_args` carries `detail` instead of `message`.
+ */
+export type ErrorJson = { v: 1; ok: false; error: ErrorCode | (string & {}); message?: string; detail?: string }
 
 export type FeedJson = {
   v: 1

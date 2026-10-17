@@ -3,7 +3,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { PurrOptions } from './options'
-import type { BinaryStatus, ErrorJson, FrameJson } from '../types'
+import type { BinaryStatus, ErrorCode, ErrorJson, FrameJson } from '../types'
 
 /** The slice of `$` this module needs (a hook's `$`, or a test adapter). */
 export type ProcessHost = { readonly process: Pick<EngineInterface['process'], 'run'> }
@@ -43,8 +43,9 @@ function parseLine(stdout: string): Record<string, unknown> | null {
 }
 
 /**
- * Runs `[bin, ...args]` and parses its one JSON line. Never throws. A non-zero
- * exit that still carries `v: 1` JSON (e.g. `no_kitten`, exit 1) is `json`.
+ * Runs `[bin, ...args]` and parses its one JSON line. Never throws. Stdout is
+ * parsed whatever the exit code: every `ok: false` exits non-zero (1, or 2 for
+ * `bad_args`) and is still `json`. Only no parseable v1 JSON is `failed`.
  */
 export async function runJson<T>(
   $: ProcessHost,
@@ -85,9 +86,12 @@ async function readVersion($: ProcessHost, bin: string): Promise<string> {
   }
 }
 
+const STATE_ERRORS: readonly string[] = ['no_kitten', 'state_unavailable', 'state_corrupt'] satisfies ErrorCode[]
+
 /**
  * Capability handshake: does `frame --json` answer the v1 contract?
- * `no_kitten` counts as ready (fresh machine; the first feed hatches).
+ * `no_kitten` counts as ready (fresh machine; the first feed hatches), as do
+ * `state_unavailable` / `state_corrupt`. `bad_args` or no JSON is outdated.
  */
 export async function handshake(
   $: ProcessHost,
@@ -100,7 +104,9 @@ export async function handshake(
   if (out.kind === 'json' && !isError(out.value) && out.value.ok === true) {
     return { status: { kind: 'ready', version: await readVersion($, bin) }, frame: out.value }
   }
-  if (out.kind === 'json' && isError(out.value) && out.value.error === 'no_kitten') {
+  // Errors only a v1 binary can give about its own state: compatible, no frame
+  // (not hatched yet, lock busy, or a corrupt state.json the binary reports).
+  if (out.kind === 'json' && isError(out.value) && STATE_ERRORS.includes(out.value.error)) {
     return { status: { kind: 'ready', version: await readVersion($, bin) }, frame: null }
   }
   return { status: { kind: 'outdated', version: await readVersion($, bin) }, frame: null }

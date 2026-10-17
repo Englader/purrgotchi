@@ -71,6 +71,7 @@ export const fx = {
       ...patch,
     } satisfies FrameJson),
   error: (code: string, message?: string): string => line({ v: 1, ok: false, error: code, message: message ?? code }),
+  badArgs: (detail: string): string => line({ v: 1, ok: false, error: 'bad_args', detail }),
   noKitten: line({ v: 1, ok: false, error: 'no_kitten', message: 'No kitten hatched yet. Run: purrgotchi hatch' }),
 }
 

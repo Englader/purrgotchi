@@ -75,6 +75,34 @@ test('no_kitten is ready', async () => {
   expect(frame).toBeNull()
 })
 
+test('runJson keeps bad_args JSON on exit 2', async () => {
+  const out = await runJson(host(() => ok(fx.badArgs('feed: --count must be an integer'), 2)), 'purrgotchi', [
+    'feed',
+    '--json',
+    '--count',
+    '0',
+  ])
+  expect(out).toMatchObject({ kind: 'json', exitCode: 2 })
+  if (out.kind !== 'json' || !isError(out.value)) throw new Error('expected error json')
+  expect(out.value.error).toBe('bad_args')
+  expect(out.value.detail).toBe('feed: --count must be an integer')
+})
+
+for (const code of ['state_unavailable', 'state_corrupt'] as const) {
+  test(`handshake ${code} is ready without a frame`, async () => {
+    const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.error(code), 1)))
+    const { status, frame } = await handshake(h, 'purrgotchi')
+    expect(status).toEqual({ kind: 'ready', version: '3.8.0' })
+    expect(frame).toBeNull()
+  })
+}
+
+test('handshake bad_args is outdated', async () => {
+  const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.badArgs('frame: ?'), 2)))
+  const { status } = await handshake(h, 'purrgotchi')
+  expect(status).toEqual({ kind: 'outdated', version: '3.8.0' })
+})
+
 test('handshake missing', async () => {
   const seen: string[][] = []
   const h = host(argv => {
