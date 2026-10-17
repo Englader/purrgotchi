@@ -57,36 +57,58 @@ if [ "$MODE" = "uninstall-hooks" ]; then
         echo "  ERROR: $SETTINGS is not valid JSON. Fix it (or restore a .bak) and re-run."
         exit 1
     fi
-    UNINSTALL_FILTER='
-      def drop_purr:
-        (. // [])
-        | map(.hooks = ((.hooks // []) | map(select(((.command // "") | test("purrgotchi")) | not))))
-        | map(select((.hooks | length) > 0));
-      def prune($k): if (.[$k] // null) == [] then del(.[$k]) else . end;
+    # Match ONLY what install.sh writes: PostToolUse entries with matcher "*"
+    # running `"<bin>" feed`, and UserPromptSubmit running `"<bin>" turn`
+    # (<bin> = .../purrgotchi[.exe], optionally quoted; or the `purr` wrapper).
+    # A user's own hook that merely mentions "purrgotchi" is never touched.
+    BIN_RE='^\s*("([^"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?"|([^\s"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?)\s+'
+    HOOK_DEFS='
+      def is_purr($verb): ((.command // "") | test($re + $verb + "(\\s|$)"));
+      def entry_ok($needstar): ((.matcher == "*") or ($needstar | not));
+    '
+    COUNT_FILTER="$HOOK_DEFS"'
+      [ (.hooks | objects | .PostToolUse | arrays | .[] | objects | select(entry_ok(true))
+          | .hooks | arrays | .[] | objects | select(is_purr("feed"))),
+        (.hooks | objects | .UserPromptSubmit | arrays | .[] | objects | select(entry_ok(false))
+          | .hooks | arrays | .[] | objects | select(is_purr("turn"))) ] | length'
+    # Only entries/arrays/objects this run emptied are pruned; pre-existing
+    # empty ones are left alone.
+    UNINSTALL_FILTER="$HOOK_DEFS"'
+      def strip($verb; $needstar):
+        [ .[] | if (type == "object") and ((.hooks | type) == "array") and entry_ok($needstar) then
+                  (.hooks) as $h
+                  | ($h | map(select(((type == "object") and is_purr($verb)) | not))) as $kept
+                  | if ($kept | length) == 0 and ($h | length) > 0 then empty else .hooks = $kept end
+                else . end ];
+      def fix($k; $verb; $needstar):
+        if (.[$k] | type) == "array" then
+          (.[$k]) as $old | (.[$k] | strip($verb; $needstar)) as $new
+          | if ($new | length) == 0 and ($old | length) > 0 then del(.[$k]) else .[$k] = $new end
+        else . end;
       if (.hooks | type) != "object" then . else
-        .hooks |= (
-          (if has("PostToolUse") then .PostToolUse |= drop_purr else . end)
-          | (if has("UserPromptSubmit") then .UserPromptSubmit |= drop_purr else . end)
-          | prune("PostToolUse") | prune("UserPromptSubmit")
-        )
+        .hooks |= (fix("PostToolUse"; "feed"; true) | fix("UserPromptSubmit"; "turn"; false))
         | if .hooks == {} then del(.hooks) else . end
       end'
-    if ! jq "$UNINSTALL_FILTER" "$SETTINGS" > "${SETTINGS}.new" 2>/dev/null \
+    FOUND="$(jq --arg re "$BIN_RE" "$COUNT_FILTER" "$SETTINGS" 2>/dev/null || echo ERR)"
+    if [ "$FOUND" = "ERR" ]; then
+        echo "  ERROR: could not scan settings.json with jq. Settings unchanged."
+        exit 1
+    fi
+    if [ "$FOUND" = "0" ]; then
+        echo "  No purrgotchi hooks found — settings.json unchanged."
+        exit 0
+    fi
+    if ! jq --arg re "$BIN_RE" "$UNINSTALL_FILTER" "$SETTINGS" > "${SETTINGS}.new" 2>/dev/null \
        || ! jq empty "${SETTINGS}.new" 2>/dev/null; then
         rm -f "${SETTINGS}.new"
         echo "  ERROR: could not rewrite settings.json with jq. Settings unchanged."
         exit 1
     fi
-    if [ "$(jq -S . "$SETTINGS")" = "$(jq -S . "${SETTINGS}.new")" ]; then
-        rm -f "${SETTINGS}.new"
-        echo "  No Purrgotchi hooks found — settings.json unchanged."
-        exit 0
-    fi
     BACKUP="${SETTINGS}.bak.$(date +%Y%m%d-%H%M%S)"
     cp "$SETTINGS" "$BACKUP"
     echo "  Backup: $BACKUP"
     mv "${SETTINGS}.new" "$SETTINGS"
-    echo "  Removed purrgotchi feed/turn hooks. statusLine left in place."
+    echo "  Removed $FOUND purrgotchi feed/turn hook(s). statusLine left in place."
     echo "  To rollback: cp \"$BACKUP\" \"$SETTINGS\""
     exit 0
 fi
