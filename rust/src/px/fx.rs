@@ -1,9 +1,10 @@
 //! Pixel celebrations and the birthday: the cat cheers, centred, with a prop
 //! effect per `CelebrationKind`. Triggers, timing and speech stay with
 //! `kitten_view` and the celebration counter; this only decides what each
-//! second looks like, as a pure function of `(overlay, now, width, look, h)`
-//! (nothing persisted: `f = now % 2` drives the 2-frame props, `k = now % 6`
-//! the rising / falling motion, `now / 6` re-rolls the confetti).
+//! second looks like, as a pure function of `(overlay, now_ms, width, look, h,
+//! tempo)` (nothing persisted: the 2-frame props flip every `flash_ms`,
+//! `now_ms % 6000` drives the rising / falling motion, `now / 6 s` re-rolls
+//! the confetti).
 //!
 //! Geometry first (`fx_frame`, a `SceneFrame` the scene drawer can paint),
 //! then `overlay_canvas` draws it. Props sit in the stage margins or on the
@@ -14,6 +15,7 @@ use super::art::{self, Pose, Prop};
 use super::life::ihash;
 use super::paint::{self, CatLook};
 use super::scene::{self, SceneFrame};
+use super::tempo::Tempo;
 use super::{PxCanvas, PxHeight};
 use crate::pixel;
 use crate::state::CelebrationKind;
@@ -59,23 +61,28 @@ fn put(f: &mut SceneFrame, w: usize, prop: Prop, frame: u8, x: i32, y: i32, h: P
     f.put((w, h), prop, frame, x, y, matches!(prop, Prop::Hat | Prop::Heart));
 }
 
+/// Milliseconds into the current rising / falling cycle.
+fn cycle_ms(now_ms: u64) -> i32 {
+    (now_ms % (CYCLE * 1000)) as i32
+}
+
 /// Falling confetti: piece `i` of this 6 s block, wrapping top to bottom.
-fn confetti(f: &mut SceneFrame, w: usize, n: usize, now: u64, h: PxHeight) {
-    let (block, k) = (now / CYCLE, (now % CYCLE) as i32);
+fn confetti(f: &mut SceneFrame, w: usize, n: usize, now_ms: u64, h: PxHeight, t: &Tempo) {
+    let (block, fall) = (now_ms / (CYCLE * 1000), t.fall_px_s * cycle_ms(now_ms) / 1000);
     for i in 0..n as u64 {
         let hv = ihash(i << 32 ^ block);
         let (x, y0) = ((hv % w.max(1) as u64) as i32, ((hv >> 24) % scene::ph(h) as u64) as i32);
-        put(f, w, Prop::Confetti, ((hv >> 48) % 6) as u8, x, (y0 + SPEED * k) % scene::ph(h), h);
+        put(f, w, Prop::Confetti, ((hv >> 48) % 6) as u8, x, (y0 + fall) % scene::ph(h), h);
     }
 }
 
 /// `n` sparkles rising `SPEED` px/s on both sides of the cat, alternating
 /// sides, staggered 4 px apart; one is hidden while it wraps.
-fn sparkles(f: &mut SceneFrame, w: usize, n: usize, now: u64, cx: i32, cw: i32, h: PxHeight) {
-    let (k, frame) = ((now % CYCLE) as i32, (now % 2) as u8);
+fn sparkles(f: &mut SceneFrame, w: usize, n: usize, now_ms: u64, (cx, cw): (i32, i32), h: PxHeight, t: &Tempo) {
+    let (k, frame) = (cycle_ms(now_ms), frame(now_ms, t));
     let sh = art::prop(Prop::Sparkle, 0).h as i32;
     for i in 0..n as i32 {
-        let rise = (SPEED * k + 4 * i) % scene::ph(h);
+        let rise = (SPEED * k / 1000 + 4 * i) % scene::ph(h);
         if rise <= scene::ph(h) - sh {
             let x = if i % 2 == 0 { cx - 4 } else { cx + cw + 1 };
             put(f, w, Prop::Sparkle, frame, x, scene::ph(h) - sh - rise, h);
@@ -85,27 +92,37 @@ fn sparkles(f: &mut SceneFrame, w: usize, n: usize, now: u64, cx: i32, cw: i32, 
 
 /// One celebration second as geometry. The cat faces right and cheers
 /// (Greeting waves on odd seconds); `top` is where her sprite starts.
+#[cfg(test)]
 pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: PxHeight) -> SceneFrame {
+    fx_frame_ms(o, now.saturating_mul(1000), width, look, h, &Tempo::STATUSLINE)
+}
+
+/// The 2-frame phase (0 or 1) of the props and the wave, flipping every `flash_ms`.
+fn frame(now_ms: u64, t: &Tempo) -> u8 {
+    (now_ms / t.flash_ms % 2) as u8
+}
+
+pub(crate) fn fx_frame_ms(o: Overlay, now_ms: u64, width: usize, look: &CatLook, h: PxHeight, t: &Tempo) -> SceneFrame {
     use CelebrationKind::*;
+    let frame = frame(now_ms, t);
     let pose = match o {
-        Overlay::Celebration(Greeting) if now % 2 == 1 => Pose::Wave,
+        Overlay::Celebration(Greeting) if frame == 1 => Pose::Wave,
         _ => Pose::Cheer,
     };
     let cat = paint::paint(pose, look, true, art::Tail::Up, false, h);
     let (cw, top) = (cat.w as i32, scene::ph(h) - cat.h as i32);
     let cx = (width as i32 - cw) / 2;
     let mut f = SceneFrame { pose, x: cx, right: true, lift: 0, props: Vec::new(), dots: Vec::new() };
-    let frame = (now % 2) as u8;
     match o {
-        Overlay::Celebration(LevelUp) => sparkles(&mut f, width, 3, now, cx, cw, h),
-        Overlay::Celebration(EvolvingYoung | EvolvingAdult) => sparkles(&mut f, width, 2, now, cx, cw, h),
+        Overlay::Celebration(LevelUp) => sparkles(&mut f, width, 3, now_ms, (cx, cw), h, t),
+        Overlay::Celebration(EvolvingYoung | EvolvingAdult) => sparkles(&mut f, width, 2, now_ms, (cx, cw), h, t),
         Overlay::Celebration(Streak) => {
             let fh = art::prop(Prop::Flame, 0).h as i32;
             put(&mut f, width, Prop::Flame, frame, cx - 4, scene::ph(h) - fh, h);
             put(&mut f, width, Prop::Flame, frame ^ 1, cx + cw + 1, scene::ph(h) - fh, h);
         }
         Overlay::Celebration(k @ (MilestoneCenturion | MilestoneVeteran | MilestoneMaster | MilestoneLegendary)) => {
-            confetti(&mut f, width, confetti_count(k), now, h)
+            confetti(&mut f, width, confetti_count(k), now_ms, h, t)
         }
         Overlay::Celebration(Greeting) => {
             // Over the cat's empty back corner, bobbing 1 px. The small cats
@@ -115,13 +132,13 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
         }
         Overlay::Celebration(RandomDrop) => {
             // Falls from the top over 3 s (0, 4, 8 px), then glints on the ground.
-            let k = (now % CYCLE) as i32;
+            let k = cycle_ms(now_ms) / 1000;
             let ch = art::prop(Prop::Coin, 0).h as i32;
             put(&mut f, width, Prop::Coin, if k < 3 { 0 } else { frame }, cx + cw, (scene::ph(h) - ch) * k.min(2) / 2, h);
         }
         Overlay::Celebration(None) => {}
         Overlay::Birthday => {
-            confetti(&mut f, width, BIRTHDAY_CONFETTI, now, h);
+            confetti(&mut f, width, BIRTHDAY_CONFETTI, now_ms, h, t);
             // On the head between the ears: brim over the ear tips, so 2 px
             // above her sprite (an adult has no headroom and wears it low).
             let over_head = match h {
@@ -145,10 +162,15 @@ fn flash(c: &mut PxCanvas, x: i32, w: i32) {
     }
 }
 
+/// The overlay at whole second `now` at the statusline tempo.
 pub(crate) fn overlay_canvas(o: Overlay, now: u64, width: usize, look: &CatLook, h: PxHeight) -> PxCanvas {
-    let f = fx_frame(o, now, width, look, h);
+    overlay_canvas_ms(o, now.saturating_mul(1000), width, look, h, &Tempo::STATUSLINE)
+}
+
+pub(crate) fn overlay_canvas_ms(o: Overlay, now_ms: u64, width: usize, look: &CatLook, h: PxHeight, t: &Tempo) -> PxCanvas {
+    let f = fx_frame_ms(o, now_ms, width, look, h, t);
     let mut c = scene::draw(&f, width, look, h);
-    if matches!(o, Overlay::Celebration(CelebrationKind::EvolvingYoung | CelebrationKind::EvolvingAdult)) && now % 2 == 1 {
+    if matches!(o, Overlay::Celebration(CelebrationKind::EvolvingYoung | CelebrationKind::EvolvingAdult)) && frame(now_ms, t) == 1 {
         flash(&mut c, f.x, h.cat_max_w() as i32);
     }
     c

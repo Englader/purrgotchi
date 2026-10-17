@@ -1,0 +1,100 @@
+life 0 calm 8 c848975b27abe0be
+life 0 calm 29 3c3a2f3caff1ea71
+life 0 calm 104 dbf29dd4e2399cc0
+life 0 happy 8 973c32413b6b1a22
+life 0 happy 29 1ff45a70ba209f93
+life 0 happy 104 39a64a56c87e363c
+life 0 alert 8 1b4845a670c790ef
+life 0 alert 29 21bbf52223eb8960
+life 0 alert 104 d8f7d13b86737feb
+life 0 hungry 8 cbc870835a5cee72
+life 0 hungry 29 d212c72a09d5e708
+life 0 hungry 104 6832c654094e262e
+life 0 panic 8 889e2220b7f00608
+life 0 panic 29 0fdf11b301a2bbb7
+life 0 panic 104 70d56055c58bcb02
+life 0 sleep 8 45fc53ac42cb7c06
+life 0 sleep 29 1fcc751f832276bc
+life 0 sleep 104 36630dde6883eba8
+life 12345 calm 8 b719d6d5d06978aa
+life 12345 calm 29 c13ddc59c3238ff0
+life 12345 calm 104 165ff5ed746156f0
+life 12345 happy 8 fc388fd7d933ab15
+life 12345 happy 29 7e3037c7d46bc4c6
+life 12345 happy 104 40ff6370be279a1b
+life 12345 alert 8 cb693fdb131550dd
+life 12345 alert 29 0c7912a17a9cbe30
+life 12345 alert 104 f162a93eb26b5bfe
+life 12345 hungry 8 a7ef25b5a2da9f1d
+life 12345 hungry 29 c851ab9fec4b1b60
+life 12345 hungry 104 76eaf02c71004deb
+life 12345 panic 8 8dd76bcd2d89527b
+life 12345 panic 29 c5cbbda8c0e36541
+life 12345 panic 104 ffde6cdf207fc779
+life 12345 sleep 8 6fdd934d0f381bf4
+life 12345 sleep 29 25430291948d3d8e
+life 12345 sleep 104 612db8681f3aef98
+life 18446744073709551615 calm 8 576b78258b45c130
+life 18446744073709551615 calm 29 b99f89f66f5ce025
+life 18446744073709551615 calm 104 b9a8c324a8cf4281
+life 18446744073709551615 happy 8 65d98a2724f0745f
+life 18446744073709551615 happy 29 e359a33ba668e0c4
+life 18446744073709551615 happy 104 329c4c3ecc5cfac7
+life 18446744073709551615 alert 8 59d4e8e1424ad7fe
+life 18446744073709551615 alert 29 1aa8c366aafa7434
+life 18446744073709551615 alert 104 d78770133bb0ecf5
+life 18446744073709551615 hungry 8 70b56eb2ca96d774
+life 18446744073709551615 hungry 29 a6f8c45fadb9ba6a
+life 18446744073709551615 hungry 104 be247d4cb8140718
+life 18446744073709551615 panic 8 c3a92b5e68227b17
+life 18446744073709551615 panic 29 aacd43522379ce84
+life 18446744073709551615 panic 104 6a0cf65146b3da28
+life 18446744073709551615 sleep 8 cf93f3a345725ab5
+life 18446744073709551615 sleep 29 54928b98db92bd69
+life 18446744073709551615 sleep 104 acf1a526c894500b
+scene Run 45 12 32b43a31244767fe
+scene Run 45 10 41204f5272f950bf
+scene Run 120 12 6b94bcfc3aa97821
+scene Run 120 10 f1235bf51e915d1d
+scene Zoomies 45 12 8927cfed544990fb
+scene Zoomies 45 10 b8e716fb8ee867d8
+scene Zoomies 120 12 07e7658e54cd293a
+scene Zoomies 120 10 392492e8ad5a136d
+scene BallChase 45 12 ff7f184e834f4700
+scene BallChase 45 10 a0efa7eceeadb3e4
+scene BallChase 120 12 59a11d4dee842189
+scene BallChase 120 10 c9b08a6a57601d1c
+scene ButterflyChase 45 12 5ee280b6434ea62e
+scene ButterflyChase 45 10 28149a1c3ba85b7c
+scene ButterflyChase 120 12 01aca966e0628559
+scene ButterflyChase 120 10 df0ca3b3ac5cdba9
+scene Roll 45 12 6bde1d86459aa78c
+scene Roll 45 10 794db18ba0bc9253
+scene Roll 120 12 827c4ce621cba7a8
+scene Roll 120 10 e88f92cd054238df
+scene YarnPush 45 12 a5692c4b1dba9a69
+scene YarnPush 45 10 3a5a99c97096ca3e
+scene YarnPush 120 12 387296ea1ae3279e
+scene YarnPush 120 10 1f7fe8345540520e
+fx Celebration(LevelUp) 12 764fb6687f80a43f
+fx Celebration(LevelUp) 10 c9acf479f9a545ad
+fx Celebration(EvolvingYoung) 12 474203e99e60af71
+fx Celebration(EvolvingYoung) 10 ba06e32bdc30c871
+fx Celebration(EvolvingAdult) 12 474203e99e60af71
+fx Celebration(EvolvingAdult) 10 ba06e32bdc30c871
+fx Celebration(Streak) 12 0a93715a72d128f9
+fx Celebration(Streak) 10 11090f515de9e9cd
+fx Celebration(MilestoneCenturion) 12 9e9a4b435279e97b
+fx Celebration(MilestoneCenturion) 10 90fe3c26195c60c3
+fx Celebration(MilestoneVeteran) 12 3ef42c5142396b87
+fx Celebration(MilestoneVeteran) 10 059d701c14e9871f
+fx Celebration(MilestoneMaster) 12 d393fb253115647f
+fx Celebration(MilestoneMaster) 10 7c2e068094b5e85f
+fx Celebration(MilestoneLegendary) 12 116c00c45dafd233
+fx Celebration(MilestoneLegendary) 10 a49010e109b85327
+fx Celebration(Greeting) 12 9de59ac55ccce35f
+fx Celebration(Greeting) 10 dec5f960b53db44d
+fx Celebration(RandomDrop) 12 564d28e62faf2e15
+fx Celebration(RandomDrop) 10 5dbdad2fac98cdf5
+fx Birthday 12 6a4e4e53d7035a49
+fx Birthday 10 5d51d3a39681786f

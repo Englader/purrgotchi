@@ -13,6 +13,7 @@
 
 use super::art::{self, Pose, Prop, Tail};
 use super::paint::{self, CatLook};
+use super::tempo::Tempo;
 use super::{PxCanvas, PxHeight};
 use crate::colors::Rgb;
 use crate::pixel;
@@ -94,8 +95,14 @@ impl SceneFrame {
     }
 }
 
-fn gait(e: u64, a: Pose, b: Pose) -> Pose {
-    if e.is_multiple_of(2) { a } else { b }
+/// Alternates `a` and `b` every `gait_ms` (every second at the statusline tempo).
+fn gait(ms: u64, a: Pose, b: Pose, t: &Tempo) -> Pose {
+    if frame(ms, t) == 0 { a } else { b }
+}
+
+/// The 2-frame phase (0 or 1) at `ms`: gait, prop wings, ball hops.
+fn frame(ms: u64, t: &Tempo) -> u8 {
+    (ms / t.gait_ms % 2) as u8
 }
 
 fn dir(right: bool) -> i32 {
@@ -112,59 +119,69 @@ fn ahead(x: i32, right: bool, gap: i32, pw: i32, h: PxHeight) -> i32 {
     if right { x + cat_w(h) + gap } else { x - gap - pw }
 }
 
-/// Back-and-forth path at `speed` px/s: (x, facing right, just bounced).
-fn bounce(e: u64, speed: u64, phase: u64, span: usize) -> (i32, bool, bool) {
-    let t = |e: u64| e.wrapping_mul(speed).wrapping_add(phase);
-    let right = tri_rising(t(e), span);
-    let turned = e > 0 && right != tri_rising(t(e - 1), span);
-    (tri(t(e), span) as i32, right, turned)
+/// Back-and-forth path at `speed` px/s (times the tempo's multiplier): (x,
+/// facing right, just bounced). "Just bounced" lasts one statusline second,
+/// scaled down with the speed.
+fn bounce(ms: u64, speed: u64, phase: u64, span: usize, t: &Tempo) -> (i32, bool, bool) {
+    let pos = |ms: u64| ms.wrapping_mul(speed * t.scene_speed_mul) / 1000 + phase;
+    let right = tri_rising(pos(ms), span);
+    let window = (1000 / t.scene_speed_mul).max(1);
+    let turned = ms >= window && right != tri_rising(pos(ms - window), span);
+    (tri(pos(ms), span) as i32, right, turned)
 }
 
+/// The scene at whole second `elapsed` at the statusline tempo.
 pub(crate) fn scene_frame(kind: PlaygroundScene, elapsed: u64, duration: u64, seed: u64, width: usize, h: PxHeight) -> SceneFrame {
-    let finale = elapsed.saturating_add(FINALE_SECS) >= duration;
+    scene_frame_ms(kind, elapsed.saturating_mul(1000), duration, seed, width, h, &Tempo::STATUSLINE)
+}
+
+/// The scene `elapsed_ms` in. `duration` stays in seconds: the finale starts
+/// `FINALE_SECS` before it, whatever the tempo, so the caption stays in step.
+pub(crate) fn scene_frame_ms(kind: PlaygroundScene, elapsed_ms: u64, duration: u64, seed: u64, width: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let finale = elapsed_ms.saturating_add(FINALE_SECS * 1000) >= duration.saturating_mul(1000);
     match kind {
-        PlaygroundScene::Run => run(elapsed, seed, width, h),
-        PlaygroundScene::Zoomies => zoomies(elapsed, seed, width, h),
-        PlaygroundScene::Roll => roll(elapsed, seed, width, h),
-        PlaygroundScene::YarnPush => yarn(elapsed, seed, width, h),
-        PlaygroundScene::BallChase if finale => ball_finale(elapsed, duration, seed, width, h),
-        PlaygroundScene::BallChase => ball(elapsed, seed, width, h),
-        PlaygroundScene::ButterflyChase if finale => butterfly_finale(elapsed, duration, seed, width, h),
-        PlaygroundScene::ButterflyChase => butterfly(elapsed, seed, width, h),
+        PlaygroundScene::Run => run(elapsed_ms, seed, width, h, t),
+        PlaygroundScene::Zoomies => zoomies(elapsed_ms, seed, width, h, t),
+        PlaygroundScene::Roll => roll(elapsed_ms, seed, width, h, t),
+        PlaygroundScene::YarnPush => yarn(elapsed_ms, seed, width, h, t),
+        PlaygroundScene::BallChase if finale => ball_finale(elapsed_ms, duration, seed, width, h, t),
+        PlaygroundScene::BallChase => ball(elapsed_ms, seed, width, h, t),
+        PlaygroundScene::ButterflyChase if finale => butterfly_finale(elapsed_ms, duration, seed, width, h, t),
+        PlaygroundScene::ButterflyChase => butterfly(elapsed_ms, seed, width, h, t),
         PlaygroundScene::None => SceneFrame::cat(Pose::Sit, cat_span(width, h) as i32 / 2, true),
     }
 }
 
 /// Laps at a trot; a `Turn` at each wall.
-fn run(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let (x, right, turned) = bounce(e, RUN_SPEED, seed % 97, cat_span(w, h));
-    SceneFrame::cat(if turned { Pose::Turn } else { gait(e, Pose::Run1, Pose::Run2) }, x, right)
+fn run(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let (x, right, turned) = bounce(e, RUN_SPEED, seed % 97, cat_span(w, h), t);
+    SceneFrame::cat(if turned { Pose::Turn } else { gait(e, Pose::Run1, Pose::Run2, t) }, x, right)
 }
 
 /// Flat-out laps with skid dust behind her; no time to turn around.
-fn zoomies(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let (x, right, _) = bounce(e, ZOOMIES_SPEED, seed % 97, cat_span(w, h));
-    SceneFrame::cat(gait(e, Pose::Run1, Pose::Run2), x, right).trail(pixel::mix(paint::OUTLINE, pixel::WHITE, 0.5), h)
+fn zoomies(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let (x, right, _) = bounce(e, ZOOMIES_SPEED, seed % 97, cat_span(w, h), t);
+    SceneFrame::cat(gait(e, Pose::Run1, Pose::Run2, t), x, right).trail(pixel::mix(paint::OUTLINE, pixel::WHITE, 0.5), h)
 }
 
 /// Belly-up rolls across the stage and back, a dizzy sit at each end.
-fn roll(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let (x, right, turned) = bounce(e, ROLL_SPEED, seed % 13, cat_span(w, h));
-    SceneFrame::cat(if turned { Pose::Sit } else { gait(e, Pose::Roll1, Pose::Roll2) }, x, right)
+fn roll(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let (x, right, turned) = bounce(e, ROLL_SPEED, seed % 13, cat_span(w, h), t);
+    SceneFrame::cat(if turned { Pose::Sit } else { gait(e, Pose::Roll1, Pose::Roll2, t) }, x, right)
 }
 
 /// Pushes the yarn along the ground, string unravelling behind; at a wall she
 /// turns with the yarn tucked under her and pushes it back.
-fn yarn(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
+fn yarn(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
     let span = w.saturating_sub(h.cat_max_w() + 2 * YARN_MARGIN as usize);
-    let (x, right, turned) = bounce(e, YARN_SPEED, seed % 79, span);
+    let (x, right, turned) = bounce(e, YARN_SPEED, seed % 79, span, t);
     let x = x + YARN_MARGIN;
     if turned {
         let mut f = SceneFrame::cat(Pose::Turn, x, right);
         f.put((w, h), Prop::Yarn, 0, x + cat_w(h) / 2 - 2, ph(h) - 4, false);
         return f;
     }
-    let mut f = SceneFrame::cat(gait(e, Pose::Walk1, Pose::Walk2), x, right).trail(pixel::NOSE, h);
+    let mut f = SceneFrame::cat(gait(e, Pose::Walk1, Pose::Walk2, t), x, right).trail(pixel::NOSE, h);
     f.put((w, h), Prop::Yarn, 0, ahead(x, right, 0, 4, h), ph(h) - 4, false);
     f
 }
@@ -195,9 +212,10 @@ struct Cat {
     cool: u8,
 }
 
-/// Run `step` for seconds `1..=to` from `start`, keeping x on the stage.
-fn simulate(start: Cat, to: u64, w: usize, h: PxHeight, step: impl Fn(Cat, u64) -> Cat) -> Cat {
-    (1..=to.min(SIM_CAP)).fold(start, |c, e| {
+/// Run `step` for sim steps `1..=to` from `start`, keeping x on the stage.
+/// (`SIM_CAP` seconds' worth of steps at most.)
+fn simulate(start: Cat, to: u64, w: usize, h: PxHeight, t: &Tempo, step: impl Fn(Cat, u64) -> Cat) -> Cat {
+    (1..=to.min(SIM_CAP * 1000 / t.sim_step_ms)).fold(start, |c, e| {
         let n = step(c, e);
         Cat { x: n.x.clamp(0, cat_span(w, h) as i32), ..n }
     })
@@ -206,14 +224,25 @@ fn simulate(start: Cat, to: u64, w: usize, h: PxHeight, step: impl Fn(Cat, u64) 
 /// The seconds the finale has run (0 = the crouch), and the cat it starts
 /// from: the chase as it stood just before, turned toward the open stage when
 /// she has no room to leap.
-fn finale_start(elapsed: u64, duration: u64, w: usize, h: PxHeight, sim: impl Fn(u64) -> Cat) -> (u64, Cat) {
+fn finale_start(elapsed_ms: u64, duration: u64, w: usize, h: PxHeight, t: &Tempo, sim: impl Fn(u64) -> Cat) -> (u64, Cat) {
     let start = duration.saturating_sub(FINALE_SECS);
-    let mut c = sim(start.saturating_sub(1));
+    let mut c = sim(start.saturating_sub(1).saturating_mul(1000) / t.sim_step_ms);
     let room = if c.right { cat_span(w, h) as i32 - c.x } else { c.x };
     if room < FINALE_ROOM {
         c.right = !c.right;
     }
-    (elapsed.saturating_sub(start).min(FINALE_SECS - 1), c)
+    ((elapsed_ms.saturating_sub(start.saturating_mul(1000)) / 1000).min(FINALE_SECS - 1), c)
+}
+
+/// The chase cat at `ms`: simulated in `sim_step_ms` steps, sliding to the
+/// next step's x while her beat is a chase gait.
+fn chase_cat(ms: u64, t: &Tempo, sim: impl Fn(u64) -> Cat) -> Cat {
+    let (n, sub) = (ms / t.sim_step_ms, ms % t.sim_step_ms);
+    let mut c = sim(n);
+    if sub > 0 && matches!(c.beat, Beat::Chase | Beat::Dash) {
+        c.x += (i64::from(sim(n + 1).x - c.x) * sub as i64 / t.sim_step_ms as i64) as i32;
+    }
+    c
 }
 
 /// Crouch, leap (airborne, 4 px), land (2 px more): the finale cat.
@@ -230,19 +259,19 @@ fn pounce(k: u64, c: Cat, w: usize, h: PxHeight) -> SceneFrame {
 
 /// The ball rolls the full stage at `BALL_SPEED`, hopping every other second:
 /// (x, rolling right).
-fn ball_at(e: u64, seed: u64, w: usize) -> (i32, bool) {
-    let (x, right, _) = bounce(e, BALL_SPEED, seed % 89, w.saturating_sub(BALL_W as usize));
+fn ball_at(ms: u64, seed: u64, w: usize, t: &Tempo) -> (i32, bool) {
+    let (x, right, _) = bounce(ms, BALL_SPEED, seed % 89, w.saturating_sub(BALL_W as usize), t);
     (x, right)
 }
 
-fn ball_y(e: u64, h: PxHeight) -> i32 {
-    if e.is_multiple_of(2) { ph(h) - BALL_W } else { ph(h) - BALL_W - 4 }
+fn ball_y(ms: u64, h: PxHeight, t: &Tempo) -> i32 {
+    if frame(ms, t) == 0 { ph(h) - BALL_W } else { ph(h) - BALL_W - 4 }
 }
 
 /// She starts a dozen px behind the ball facing the way it rolls or, with no
 /// room behind it, a dozen px ahead of it facing it.
-fn ball_cat(to: u64, seed: u64, w: usize, h: PxHeight) -> Cat {
-    let (bx, br) = ball_at(0, seed, w);
+fn ball_cat(to: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> Cat {
+    let (bx, br) = ball_at(0, seed, w, t);
     let behind = if br { bx - 12 - cat_w(h) } else { bx + BALL_W + 12 };
     let start = if (0..=cat_span(w, h) as i32).contains(&behind) {
         Cat { x: behind, right: br, beat: Beat::Chase, cool: 0 }
@@ -250,8 +279,8 @@ fn ball_cat(to: u64, seed: u64, w: usize, h: PxHeight) -> Cat {
         let x = if br { bx + BALL_W + 12 } else { bx - 12 - cat_w(h) };
         Cat { x: x.clamp(0, cat_span(w, h) as i32), right: !br, beat: Beat::Chase, cool: 0 }
     };
-    simulate(start, to, w, h, |c, e| {
-        let (bx, br) = ball_at(e, seed, w);
+    simulate(start, to, w, h, t, |c, e| {
+        let (bx, br) = ball_at(e * t.sim_step_ms, seed, w, t);
         let d = dir(c.right);
         let gap = if c.right { bx - (c.x + cat_w(h)) } else { c.x - (bx + BALL_W) };
         let behind = (bx + BALL_W / 2 - (c.x + cat_w(h) / 2)) * d < 0;
@@ -271,10 +300,10 @@ fn ball_cat(to: u64, seed: u64, w: usize, h: PxHeight) -> Cat {
 
 /// "after it!": she chases the ball; when it bounces off a wall and rolls back
 /// at her she crouches and pounces, it slips past, she turns and chases again.
-fn ball(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let c = ball_cat(e, seed, w, h);
+fn ball(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let c = chase_cat(e, t, |n| ball_cat(n, seed, w, h, t));
     let pose = match c.beat {
-        Beat::Chase | Beat::Dash => gait(e, Pose::Run1, Pose::Run2),
+        Beat::Chase | Beat::Dash => gait(e, Pose::Run1, Pose::Run2, t),
         Beat::Crouch => Pose::Crouch,
         Beat::Leap | Beat::Land => Pose::Pounce,
         Beat::Turn => Pose::Turn,
@@ -284,15 +313,15 @@ fn ball(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
     if c.beat == Beat::Leap {
         f = f.airborne(h);
     }
-    let (bx, _) = ball_at(e, seed, w);
-    f.put((w, h), Prop::Ball, 0, bx, ball_y(e, h), false);
+    let (bx, _) = ball_at(e, seed, w, t);
+    f.put((w, h), Prop::Ball, 0, bx, ball_y(e, h, t), false);
     f
 }
 
 /// "gotcha!!": crouch with the ball rolling in, leap over it, land with it
 /// trapped under the front paws.
-fn ball_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let (k, c) = finale_start(elapsed, duration, w, h, |to| ball_cat(to, seed, w, h));
+fn ball_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let (k, c) = finale_start(elapsed, duration, w, h, t, |to| ball_cat(to, seed, w, h, t));
     let mut f = pounce(k, c, w, h);
     let bx = match k {
         0 => ahead(c.x, c.right, 6, BALL_W, h),
@@ -306,10 +335,10 @@ fn ball_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeight) ->
 
 /// The butterfly drifts the full stage at `BUTTERFLY_SPEED`, fluttering
 /// between px rows 0, 2 and 4 (the ASCII rows 0..2).
-fn butterfly_at(e: u64, seed: u64, w: usize) -> (i32, i32) {
-    let (x, _, _) = bounce(e, BUTTERFLY_SPEED, seed % 83, w.saturating_sub(BFLY_W as usize));
+fn butterfly_at(ms: u64, seed: u64, w: usize, t: &Tempo) -> (i32, i32) {
+    let (x, _, _) = bounce(ms, BUTTERFLY_SPEED, seed % 83, w.saturating_sub(BFLY_W as usize), t);
     // (e % 3 + seed % 3) never overflows, unlike e + seed near u64::MAX.
-    (x, 2 * ((e % 3 + seed % 3) % 3) as i32)
+    (x, 2 * ((ms / t.gait_ms % 3 + seed % 3) % 3) as i32)
 }
 
 /// Where she wants the butterfly's middle: just past her nose. (An adult's
@@ -319,11 +348,11 @@ fn reach(c: &Cat, h: PxHeight) -> i32 {
 }
 
 /// She stalks the butterfly; when it hovers at her nose she looks up, then swats.
-fn butterfly_cat(to: u64, seed: u64, w: usize, h: PxHeight) -> Cat {
-    let (bx, _) = butterfly_at(0, seed, w);
+fn butterfly_cat(to: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> Cat {
+    let (bx, _) = butterfly_at(0, seed, w, t);
     let x = bx + BFLY_W / 2 - (cat_w(h) + 2) - 12;
-    simulate(Cat { x: x.clamp(0, cat_span(w, h) as i32), right: true, beat: Beat::Chase, cool: 2 }, to, w, h, |c, e| {
-        let (bx, _) = butterfly_at(e, seed, w);
+    simulate(Cat { x: x.clamp(0, cat_span(w, h) as i32), right: true, beat: Beat::Chase, cool: 2 }, to, w, h, t, |c, e| {
+        let (bx, _) = butterfly_at(e * t.sim_step_ms, seed, w, t);
         let d = dir(c.right);
         let bc = bx + BFLY_W / 2;
         let dx = (bc - reach(&c, h)) * d;
@@ -349,11 +378,11 @@ fn butterfly_cat(to: u64, seed: u64, w: usize, h: PxHeight) -> Cat {
 
 /// "patience... patience...": stalking walk (a trot to catch up), a look up
 /// and a two-paw swat when it hovers at her nose; it flits up out of reach.
-fn butterfly(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let c = butterfly_cat(e, seed, w, h);
+fn butterfly(e: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let c = chase_cat(e, t, |n| butterfly_cat(n, seed, w, h, t));
     let pose = match c.beat {
-        Beat::Dash => gait(e, Pose::Run1, Pose::Run2),
-        Beat::Chase => gait(e, Pose::Walk1, Pose::Walk2),
+        Beat::Dash => gait(e, Pose::Run1, Pose::Run2, t),
+        Beat::Chase => gait(e, Pose::Walk1, Pose::Walk2, t),
         Beat::Look | Beat::Watch => Pose::Look,
         Beat::Swat => Pose::Cheer,
         Beat::Still => Pose::Sit,
@@ -361,17 +390,17 @@ fn butterfly(e: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
         Beat::Crouch | Beat::Leap | Beat::Land => Pose::Crouch,
     };
     let mut f = SceneFrame::cat(pose, c.x, c.right);
-    let (bx, by) = butterfly_at(e, seed, w);
+    let (bx, by) = butterfly_at(e, seed, w, t);
     let by = if c.beat == Beat::Swat { 0 } else { by };
     // behind her: flying back over her it passes behind her head
-    f.put((w, h), Prop::Butterfly, (e % 2) as u8, bx, by, false);
+    f.put((w, h), Prop::Butterfly, frame(e, t), bx, by, false);
     f
 }
 
 /// "pounce!! ...it got away": crouch under it, leap, land; it escapes up and
 /// away and she sits looking after it.
-fn butterfly_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeight) -> SceneFrame {
-    let (k, c) = finale_start(elapsed, duration, w, h, |to| butterfly_cat(to, seed, w, h));
+fn butterfly_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeight, t: &Tempo) -> SceneFrame {
+    let (k, c) = finale_start(elapsed, duration, w, h, t, |to| butterfly_cat(to, seed, w, h, t));
     let mut f = pounce(k.min(2), c, w, h);
     if k == 3 {
         f = SceneFrame::cat(Pose::Look, f.x, f.right);
@@ -380,7 +409,7 @@ fn butterfly_finale(elapsed: u64, duration: u64, seed: u64, w: usize, h: PxHeigh
         0 => (ahead(c.x, c.right, 0, BFLY_W, h), 4),
         _ => (ahead(c.x, c.right, 2 + 5 * k as i32, BFLY_W, h), 0),
     };
-    f.put((w, h), Prop::Butterfly, (elapsed % 2) as u8, bx, by, true);
+    f.put((w, h), Prop::Butterfly, frame(elapsed, t), bx, by, true);
     f
 }
 

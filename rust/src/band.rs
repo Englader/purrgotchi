@@ -7,6 +7,7 @@
 
 use crate::json::{error_json, read_fail_parts};
 use crate::px::band::{base64, pack_cells};
+use crate::px::tempo::Tempo;
 use crate::px::PxHeight;
 use crate::state::{self, State};
 use crate::statusline::{kitten_view, ViewInput};
@@ -178,7 +179,7 @@ pub fn run(o: &BandOpts) -> i32 {
                     },
                     || None,
                 );
-                let canvas = crate::px::cat_canvas(&view, s, sec, o.cols, forced, o.height);
+                let canvas = crate::px::band_canvas(&view, s, sec * 1000, o.cols, forced, o.height, &Tempo::BAND);
                 let packed = pack_cells(&canvas);
                 if packed != cells {
                     cells = packed;

@@ -1,6 +1,6 @@
 //! Idle cat life: what the pixel cat does when nothing else is on stage.
 //!
-//! Pure and O(1) in `(now, seed, mood, span)`: the statusline is re-run once a
+//! Pure and O(1) in `(now_ms, seed, mood, span, tempo)`: the statusline is re-run once a
 //! second with no process in between, so nothing is persisted. Time is cut
 //! into `BLOCK`-second blocks. Each block has an anchor x (`anchor`), and
 //! consecutive anchors are at most 11 px apart, so the cat's path is
@@ -16,15 +16,11 @@
 //! about once per 6 h). A terminal resize changes `span` and the anchors.
 
 use super::art::{Pose, Tail};
+use super::tempo::Tempo;
 use crate::playground::tri;
 
 /// Seconds per block plan.
 const BLOCK: u64 = 30;
-/// Walking speed (px per 1 fps tick).
-const WALK_PX: i32 = 2;
-/// Zoomies speed and reach (px per tick, px out from the anchor).
-const RUN_PX: i32 = 4;
-const RUN_REACH: i32 = 16;
 /// Leftovers shorter than this extend the previous behaviour instead.
 const MIN_PICK: u64 = 4;
 
@@ -55,7 +51,8 @@ impl Dice {
 }
 
 /// A once-in-`n` one-second event (blink, tail flick) that never fires two
-/// seconds running, so it always reads as a single beat.
+/// seconds running, so it always reads as a single beat. (How much of that
+/// second it shows is the tempo's `blink_ms` / `flick_ms`.)
 fn beat(now: u64, salt: u64, n: u64) -> bool {
     let hit = |t: u64| ihash(t ^ salt).is_multiple_of(n);
     hit(now) && !hit(now.wrapping_sub(1))
@@ -145,16 +142,17 @@ fn dwell(b: Behaviour) -> (u64, u64) {
 
 /// Block anchor: the mean of two triangle waves with different speeds, so
 /// the cat drifts, dawdles and doubles back instead of pacing a fixed beat.
-/// `|anchor(b + 1) - anchor(b)| <= (8 + 14) / 2 = 11`.
-fn anchor(b: u64, seed: u64, span: usize) -> i32 {
-    let a = tri(b.wrapping_mul(8).wrapping_add(seed % 97), span);
-    let c = tri(b.wrapping_mul(14).wrapping_add(seed / 97 % 89), span);
+/// `|anchor(b + 1) - anchor(b)| <= (steps.0 + steps.1) / 2` (11 at the
+/// statusline tempo).
+fn anchor(b: u64, seed: u64, span: usize, t: &Tempo) -> i32 {
+    let a = tri(b.wrapping_mul(t.anchor_steps.0).wrapping_add(seed % 97), span);
+    let c = tri(b.wrapping_mul(t.anchor_steps.1).wrapping_add(seed / 97 % 89), span);
     ((a + c) / 2) as i32
 }
 
 /// Which way the cat walks (and then faces) during block `b`.
-fn out(b: u64, seed: u64, span: usize) -> bool {
-    let (from, to) = (anchor(b, seed, span), anchor(b.wrapping_add(1), seed, span));
+fn out(b: u64, seed: u64, span: usize, t: &Tempo) -> bool {
+    let (from, to) = (anchor(b, seed, span, t), anchor(b.wrapping_add(1), seed, span, t));
     if from != to { to > from } else { ihash(b ^ seed) & 1 == 0 }
 }
 
@@ -162,7 +160,7 @@ fn out(b: u64, seed: u64, span: usize) -> bool {
 enum Kind {
     Turn,
     Walk { to: i32 },
-    /// Out `reach` px (signed) at `RUN_PX`/s and straight back.
+    /// Out `reach` px (signed) at the run speed and straight back.
     Zoom { reach: i32 },
     Act(Behaviour),
     /// Sleep-mood sleep: curled up, after one Loaf frame when `settle`.
@@ -179,13 +177,14 @@ struct Seg {
     right: bool,
 }
 
-fn zoom_out_ticks(reach: i32) -> u64 {
-    (reach.unsigned_abs() as u64).div_ceil(RUN_PX as u64)
+fn zoom_out_ticks(reach: i32, t: &Tempo) -> u64 {
+    (reach.unsigned_abs() as u64).div_ceil(t.run_px_s as u64)
 }
 
 /// Builds a block plan while tracking where the cat is and which way she faces.
 #[derive(Clone)]
 struct Plan {
+    t: Tempo,
     segs: Vec<Seg>,
     x: i32,
     right: bool,
@@ -215,18 +214,22 @@ impl Plan {
         if d != 0 {
             self.turn(d > 0);
             // At least a full gait cycle: a lone Walk1 between two Sits reads as a twitch.
-            self.push(Kind::Walk { to }, (d.unsigned_abs() as u64).div_ceil(WALK_PX as u64).max(2));
+            self.push(Kind::Walk { to }, (d.unsigned_abs() as u64).div_ceil(self.t.walk_px_s as u64).max(2));
             self.x = to;
         }
     }
 
     /// Run toward the roomier side and back; ends facing `home`.
     fn zoom(&mut self, span: i32, home: bool) -> bool {
-        let reach = if span - self.x >= self.x { (span - self.x).min(RUN_REACH) } else { -self.x.min(RUN_REACH) };
-        if reach.abs() < RUN_PX {
+        let cap = match self.t.run_reach_span_div {
+            0 => self.t.run_reach_max,
+            div => self.t.run_reach_max.min(span / div),
+        };
+        let reach = if span - self.x >= self.x { (span - self.x).min(cap) } else { -self.x.min(cap) };
+        if reach.abs() < self.t.run_px_s {
             return false;
         }
-        self.push(Kind::Zoom { reach }, 2 * zoom_out_ticks(reach) + 1);
+        self.push(Kind::Zoom { reach }, 2 * zoom_out_ticks(reach, &self.t) + 1);
         self.right = reach < 0;
         self.turn(home);
         true
@@ -236,7 +239,7 @@ impl Plan {
     fn excursion(&mut self, d: &mut Dice, span: i32, home: bool) -> bool {
         let (x, back) = (self.x, if home { -1 } else { 1 });
         let away = (x + back * d.range(4, 8) as i32).clamp(0, span);
-        if (away - x).abs() < WALK_PX {
+        if (away - x).abs() < self.t.walk_px_s {
             return false;
         }
         self.walk(away);
@@ -258,13 +261,13 @@ impl Plan {
     }
 }
 
-fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) -> Plan {
+fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &Tempo) -> Plan {
     let mut d = Dice(b ^ seed ^ 0x4C49_4645);
     let sp = span as i32;
     if mood == "sleep" && forced.is_none() {
         // A fixed bed and a fixed side; about every 2.5 min she wakes for a
         // stretch and settles back down.
-        let mut p = Plan { segs: Vec::new(), x: sp / 3, right: (seed >> 3) & 1 == 0, used: 0 };
+        let mut p = Plan { t: *t, segs: Vec::new(), x: sp / 3, right: (seed >> 3) & 1 == 0, used: 0 };
         let wake = ihash(b ^ seed ^ 0x5A5A).is_multiple_of(5);
         if wake {
             p.push(Kind::Act(Behaviour::Stretch), 4);
@@ -272,9 +275,9 @@ fn block_plan(b: u64, seed: u64, mood: &str, span: usize, forced: Option<Behavio
         p.push(Kind::Doze { settle: wake }, BLOCK - p.used);
         return p;
     }
-    let home = out(b, seed, span);
-    let mut p = Plan { segs: Vec::new(), x: anchor(b, seed, span), right: out(b.wrapping_sub(1), seed, span), used: 0 };
-    p.walk(anchor(b.wrapping_add(1), seed, span));
+    let home = out(b, seed, span, t);
+    let mut p = Plan { t: *t, segs: Vec::new(), x: anchor(b, seed, span, t), right: out(b.wrapping_sub(1), seed, span, t), used: 0 };
+    p.walk(anchor(b.wrapping_add(1), seed, span, t));
     p.turn(home);
     while p.used < BLOCK {
         let rem = BLOCK - p.used;
@@ -339,34 +342,39 @@ fn act_pose(b: Behaviour, k: u64, len: u64, now: u64, mood: &str) -> Pose {
     }
 }
 
-/// The cat at second `now`. `seed` is the cat's `birth_time`, `span` the
-/// room for the sprite's left px (`stage width - cat_max_w`). `forced`
-/// replaces the mood picks (the walk between anchors stays), and a forced
-/// Sleep happens on the anchor, not the bed.
-pub(crate) fn life_frame(now: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) -> CatFrame {
-    let (b, t) = (now / BLOCK, now % BLOCK);
-    let plan = block_plan(b, seed, mood, span, forced);
+fn is_gait(p: Pose) -> bool {
+    matches!(p, Pose::Walk1 | Pose::Walk2 | Pose::Run1 | Pose::Run2)
+}
+
+/// The cat at whole second `now`, `sub_ms` (< 1000) into it. Position and
+/// pose are those of tick `now`; the gait frame and the blink / flick beats
+/// follow `sub_ms`.
+fn tick_frame(now: u64, sub_ms: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &Tempo) -> CatFrame {
+    let (b, tk) = (now / BLOCK, now % BLOCK);
+    let plan = block_plan(b, seed, mood, span, forced, t);
     let mut start = 0;
     let seg = plan
         .segs
         .iter()
         .find(|s| {
             start += s.len;
-            t < start
+            tk < start
         })
         .copied()
         .expect("a block plan covers the whole block");
-    let k = t - (start - seg.len);
+    let k = tk - (start - seg.len);
+    // Flips every `gait_ms` from the segment's start: `k % 2` at 1 s.
+    let flip = (k * 1000 + sub_ms) / t.gait_ms % 2 == 1;
     let (pose, x, right) = match seg.kind {
         Kind::Turn => (Pose::Turn, seg.x, seg.right),
         Kind::Walk { to } => {
-            let gait = if k % 2 == 0 { Pose::Walk1 } else { Pose::Walk2 };
+            let gait = if flip { Pose::Walk2 } else { Pose::Walk1 };
             (gait, seg.x + (to - seg.x) * (k as i32 + 1) / seg.len as i32, seg.right)
         }
         Kind::Zoom { reach } => {
-            let n = zoom_out_ticks(reach);
-            let off = if k <= n { k as i32 * RUN_PX } else { reach.abs() - (k - n) as i32 * RUN_PX };
-            let gait = if k % 2 == 0 { Pose::Run1 } else { Pose::Run2 };
+            let n = zoom_out_ticks(reach, t);
+            let off = if k <= n { k as i32 * t.run_px_s } else { reach.abs() - (k - n) as i32 * t.run_px_s };
+            let gait = if flip { Pose::Run2 } else { Pose::Run1 };
             (gait, seg.x + off.clamp(0, reach.abs()) * reach.signum(), (k <= n) == (reach > 0))
         }
         Kind::Act(beh) => (act_pose(beh, k, seg.len, now, mood), seg.x, seg.right),
@@ -376,7 +384,7 @@ pub(crate) fn life_frame(now: u64, seed: u64, mood: &str, span: usize, forced: O
     let base_up = ihash(b ^ seed ^ 0x7A11) % 10 < if mood == "happy" { 7 } else { 3 };
     let tail = match pose {
         Pose::Loaf | Pose::LoafBreath => Tail::Curl,
-        _ if base_up && beat(now, !seed, 5) => Tail::Flick,
+        _ if base_up && beat(now, !seed, 5) && sub_ms < t.flick_ms => Tail::Flick,
         _ if base_up => Tail::Up,
         _ => Tail::Curl,
     };
@@ -385,9 +393,33 @@ pub(crate) fn life_frame(now: u64, seed: u64, mood: &str, span: usize, forced: O
         x: x.clamp(0, span as i32),
         facing_right: right,
         tail,
-        blink: has_eyes(pose) && beat(now, seed, 7),
+        blink: has_eyes(pose) && beat(now, seed, 7) && sub_ms < t.blink_ms,
         z: matches!(pose, Pose::Curl | Pose::CurlBreath).then_some((now % 3) as u8),
     }
+}
+
+/// The cat at `now_ms`. `seed` is the cat's `birth_time`, `span` the
+/// room for the sprite's left px (`stage width - cat_max_w`). `forced`
+/// replaces the mood picks (the walk between anchors stays), and a forced
+/// Sleep happens on the anchor, not the bed.
+///
+/// The plan runs in whole seconds. While the pose of second `k` is a gait
+/// pose, x slides linearly to the next second's x, so whole seconds give the
+/// same cat as a 1-fps clock and everything between is smooth.
+pub(crate) fn life_frame_ms(now_ms: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &Tempo) -> CatFrame {
+    let (sec, sub) = (now_ms / 1000, now_ms % 1000);
+    let mut f = tick_frame(sec, sub, seed, mood, span, forced, t);
+    if sub > 0 && is_gait(f.pose) {
+        let next = tick_frame(sec.wrapping_add(1), 0, seed, mood, span, forced, t);
+        f.x += ((i64::from(next.x - f.x) * sub as i64) / 1000) as i32;
+    }
+    f
+}
+
+/// The cat at whole second `now` at the statusline tempo.
+#[cfg(test)]
+pub(crate) fn life_frame(now: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) -> CatFrame {
+    life_frame_ms(now.saturating_mul(1000), seed, mood, span, forced, &Tempo::STATUSLINE)
 }
 
 #[cfg(test)]
@@ -509,5 +541,25 @@ mod tests {
             assert!(!(w[0].blink && w[1].blink), "double blink");
             assert!(!(w[0].tail == Tail::Flick && w[1].tail == Tail::Flick), "double flick");
         }
+    }
+
+    /// At the statusline tempo, 33 ms samples never move more than 1 px while
+    /// she walks (the gait interpolates between whole seconds).
+    #[test]
+    fn ms_samples_are_continuous() {
+        let t = &Tempo::STATUSLINE;
+        let mut walked = 0;
+        for mood in ["calm", "happy"] {
+            let mut prev = life_frame_ms(1_800_000_000_000, 5, mood, 104, None, t);
+            for i in 1..(600_000 / 33) {
+                let f = life_frame_ms(1_800_000_000_000 + i * 33, 5, mood, 104, None, t);
+                if matches!(f.pose, Pose::Walk1 | Pose::Walk2) && matches!(prev.pose, Pose::Walk1 | Pose::Walk2) {
+                    assert!((f.x - prev.x).abs() <= 1, "{mood}: {} -> {} at sample {i}", prev.x, f.x);
+                    walked += 1;
+                }
+                prev = f;
+            }
+        }
+        assert!(walked > 100, "only {walked} walking samples");
     }
 }
