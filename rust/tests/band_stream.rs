@@ -209,6 +209,18 @@ fn band_prunes_only_stale_alive_files() {
     assert!(!old.exists() && fresh.exists() && other.exists());
 }
 
+/// The stream samples real ms: a walking cat changes (almost) every frame.
+#[test]
+fn band_frames_change_every_frame_while_walking() {
+    let sb = Sandbox::with_state("band_walk_frames", json!({}));
+    let (n, f) = ((NOW * 1000).to_string(), "30");
+    let out = sb.run(&["band", "--cols", "120", "--rows", "5", "--now-ms", &n, "--frames", f], "", &[("PURR_FORCE_POSE", "wander")]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    let emitted = text.lines().skip(1).count();
+    assert!(emitted >= 8, "only {emitted} of 30 frames emitted");
+}
+
 #[test]
 fn band_hash_golden() {
     let scene = json!({ "scene_kind": "BallChase", "scene_started_at": NOW - 5, "scene_duration_secs": 30, "scene_seed": 7 });

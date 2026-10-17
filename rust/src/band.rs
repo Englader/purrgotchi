@@ -127,7 +127,8 @@ pub fn run(o: &BandOpts) -> i32 {
     let mut last_load: Option<u64> = None;
     let mut last_err: Option<u64> = None;
     let mut cells: Vec<u8> = Vec::new();
-    let mut cells_key: Option<(u64, u64)> = None; // (second, state generation)
+    let mut view_key: Option<(u64, u64)> = None; // (second, state generation)
+    let mut view = None;
     let mut generation = 0u64;
     // `cells` differ from the last frame sent (or none was sent yet).
     let mut dirty = false;
@@ -164,9 +165,9 @@ pub fn run(o: &BandOpts) -> i32 {
 
         if let Some(s) = &st {
             let sec = t / 1000;
-            if cells_key != Some((sec, generation)) {
-                cells_key = Some((sec, generation));
-                let view = kitten_view(
+            if view_key != Some((sec, generation)) {
+                view_key = Some((sec, generation));
+                view = Some(kitten_view(
                     &ViewInput {
                         st: s,
                         now: sec as i64,
@@ -178,8 +179,10 @@ pub fn run(o: &BandOpts) -> i32 {
                         strip_width: Some(o.cols),
                     },
                     || None,
-                );
-                let canvas = crate::px::band_canvas(&view, s, sec * 1000, o.cols, forced, o.height, &Tempo::BAND);
+                ));
+            }
+            if let Some(view) = &view {
+                let canvas = crate::px::band_canvas(view, s, t, o.cols, forced, o.height, &Tempo::BAND);
                 let packed = pack_cells(&canvas);
                 if packed != cells {
                     cells = packed;

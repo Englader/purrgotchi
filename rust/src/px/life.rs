@@ -358,6 +358,12 @@ fn is_gait(p: Pose) -> bool {
     matches!(p, Pose::Walk1 | Pose::Walk2 | Pose::Run1 | Pose::Run2)
 }
 
+/// `a / b` rounded to the nearest whole (halves away from zero), like the
+/// scenes' x, so a gait steps evenly whichever way she faces.
+fn div_round(a: i64, b: i64) -> i64 {
+    (a + a.signum() * b / 2) / b
+}
+
 /// How long a smooth grooming lick keeps the head down in its second.
 const LICK_MS: u64 = 600;
 
@@ -388,12 +394,12 @@ fn glide_zoom(reach: i32, right: bool, ms: u64, len_ms: u64, t: &Tempo) -> (Pose
     let (pose, off, out) = if ms < spin {
         (Pose::Turn, 0, true)
     } else if ms < spin + leg {
-        (gait(ms - spin), dist * (ms - spin) / leg, true)
+        (gait(ms - spin), div_round(dist as i64 * (ms - spin) as i64, leg as i64) as u64, true)
     } else if ms < back_at {
         (Pose::Turn, dist, false)
     } else {
         let back = ms - back_at;
-        (gait(back), dist - (dist * back / leg).min(dist), false)
+        (gait(back), dist - (div_round(dist as i64 * back as i64, leg as i64) as u64).min(dist), false)
     };
     (pose, off as i32 * reach.signum(), out)
 }
@@ -429,7 +435,7 @@ fn tick_frame(now: u64, sub_ms: u64, seed: u64, mood: &str, span: usize, forced:
                 let d = to - seg.x;
                 let moving = len_ms.min(u64::from(d.unsigned_abs()) * 2000 / t.walk_px_s as u64);
                 if ms < moving {
-                    (gait, seg.x + (i64::from(d) * ms as i64 / moving as i64) as i32, seg.right)
+                    (gait, seg.x + div_round(i64::from(d) * ms as i64, moving as i64) as i32, seg.right)
                 } else {
                     (Pose::Sit, to, seg.right)
                 }
@@ -609,6 +615,48 @@ mod tests {
             }
         }
         assert!(walked > 1000 && ran > 1000, "walked {walked}, ran {ran} frames");
+    }
+
+    /// Steady gait at 33-ms frames moves by even steps: each step is one of
+    /// two neighbouring whole px (walk 0 or 1, run 1 or 2, never a 0 next to
+    /// a 2), and every 8-frame window moves within 1.5 px of the run's own
+    /// average rate.
+    #[test]
+    fn band_steps_are_even() {
+        const WIN: usize = 8;
+        let (mut walks, mut runs) = (0, 0);
+        for (mood, forced) in [("calm", Some(Behaviour::Wander)), ("calm", Some(Behaviour::Zoomies)), ("happy", None)] {
+            let fr = band_frames(5, mood, 106, forced, 1_800_000_000_000, 33, 20 * 60 * 30);
+            let mut i = 0;
+            while i < fr.len() {
+                let (p0, r0) = (fr[i].pose, fr[i].facing_right);
+                let kind = if walking(p0) { 1 } else if running(p0) { 2 } else { 0 };
+                let mut j = i + 1;
+                while kind != 0 && j < fr.len() && fr[j].facing_right == r0 && (if kind == 1 { walking(fr[j].pose) } else { running(fr[j].pose) }) {
+                    j += 1;
+                }
+                let run = &fr[i..j];
+                i = j.max(i + 1);
+                if kind == 0 || run.len() < WIN + 2 {
+                    continue;
+                }
+                // The first and last frames sit on a segment edge.
+                let run = &run[1..run.len() - 1];
+                let dx: Vec<i32> = run.windows(2).map(|w| (w[1].x - w[0].x).abs()).collect();
+                let (lo, hi) = (*dx.iter().min().unwrap(), *dx.iter().max().unwrap());
+                let rate = f64::from(dx.iter().sum::<i32>()) / dx.len() as f64;
+                // Every step is the whole px either side of the rate, so a
+                // 1.06 px/frame run steps 1 or 2, a 0.26 walk 0 or 1.
+                let (floor, ceil) = ((rate - 0.1).floor() as i32, (rate + 0.1).ceil() as i32);
+                assert!(lo >= floor && hi <= ceil, "{mood} {forced:?}: steps {lo}..{hi} vs rate {rate} at x {}", run[0].x);
+                for w in dx.windows(WIN) {
+                    let moved = f64::from(w.iter().sum::<i32>());
+                    assert!((moved - rate * WIN as f64).abs() <= 1.5, "{mood} {forced:?}: {w:?} vs rate {rate}");
+                }
+                if kind == 1 { walks += 1 } else { runs += 1 }
+            }
+        }
+        assert!(walks > 20 && runs > 20, "walks {walks}, runs {runs}");
     }
 
     /// Lengths in ms of the unbroken runs of frames (1-ms samples) where
