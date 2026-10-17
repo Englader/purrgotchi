@@ -68,6 +68,10 @@ export type EngineOptions = {
   exists?: readonly string[]
   /** What `ui.blit` answers (default: taken). */
   blit?: (n: number) => { deny?: string }
+  /** What `$.session.id()` answers, asked on every call (default: `sess-1`). A throw is a rejection. */
+  sessionId?: () => string
+  /** What `$.session.usage().context.percent` answers (default: 0). */
+  contextPercent?: () => number | undefined
 }
 
 /** Answers every op the mod uses and records what it saw. */
@@ -89,6 +93,10 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     spies.blits.push({ requestId: b.requestId, ...(b.key !== undefined && { key: b.key }), ...(b.cells !== undefined && { cells: b.cells }) })
     return { value: o.blit?.(spies.blits.length) ?? {} }
   })
+  on('session.id', () => ({ value: (o.sessionId ?? (() => 'sess-1'))() }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 200_000, percent: o.contextPercent?.() ?? 0 }, rateLimits: [] },
+  }))
   // The engine's own band (what `next(e)` reaches): an empty Text.
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)

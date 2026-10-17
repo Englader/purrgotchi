@@ -2,7 +2,8 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import { B, KEY, MAX_COLS, MIN_COLS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
-import type { BandHost } from './band'
+import { beat } from './heartbeat'
+import type { HeartbeatHost } from './heartbeat'
 
 const RECONCILE_MS = 100
 
@@ -15,9 +16,10 @@ async function writeStats($: Pick<EngineInterface, 'fs' | 'clock'>, path: string
   }
 }
 
-async function startBand($: BandHost & Pick<EngineInterface, 'env' | 'fs' | 'process' | 'clock' | 'ui'>): Promise<void> {
+async function startBand($: HeartbeatHost & Pick<EngineInterface, 'env' | 'fs' | 'process' | 'clock' | 'ui'>): Promise<void> {
   await prepareBand($)
   $.clock.every(RECONCILE_MS, () => reconcile($))
+  $.clock.every(1000, () => void beat($))
   const stats = (await $.env.get('PURR_BAND_STATS'))?.trim()
   if (stats !== undefined && stats !== '') $.clock.every(1000, () => void writeStats($, stats))
   // The band rendered before the options were read: draw it again.
