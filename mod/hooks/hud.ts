@@ -96,9 +96,11 @@ export function ctxText(m: MeasureView, withTokens = true): string | null {
   return `${barPct(m.contextPct)}${tokens !== null ? ` · ${tokens}` : ''}`
 }
 
-/** `$0.12 session`, or null when the cost is unknown. */
+/** `$0.12 session`, plus ` · total $3.42` once the lifetime total is known; null when the session cost is unknown. */
 export function costText(m: MeasureView): string | null {
-  return m.costUsd !== null ? `$${m.costUsd.toFixed(2)} session` : null
+  if (m.costUsd === null) return null
+  const total = m.lifetimeCostUsd !== null ? ` · total $${m.lifetimeCostUsd.toFixed(2)}` : ''
+  return `$${m.costUsd.toFixed(2)} session${total}`
 }
 
 /** The session's age at `nowMs`, or null when its start is unknown. */

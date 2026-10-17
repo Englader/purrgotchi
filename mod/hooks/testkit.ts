@@ -7,7 +7,7 @@ import type { MockClock } from 'claude-code/testing'
 import type { ConfigValue, On, PaneOpenArgs, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
-import type { ActionJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
+import type { ActionJson, CostJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
 
 export type RunAnswer = ResultOf['process.run']
 export type OpAnswer = RunAnswer | Promise<RunAnswer>
@@ -38,6 +38,8 @@ export const fx = {
     } satisfies FeedJson),
   turn: (patch: Partial<TurnJson> = {}): string =>
     line({ v: 1, ok: true, celebration: null, react_spawned: false, ...patch } satisfies TurnJson),
+  cost: (patch: Partial<CostJson> = {}): string =>
+    line({ v: 1, ok: true, credit: 0.12, lifetime_cost_usd: 3.42, ...patch } satisfies CostJson),
   action: (patch: Partial<ActionJson> = {}): string =>
     line({
       v: 1,
@@ -153,6 +155,8 @@ export type EngineOptions = {
   open?: { notPlaced: string }
   /** What `$.config.set` answers (default: written); `deny` refuses with that reason. */
   config?: { deny: string }
+  /** What `$.session.id` answers (default `s-1`); `'deny'` makes it reject. */
+  sessionId?: string
 }
 
 /** User settings shapes for the migration scan. */
@@ -184,6 +188,7 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: [] } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', () => ({ value: '/tmp' }))
+  on('session.id', () => (o.sessionId === 'deny' ? { deny: 'session id unavailable' } : { value: o.sessionId ?? 's-1' }))
   on('session.end', ($, e) => {
     spies.ends.push(e.reason)
     return { sessionId: e.sessionId }

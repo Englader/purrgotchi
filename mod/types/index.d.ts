@@ -148,6 +148,8 @@ export type MeasureView = {
   contextWindow: number | null
   rateLimits: RateLimitView[]
   costUsd: number | null
+  /** The all-sessions total the binary reported for the last `cost` call (null: not known yet). */
+  lifetimeCostUsd: number | null
   model: string | null
   cwd: string | null
   /** Epoch ms. */

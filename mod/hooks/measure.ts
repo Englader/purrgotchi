@@ -4,11 +4,12 @@
 import type { EngineInterface, On, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
 import { EMPTY_MEASURE, writeMeasure } from './atoms'
-import { errText } from './binary'
-import { debugLog } from './runtime'
+import { errText, okValue, runJson, TIMEOUT } from './binary'
+import type { ProcessHost } from './binary'
+import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
 import { pokeTicker } from './ticker'
-import type { MeasureView } from '../types'
+import type { CostJson, MeasureView } from '../types'
 
 const num = (n: number | undefined): number | null => (n !== undefined && Number.isFinite(n) ? n : null)
 
@@ -57,6 +58,30 @@ export async function seedMeasure($: Pick<EngineInterface, 'session' | 'ui' | 's
   return { ...EMPTY_MEASURE, ...view }
 }
 
+/**
+ * Reports this session's total cost to the binary, which credits only the
+ * growth since the last report. The classic statusline feeds the same
+ * accumulator keyed by the same session id, both with the session's total, so
+ * whichever reports second credits 0: nothing is counted twice and no guard is
+ * needed here. The all-sessions total it answers goes to the pane. Never throws.
+ */
+async function recordCost($: ProcessHost & Pick<EngineInterface, 'session' | 'ui' | 'state'>, rt: Runtime, usd: number): Promise<void> {
+  try {
+    const id = await $.session.id()
+    if (id === '') return
+    const args = ['cost', '--session', id, '--total', usd.toFixed(6), '--json']
+    const out = await rt.serial.run(() => runJson<CostJson>($, rt.bin, args, { timeoutMs: TIMEOUT.command }))
+    const cost = okValue(out)
+    if (cost === null) {
+      debugLog($, `cost not recorded: ${out.kind === 'failed' ? out.reason : 'error'}`)
+      return
+    }
+    await writeMeasure($, { lifetimeCostUsd: cost.lifetime_cost_usd })
+  } catch (e) {
+    debugLog($, `cost failed: ${errText(e)}`)
+  }
+}
+
 /** Keeps the view current; a context move re-ticks the frame (mood follows the fill). */
 export function registerMeasure(on: On, rt: Runtime): void {
   on('session.measure', async ($, e, next) => {
@@ -66,6 +91,10 @@ export function registerMeasure(on: On, rt: Runtime): void {
       rt.ctxPct = view.contextPct
       await writeMeasure($, view)
       if (e.changed.includes('context')) pokeTicker($, rt)
+      const usd = e.cost?.usd
+      if (ready(rt) && e.changed.includes('cost') && typeof usd === 'number' && Number.isFinite(usd) && usd >= 0) {
+        void recordCost($, rt, usd)
+      }
     } catch (err) {
       debugLog($, `measure failed: ${errText(err)}`)
     }

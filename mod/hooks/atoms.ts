@@ -64,6 +64,7 @@ export const EMPTY_MEASURE: MeasureView = {
   contextWindow: null,
   rateLimits: [],
   costUsd: null,
+  lifetimeCostUsd: null,
   model: null,
   cwd: null,
   startedAt: null,

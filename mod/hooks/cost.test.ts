@@ -1,0 +1,100 @@
+import { expect, test } from 'claude-code/testing'
+
+import { defaultRun, fx, ok, paneProps, startReady } from './testkit'
+import type { EngineOptions } from './testkit'
+
+const costs = (runs: string[][]) => runs.filter(a => a[1] === 'cost')
+
+/** Every `cost` run answers a lifetime total of 3.42; the rest is the default binary. */
+const withCost: NonNullable<EngineOptions['run']> = argv => (argv[1] === 'cost' ? ok(fx.cost()) : defaultRun(argv))
+
+const measure = { context: { window: 1_000_000 }, rateLimits: [] }
+
+test('cost change calls cost with session id', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost, sessionId: 's-1' })
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([['purrgotchi', 'cost', '--session', 's-1', '--total', '0.120000', '--json']])
+})
+
+test('context-only change does not', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost })
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['context'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+})
+
+test('missing cost does not', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost })
+  await $.session.measure({ ...measure, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+})
+
+test('negative cost does not', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost })
+  await $.session.measure({ ...measure, cost: { usd: -1 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+})
+
+test('session.id failure skips', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost, sessionId: 'deny' })
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+  expect(spies.toasts).toEqual([])
+})
+
+test('empty session id skips', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost, sessionId: '' })
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+})
+
+test('lifetime total shows in pane', async ($, on) => {
+  const spies = await startReady($, on, { run: withCost })
+  await spies.clock.settle()
+  await $.session.measure({ ...measure, cost: { usd: 0.123 }, changed: ['cost'] })
+  await spies.clock.settle()
+  const pane = await $.ui.mount({
+    plugin: 'purrgotchi',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'kitten',
+    props: paneProps(58),
+  })
+  expect(await pane.find({ text: /cost \$0\.12 session · total \$3\.42/ })).toBeDefined()
+})
+
+test('cost error keeps the pane without a total', async ($, on) => {
+  const spies = await startReady($, on, { run: argv => (argv[1] === 'cost' ? ok(fx.error('write_failed')) : defaultRun(argv)) })
+  await spies.clock.settle()
+  await $.session.measure({ ...measure, cost: { usd: 0.123 }, changed: ['cost'] })
+  await spies.clock.settle()
+  const pane = await $.ui.mount({
+    plugin: 'purrgotchi',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'kitten',
+    props: paneProps(58),
+  })
+  expect(await pane.find({ text: /cost \$0\.12 session/ })).toBeDefined()
+  expect(await pane.find({ text: /total/ })).toBeUndefined()
+  expect(spies.toasts).toEqual([])
+})
+
+test('binary missing: no cost run', async ($, on) => {
+  const spies = await startReady($, on, { run: () => ({ deny: 'ENOENT: purrgotchi' }) })
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(costs(spies.runs)).toEqual([])
+})
+
+test('layout off: no cost run', { options: { layout: 'off' } }, async ($, on) => {
+  const spies = await startReady($, on)
+  await $.session.measure({ ...measure, cost: { usd: 0.12 }, changed: ['cost'] })
+  await spies.clock.settle()
+  expect(spies.runs).toEqual([])
+})
