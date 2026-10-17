@@ -120,6 +120,28 @@ fn main() {
                 process::exit(2);
             }
         },
+        "serve" => {
+            const USAGE: &str = "usage: purrgotchi serve [--interval-ms N] [--width N] [--context-pct P] [--advance] [--pixels]";
+            let parsed = frame::parse_opts(&args).and_then(|o| {
+                let ms = match cli::opt_value(&args, "--interval-ms")? {
+                    None => 1000,
+                    Some(v) => v
+                        .trim()
+                        .parse::<u64>()
+                        .map_err(|_| format!("--interval-ms must be an integer, got {v:?}"))?
+                        .clamp(250, 60_000),
+                };
+                Ok((o, ms))
+            });
+            match parsed {
+                Ok((opts, ms)) => process::exit(frame::serve(&opts, ms)),
+                Err(msg) => {
+                    eprintln!("serve: {msg}");
+                    eprintln!("{USAGE}");
+                    process::exit(2);
+                }
+            }
+        }
         "cost" => {
             let session = cli::flag_value(&args, "--session").unwrap_or("");
             let total = cli::flag_value(&args, "--total")
@@ -149,7 +171,7 @@ fn main() {
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|frame|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
+            eprintln!("usage: purrgotchi <statusline|frame|serve|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
             process::exit(2);
         }
     }

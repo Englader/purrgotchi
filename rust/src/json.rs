@@ -76,13 +76,18 @@ pub fn no_kitten(json: bool) {
 /// transient or corrupt state gets its own code so the mod does not mistake
 /// a lock error for "not hatched". Caller exits 1.
 pub fn state_read_error(fail: crate::state::ReadFail, json: bool) {
+    let (code, msg) = read_fail_parts(fail);
+    report(code, msg, json);
+}
+
+/// `(error code, message)` for a failed read-only load.
+pub fn read_fail_parts(fail: crate::state::ReadFail) -> (&'static str, &'static str) {
     use crate::state::ReadFail;
-    let (code, msg) = match fail {
-        ReadFail::Missing => return no_kitten(json),
+    match fail {
+        ReadFail::Missing => ("no_kitten", NO_KITTEN),
         ReadFail::Unreadable => ("state_unavailable", "state.json is temporarily unreadable; try again"),
         ReadFail::Corrupt => ("state_corrupt", "state.json is corrupt (not valid v2 state)"),
-    };
-    report(code, msg, json);
+    }
 }
 
 /// `state::load_for_read`, reporting the failure via [`state_read_error`].

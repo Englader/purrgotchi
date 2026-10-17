@@ -4,9 +4,12 @@
 use crate::colors::Attr;
 use crate::json::{CelebrationJson, FrameJson, HudJson, PeakJson, SceneJson, V};
 use crate::span::{to_json, Span};
-use crate::state::{self, CelebrationKind, State};
+use crate::state::{self, CelebrationKind, ReadFail, State};
+use std::io::Write;
+use std::time::Duration;
 use crate::statusline::{advance, kitten_view, KittenView, ViewInput, CELEBRATION_TICK_SECS};
 
+#[derive(Clone, Copy)]
 pub struct FrameOpts {
     /// Strip/pane width in cells (the mod passes the pane's `bodyColumns`).
     /// None → the statusline's COLUMNS / PURR_PLAYGROUND_WIDTH logic.
@@ -47,9 +50,12 @@ pub fn parse_opts(args: &[String]) -> Result<FrameOpts, String> {
     })
 }
 
-pub fn run(opts: &FrameOpts) -> i32 {
+/// One render: view, optional advance, JSON build. Prints nothing; the caller
+/// decides how to report a failed read. Read-only unless `opts.advance`, and
+/// it never holds the state lock between calls.
+pub fn render_once(opts: &FrameOpts) -> Result<FrameJson, ReadFail> {
     // Read-only: never load_or_hatch (it would create state.json).
-    let Some(st) = crate::json::load_for_read(true) else { return 1 };
+    let st = state::load_for_read()?;
     let now = state::now_secs();
     let tick = opts.tick.unwrap_or(now);
     let forced_scene = crate::playground::force_scene();
@@ -70,11 +76,53 @@ pub fn run(opts: &FrameOpts) -> i32 {
         },
         || if opts.advance { crate::quip_cache::consume() } else { crate::quip_cache::peek() },
     );
-    crate::json::print(&build(&st, now, tick, &view, opts.pixels));
+    let json = build(&st, now, tick, &view, opts.pixels);
     if opts.advance {
         advance(&st, now, view.is_birthday, forced_scene, playground_enabled);
     }
-    0
+    Ok(json)
+}
+
+pub fn run(opts: &FrameOpts) -> i32 {
+    match render_once(opts) {
+        Ok(j) => {
+            crate::json::print(&j);
+            0
+        }
+        Err(fail) => {
+            crate::json::state_read_error(fail, true);
+            1
+        }
+    }
+}
+
+/// `purrgotchi serve`: an endless NDJSON stream, one `frame --json` object per
+/// line every `interval_ms`. A missing/unreadable kitten becomes an error line
+/// and the loop keeps going (it may hatch later). stdin is never read: the mod
+/// starts this with stdin already closed. Returns 0 once stdout is gone.
+pub fn serve(opts: &FrameOpts, interval_ms: u64) -> i32 {
+    // The sprite parity comes from the wall clock, as in `frame` without --tick.
+    let opts = FrameOpts { tick: None, ..*opts };
+    let stdout = std::io::stdout();
+    loop {
+        let line = match render_once(&opts) {
+            Ok(j) => serde_json::to_string(&j),
+            Err(fail) => {
+                let (code, msg) = crate::json::read_fail_parts(fail);
+                serde_json::to_string(&crate::json::ErrorJson {
+                    v: V, ok: false, error: code.to_string(), message: msg.to_string(),
+                })
+            }
+        };
+        if let Ok(line) = line {
+            // Never println!: with panic = "abort" an EPIPE panic would dump core.
+            let mut out = stdout.lock();
+            if writeln!(out, "{line}").and_then(|_| out.flush()).is_err() {
+                return 0;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(interval_ms));
+    }
 }
 
 pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView, pixels: bool) -> FrameJson {
