@@ -7,26 +7,26 @@ import type { EngineOptions } from './testkit'
 // the binary was asked.
 
 const dev = { options: { devCommands: true } } as const
-const SEVEN = ['purr', 'purr-pet', 'purr-play', 'purr-treat', 'purr-rename', 'purr-card', 'purr-stats']
+const EIGHT = ['purr', 'purr-layout', 'purr-pet', 'purr-play', 'purr-treat', 'purr-rename', 'purr-card', 'purr-stats']
 const verbRuns = (runs: string[][], verb: string) => runs.filter(a => a[1] === verb)
 
 /** The handshake as usual; every other run answered with `answer`. */
 const answering = (answer: string, exitCode = 0): EngineOptions['run'] => argv =>
   argv.includes('frame') || argv.includes('--version') ? defaultRun(argv) : ok(answer, exitCode)
 
-test('registers the seven commands', async ($, on) => {
+test('registers the eight commands', async ($, on) => {
   const spies = await startReady($, on)
-  expect(spies.registered).toEqual(SEVEN)
+  expect(spies.registered).toEqual(EIGHT)
 })
 
 test('devCommands adds purr-hatch', dev, async ($, on) => {
   const spies = await startReady($, on)
-  expect(spies.registered).toEqual([...SEVEN, 'purr-hatch'])
+  expect(spies.registered).toEqual([...EIGHT, 'purr-hatch'])
 })
 
 test('a refused name does not break start', async ($, on) => {
   const spies = await startReady($, on, { refuse: ['purr-card'], run: answering(fx.action({ message: 'purr' })) })
-  expect(spies.registered).toEqual(SEVEN)
+  expect(spies.registered).toEqual(EIGHT)
   expect(spies.logs.some(l => l.includes('purr-card'))).toBe(true)
   expect((await $.command.run(cmd('purr-pet'))).text).toBe('purr')
 })

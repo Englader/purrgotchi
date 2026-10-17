@@ -61,11 +61,11 @@ export type PaneModel = {
   onAction: (verb: Verb) => void
 }
 
-const moodColor = (mood: string): string =>
+export const moodColor = (mood: string): string =>
   mood === 'panic' ? PALETTE.red : mood === 'alert' ? PALETTE.yellow : PALETTE.cyan
 
 /** A dim label then a bright value, one truncated row. */
-function field({ Text }: PaneEls, label: string, value: string, color: string, bold = false): RenderElement {
+export function field({ Text }: LineEls, label: string, value: string, color: string, bold = false): RenderElement {
   return (
     <Text wrap="truncate" mono>
       <Text color={PALETTE.dim}>{label}</Text>
@@ -181,6 +181,19 @@ function session(els: PaneEls, m: PaneModel, inner: number, wide: boolean): Rend
   )
 }
 
+/** One row per `five_hour` / `seven_day` rate limit with a usable figure; other kinds are skipped. */
+export function limitRows(els: LineEls, rateLimits: MeasureView['rateLimits'], nowMs: number): RenderElement[] {
+  const rows: RenderElement[] = []
+  for (const r of rateLimits) {
+    const label = LIMIT_LABELS[r.kind]
+    if (label === undefined || !Number.isFinite(r.percentUsed)) continue
+    const resets = resetsIn(r.resetsAt, nowMs)
+    const pct = Math.max(0, Math.round(r.percentUsed))
+    rows.push(field(els, label.padEnd(5), `${bar(r.percentUsed)} ${pct}%${resets !== null ? ` · resets ${resets}` : ''}`, PALETTE.yellow))
+  }
+  return rows
+}
+
 function limits(els: PaneEls, m: PaneModel, inner: number): RenderElement {
   const { Box } = els
   const peak = m.frame?.hud?.peak
@@ -192,18 +205,10 @@ function limits(els: PaneEls, m: PaneModel, inner: number): RenderElement {
           { text: peak.range, fg: PALETTE.yellow },
         ]
       : []
-  const rows: RenderElement[] = []
-  for (const r of m.measure.rateLimits) {
-    const label = LIMIT_LABELS[r.kind]
-    if (label === undefined || !Number.isFinite(r.percentUsed)) continue
-    const resets = resetsIn(r.resetsAt, m.nowMs)
-    const pct = Math.max(0, Math.round(r.percentUsed))
-    rows.push(field(els, label.padEnd(5), `${bar(r.percentUsed)} ${pct}%${resets !== null ? ` · resets ${resets}` : ''}`, PALETTE.yellow))
-  }
   return (
     <Box flexDirection="column">
       {rule(els, 'LIMITS', inner, right)}
-      {rows}
+      {limitRows(els, m.measure.rateLimits, m.nowMs)}
     </Box>
   )
 }

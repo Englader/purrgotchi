@@ -14,7 +14,7 @@ export type PurrOptions = {
   devCommands: boolean
 }
 
-const LAYOUTS: readonly Layout[] = ['dock', 'bottom', 'classic', 'off']
+export const LAYOUTS: readonly Layout[] = ['dock', 'bottom', 'classic', 'off']
 const QUIPS: readonly Quips[] = ['off', 'session-model', 'own-key']
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback)

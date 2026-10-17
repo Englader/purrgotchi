@@ -4,7 +4,7 @@
 // real binary.
 import { mock } from 'claude-code/testing'
 import type { MockClock } from 'claude-code/testing'
-import type { On, PaneOpenArgs, ProcessRunInit, ResultOf } from 'claude-code'
+import type { ConfigValue, On, PaneOpenArgs, ProcessRunInit, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
 import type { ActionJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
@@ -109,6 +109,8 @@ export type Spies = {
   logs: string[]
   /** `ui.open` arguments, in order. */
   opens: PaneOpenArgs[]
+  /** `config.set` rows a plugin asked for, in order. */
+  configs: { key: string; value: ConfigValue }[]
   /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
   clock: MockClock
 }
@@ -125,6 +127,8 @@ export type EngineOptions = {
   env?: Readonly<Record<string, string>>
   /** What `ui.open` answers (default: placed); `notPlaced` answers not placed, with that reason. */
   open?: { notPlaced: string }
+  /** What `$.config.set` answers (default: written); `deny` refuses with that reason. */
+  config?: { deny: string }
 }
 
 /** User settings shapes for the migration scan. */
@@ -148,7 +152,7 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], opens: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], opens: [], configs: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   // The engine echoes a measurement's units; the session figures it answers.
@@ -181,6 +185,10 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   on('ui.open', ($, e) => {
     spies.opens.push({ ...e })
     return o.open === undefined ? { value: { isPlaced: true } } : { value: { isPlaced: false, reason: o.open.notPlaced } }
+  })
+  on('config.set', ($, e) => {
+    spies.configs.push({ key: e.key, value: e.value })
+    return o.config === undefined ? { value: e.value } : { deny: o.config.deny }
   })
   on('ui.log', ($, e) => {
     spies.logs.push(e.text)

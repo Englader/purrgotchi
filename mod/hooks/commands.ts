@@ -11,11 +11,14 @@ import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
 import { binaryProblem, debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
+import { LAYOUTS } from './options'
+import type { Layout } from './options'
 import { pokeTicker } from './ticker'
 import type { ActionJson, FrameJson, LinesJson, Span } from '../types'
 
 export type CommandName =
   | 'purr'
+  | 'purr-layout'
   | 'purr-pet'
   | 'purr-play'
   | 'purr-treat'
@@ -32,6 +35,8 @@ export const COMMANDS: readonly {
 }[] = [
   // Answered by pane.tsx (the pane owns its id and size).
   { name: 'purr', description: 'Open the Purrgotchi kitten pane' },
+  // Registered in every layout, `off` included: the way back without `/config`.
+  { name: 'purr-layout', description: 'Switch where the kitten lives', argumentHint: 'dock|bottom|classic|off' },
   { name: 'purr-pet', description: 'Pet the kitten (+bond)' },
   { name: 'purr-play', description: 'Play with the kitten (starts a playground scene)' },
   { name: 'purr-treat', description: 'Give the kitten a treat (costs coins)' },
@@ -54,22 +59,33 @@ const RARITIES: readonly string[] = ['common', 'uncommon', 'rare', 'epic', 'lege
 /** What a command says when the binary cannot be used. */
 const notReady = (rt: Runtime) => ({ text: binaryProblem(rt.status), exitCode: 1 })
 
+/** One command's registration; a refused name is logged, never thrown. */
+async function registerName($: Pick<EngineInterface, 'command' | 'ui'>, c: (typeof COMMANDS)[number]): Promise<void> {
+  try {
+    await $.command.register({
+      name: c.name,
+      description: c.description,
+      ...(c.argumentHint !== undefined && { argumentHint: c.argumentHint }),
+    })
+  } catch (e) {
+    debugLog($, `command /${c.name} refused: ${errText(e)}`)
+  }
+}
+
 /**
  * Registers every command (dev ones only with `devCommands`), each in its own
  * try/catch: a refused name skips that command, never the session start.
  */
 export async function registerCommandNames($: Pick<EngineInterface, 'command' | 'ui'>, rt: Runtime): Promise<void> {
   for (const c of COMMANDS) {
-    if (c.dev === true && !rt.options.devCommands) continue
-    try {
-      await $.command.register({
-        name: c.name,
-        description: c.description,
-        ...(c.argumentHint !== undefined && { argumentHint: c.argumentHint }),
-      })
-    } catch (e) {
-      debugLog($, `command /${c.name} refused: ${errText(e)}`)
-    }
+    if (c.dev !== true || rt.options.devCommands) await registerName($, c)
+  }
+}
+
+/** `layout: off` registers this one command, so the way back never needs `/config`. */
+export async function registerLayoutName($: Pick<EngineInterface, 'command' | 'ui'>): Promise<void> {
+  for (const c of COMMANDS) {
+    if (c.name === 'purr-layout') await registerName($, c)
   }
 }
 
@@ -163,6 +179,22 @@ export function parseHatchArgs(args: string): { ok: true; argv: string[] } | { o
     }
   }
   return { ok: true, argv }
+}
+
+const layoutUsage = (current: Layout): string => `Layout is ${current}. Options: ${LAYOUTS.join(', ')}.`
+
+/** `/purr-layout`: writes the `layout` option; the engine then reloads the module with it. */
+async function switchLayout($: Pick<EngineInterface, 'config'>, current: Layout, rawArgs: string) {
+  const value = rawArgs.trim()
+  if (value === '') return { text: layoutUsage(current) }
+  if (!(LAYOUTS as readonly string[]).includes(value)) return { text: layoutUsage(current), exitCode: 1 }
+  try {
+    const r = await $.config.set({ key: 'purrgotchi.layout', value })
+    if (r.deny !== undefined) return { text: `Couldn't change layout: ${r.deny}`, exitCode: 1 }
+  } catch (e) {
+    return { text: `Couldn't change layout: ${errText(e)}`, exitCode: 1 }
+  }
+  return { text: `Layout set to ${value}.` }
 }
 
 const reply = (o: ActionOutcome) => ({ text: o.text, ...(o.isError && { exitCode: 1 }) })
@@ -266,8 +298,19 @@ function commandFailed() {
   return { text: UNREACHABLE, exitCode: 1 }
 }
 
+/** The `.catch` of `/purr-layout`: it never touches the binary, so its failure is its own. */
+function layoutFailed() {
+  return { text: "Couldn't change layout.", exitCode: 1 }
+}
+
+/** `/purr-layout`'s answer; also the only command of `layout: off`. */
+export function registerLayoutCommand(on: On, layout: Layout): void {
+  on('command.run', { command: 'purr-layout' }, ($, e) => switchLayout($, layout, e.args)).catch(layoutFailed)
+}
+
 /** The `command.run` answers. */
 export function registerCommands(on: On, rt: Runtime): void {
+  registerLayoutCommand(on, rt.options.layout)
   on('command.run', { command: 'purr-pet' }, $ => act($, rt, 'pet')).catch(commandFailed)
   on('command.run', { command: 'purr-play' }, $ => act($, rt, 'play')).catch(commandFailed)
   on('command.run', { command: 'purr-treat' }, $ => act($, rt, 'treat')).catch(commandFailed)
