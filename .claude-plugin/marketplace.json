@@ -6,6 +6,7 @@
     {
       "name": "purrgotchi",
       "source": "./mod",
+      "version": "4.0.0",
       "description": "Purrgotchi kitten for Claude Code: feeds on tool calls, reacts to prompts, lives in a pane",
       "author": { "name": "Englader" }
     }

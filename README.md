@@ -1,6 +1,8 @@
 # Purrgotchi
 
-A cyberpunk-themed Claude Code statusline with a persistent tamagotchi kitten companion.
+A cyberpunk-themed Claude Code mod and statusline with a persistent tamagotchi kitten companion.
+
+As a **Claude Code mod** (v4) the kitten lives in a live pane or band inside Claude Code, with pixel-art sprites, toasts, `/purr-*` slash commands and an optional Netrunner theme. The original **classic statusline** still works unchanged.
 
 Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-turn cost / session total, LINES / TIME, and a stat row — alongside a pixel-art cat whose mood reflects context pressure. The kitten persists across all Claude Code sessions on a machine, earns coins per tool call, levels up, evolves through life stages, builds bond through interaction, celebrates milestones, and (optionally) speaks LLM-generated mood-contextual dialogue that reacts to what you just did.
 
@@ -9,16 +11,102 @@ Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-
 ## Requirements
 
 - **Rust toolchain** (any recent stable; tested on 1.78+) — `rustup install stable`.
-- **Claude Code** ([anthropic.com/claude-code](https://www.anthropic.com/claude-code)) — Purrgotchi runs as its statusline + hooks.
-- **`jq`** (installer dependency) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux.
-- **Bash** to run `install.sh`. On Windows, use Git Bash, MSYS2, or WSL.
+- **Claude Code** ([anthropic.com/claude-code](https://www.anthropic.com/claude-code)).
+  - Mod path: **≥ 2.1.302**. The mods API is early access; the version range is pinned, and the engine types are regenerated on each Claude Code bump with `bash mod/scripts/lay-types.sh`.
+  - Classic path: runs as the statusline + hooks on any recent Claude Code (playground scenes need ≥ 2.1.153).
+- **`jq`** and **Bash** (classic path only, for `install.sh`) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux. On Windows, use Git Bash, MSYS2, or WSL. The mod needs neither.
 - **(Optional) An LLM provider API key** — Anthropic, Gemini, or OpenAI — to enable AI-generated personality blurbs and in-character react quips. Without one, Purrgotchi falls back to a curated static phrase pool with no errors.
 
 Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS builds compile cleanly via `cargo build --release` but are not yet exercised in production.
 
 ---
 
-## Install
+## Install as a mod (recommended)
+
+1. Build the binary and put it on your `PATH`:
+
+   ```bash
+   git clone https://github.com/Englader/purrgotchi.git
+   cd purrgotchi
+   cargo install --path rust
+   ```
+
+   This installs `purrgotchi` into Cargo's bin directory. On Windows, or for a custom location, leave it where it is and set **Binary path** in `/config` (Purrgotchi's options).
+
+2. In Claude Code, add the marketplace and install the plugin:
+
+   ```
+   /plugin marketplace add Englader/purrgotchi
+   /plugin install purrgotchi@purrgotchi
+   ```
+
+   The CLI equivalents are `claude plugin marketplace add Englader/purrgotchi` and `claude plugin install purrgotchi@purrgotchi`. On the desktop app: `+` → Plugins → Add marketplace → Add plugin. (Claude Code ≥ 2.1.275 also accepts the one-step form `/plugin install purrgotchi --marketplace Englader/purrgotchi`.)
+
+3. The hooks are live immediately: no restart and no `jq`. The first tool call hatches your kitten with a toast. With the default `dock` layout the pane opens by itself on a wide terminal (≥ 144 columns); `/purr` opens it at any width.
+
+4. **Migrating from classic:** if you installed the statusline hooks earlier, run `bash install.sh --uninstall-hooks`. It removes the feed/turn hooks that `install.sh` wrote (the mod does the feeding now) and keeps the statusline, in case you want both. The mod warns with a toast while old hooks are still present, because they would feed the kitten twice. Your kitten and its state carry over: same `~/.claude/purrgotchi/`.
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `/purr` | Open the kitten pane |
+| `/purr-pet` | Pet the kitten (+bond) |
+| `/purr-play` | Play (costs coins, starts a playground scene) |
+| `/purr-treat` | Give a treat (costs coins, resets hunger) |
+| `/purr-card` | Show the trading card |
+| `/purr-stats` | Show identity, mechanics, progress and lifetime cost |
+| `/purr-rename <name>` | Rename the kitten |
+| `/purr-layout dock\|bottom\|classic\|off` | Switch where the kitten lives |
+| `/purr-hatch` | Developer command: hatch a fresh kitten (only with **Developer commands** on) |
+
+Plugin commands are not namespaced, and `/stats` and `/rename` are Claude Code built-ins, so every Purrgotchi command carries the `purr` prefix. The pane also has pet / treat / play buttons.
+
+### Options
+
+Set these in `/config` (they are the plugin's `userConfig`):
+
+| Option | Default | What it does |
+|---|---|---|
+| Binary path | empty | Explicit path to the `purrgotchi` binary; empty = find it on `PATH` |
+| Layout | `dock` | `dock`, `bottom`, `classic` or `off` (see below) |
+| Netrunner restyle | off | Neon restyle of tool rows, user turns and the spinner |
+| Open pane on start | on | Open the kitten pane at session start when the terminal is wide enough |
+| Streak toasts | off | Toast on every 5-call streak (noisy) |
+| Quips | `own-key` | Kitten one-liners: `off`, `session-model` or `own-key` |
+| Developer commands | off | Expose `/purr-hatch` |
+
+### Layouts
+
+- **`dock`** — a live pane beside the conversation, with the pixel-art kitten, HUD, XP and lifetime cost. Streams frames from `purrgotchi serve`.
+- **`bottom`** — a band above the prompt instead of a pane: four columns (portrait, kitten, session, limits) when there is room, a single compact row otherwise.
+- **`classic`** — no pane or band; the kitten lives in the status entry and the classic statusline (from `install.sh`) if you have it. The mod still feeds the kitten and fires toasts, and never auto-opens the pane.
+- **`off`** — no game at all: the mod never runs the binary. Combine it with the restyle for **skin-only** mode: just the Netrunner look, no kitten, no binary needed.
+
+Switch any time with `/purr-layout`; `/purr-layout` stays available even when the layout is `off`.
+
+### Netrunner theme
+
+Pick **Netrunner** in `/theme` (a neon cyan/magenta palette on a dark base). Turn on **Netrunner restyle** in `/config` to also restyle tool rows, your prompts and the spinner. The theme is never forced on you. A mod cannot change the terminal background, font or prompt text colour, so for the full look set your terminal colour scheme to match (background `#0d0a14`).
+
+### Quips
+
+- **`own-key`** (default) — the classic provider in `~/.claude/purrgotchi/.env` (see below).
+- **`session-model`** — the kitten's reactions come from your Claude Code session's own model (a Haiku call about once per 5 turns). It spends your Claude usage, and needs no API key.
+- **`off`** — static phrases only.
+
+### Troubleshooting
+
+- **"Purrgotchi binary not found" toast.** Run `cargo install --path rust` and make sure Cargo's bin directory is on `PATH`, or set **Binary path** in `/config`. In `layout: off` (skin-only) the binary is never needed.
+- **"binary is too old for this mod" toast.** Rebuild it with `cargo install --path rust`.
+- **"double feeding" toast.** Old classic hooks are still in `~/.claude/settings.json`. Run `bash install.sh --uninstall-hooks` (or remove them by hand).
+- **The mod misbehaves or won't load.** `claude --safe-mode` starts with mods disabled, and `claude --debug-file /tmp/claude.log` records what the mod did.
+
+---
+
+## Install as a classic statusline
+
+The original statusline + hooks, no plugin involved:
 
 ```bash
 git clone https://github.com/Englader/purrgotchi.git
@@ -34,7 +122,7 @@ bash install.sh
 3. Creates the state directory at `~/.claude/purrgotchi/`.
 4. Merges the statusline + `PostToolUse` (feed) + `UserPromptSubmit` (turn) hooks into `settings.json`, all pointing at `rust/target/release/purrgotchi.exe`.
 
-**Restart Claude Code after install** so the new settings take effect.
+**Restart Claude Code after install** so the new settings take effect. To drop the hooks again later (for example to move to the mod) while keeping the statusline, run `bash install.sh --uninstall-hooks`.
 
 ### Manual wiring (reference)
 
@@ -167,7 +255,13 @@ A 0–100 dynamic counter starting at 50. Grows when you interact (pet, play, tr
 | `purrgotchi play` | 50 coins, +20 bond, 6h cooldown, 180s happy mood window |
 | `purrgotchi treat` | 25 coins, +5 bond, 4h cooldown, 120s happy; resets hunger |
 | `purrgotchi rename <name>` | Renames the kitten in `state.json` (personality re-templates at render time) |
+| `purrgotchi frame [--json] [--width N] [--advance] [--pixels]` | Read-only snapshot of the kitten for the mod (`--pixels` adds the 32x32 sprite grid) |
+| `purrgotchi serve [--interval-ms N]` | Streams `frame` as NDJSON, one line per tick (what the dock pane reads) |
+| `purrgotchi cost --session <id> --total <usd>` | Folds a session's cost into the lifetime total |
+| `purrgotchi quip-prompt` / `quip-store <text>` | Build the prompt for a session-model quip / store the sanitized reply |
 | `purrgotchi --version` | Prints the crate version |
+
+Every action command (`feed`, `turn`, `pet`, `play`, `treat`, `rename`, `stats`, `card`) also takes `--json` for a versioned machine-readable result (what the mod uses), and `feed --count N` batches N tool calls into one call. Set `PURR_STATE_DIR` to an absolute path to run against a throwaway state directory instead of `~/.claude/purrgotchi/`.
 
 ### Events and celebrations
 
@@ -233,4 +327,4 @@ Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI cal
 - **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
 - **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
 
-All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v3.8.0** (playground scenes).
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.0.0** (Claude Code mod).

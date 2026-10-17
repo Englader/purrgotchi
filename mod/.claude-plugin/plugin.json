@@ -1,6 +1,6 @@
 {
   "name": "purrgotchi",
-  "version": "4.0.0-dev",
+  "version": "4.0.0",
   "description": "Purrgotchi kitten for Claude Code: feeds on tool calls, reacts to prompts, lives in a pane",
   "author": { "name": "Englader" },
   "types": "./types/index.d.ts",

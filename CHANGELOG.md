@@ -12,6 +12,65 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v4.0.0 — 2026-10-17
+
+Major release: Purrgotchi is now a Claude Code mod. The kitten lives in a live
+pane inside Claude Code instead of only in the statusline. The classic
+statusline and `install.sh` path are unchanged.
+
+### Added
+
+- **Claude Code mod** (plugin + marketplace): install with
+  `/plugin marketplace add Englader/purrgotchi` and
+  `/plugin install purrgotchi@purrgotchi`. Feeds the kitten from tool calls and
+  prompts with no `jq` and no restart.
+- **Slash commands:** `/purr`, `/purr-pet`, `/purr-play`, `/purr-treat`,
+  `/purr-card`, `/purr-stats`, `/purr-rename`, `/purr-layout` and the
+  developer-only `/purr-hatch` (**Developer commands** option).
+- **Live pane** with a generated 32x32 pixel-art kitten (drawn as a raster in
+  the terminal, SVG on desktop and mobile), HUD, XP, lifetime cost, and
+  pet / treat / play buttons. Opens at session start on wide terminals.
+- **Layouts:** `dock` (pane), `bottom` (band above the prompt), `classic`
+  (statusline only) and `off`, switchable with `/purr-layout`.
+- **Status entry, celebration toasts and notifications** for milestones,
+  evolutions, birthdays and drops; optional streak toasts.
+- **`purrgotchi serve`:** streams frames as NDJSON for the pane, with a polling
+  fallback for older binaries.
+- **Session-model quips** (`quips: session-model`): kitten one-liners from the
+  session's own model, about one Haiku call per 5 turns.
+- **Netrunner theme** (pick it in `/theme`) and an opt-in **restyle** of tool
+  rows, user turns and the spinner. With `layout: off` plus the restyle you get
+  **skin-only mode**: the look without the kitten or the binary.
+- **Binary `--json` surface** (versioned): `feed`, `turn`, `pet`, `play`,
+  `treat`, `rename`, `stats` and `card`, plus the new `frame` (read-only
+  snapshot, `--pixels` for the sprite grid), `cost`, `quip-prompt` and
+  `quip-store` commands. `feed --count N` batches tool calls.
+- **`PURR_STATE_DIR`** override for the state directory (sandboxed runs and
+  tests).
+- **`install.sh --uninstall-hooks`** removes the classic feed/turn hooks when
+  migrating to the mod, and keeps the statusline.
+
+### Changed
+
+- The statusline's frame read and advance are split internally so the mod and
+  the statusline share one renderer. No visible change: statusline output is
+  byte-identical (pinned by new goldens).
+
+### Notes
+
+- The mod path requires Claude Code >= 2.1.302 (mods are early access). The
+  classic statusline path is unchanged and works as before.
+- The mod warns with a toast if old classic hooks are still installed, since
+  they would feed the kitten twice.
+
+### Known gaps / follow-ups
+
+- Desktop app `$.process.run` is unverified at release time (needs the
+  fresh-machine end-to-end check).
+- Playground scenes and celebrations are not yet in pixel art.
+- Lines added/removed are shown only in the classic HUD.
+- No prebuilt binaries yet: build with `cargo install --path rust`.
+
 ## v3.8.0 — 2026-07-12
 
 Feature release: Thalia now plays animated scenes in the open strip to the
