@@ -50,3 +50,12 @@ export function warnOnce($: Pick<EngineInterface, 'ui'>, rt: Runtime, key: strin
     // observer: a failed toast is not worth surfacing
   }
 }
+
+/** A debug-log line. Never throws. */
+export function debugLog($: Pick<EngineInterface, 'ui'>, text: string): void {
+  try {
+    $.ui.log(text, { to: 'debug' })
+  } catch {
+    // observer
+  }
+}

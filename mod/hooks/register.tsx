@@ -9,10 +9,8 @@ import { registerTurn } from './turn'
 
 export const register: Register = (on, raw) => {
   const options = readOptions(raw)
-  const rt = createRuntime(options)
-
-  // layout: 'off' means no game: no hook touches the binary.
   if (!gameEnabled(options)) return
+  const rt = createRuntime(options)
 
   on('session.start', async ($, e, next) => {
     // The engine's start first, so our failure can never delay or break it.

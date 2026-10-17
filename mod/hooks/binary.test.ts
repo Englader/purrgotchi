@@ -3,7 +3,7 @@ import type { ProcessRunInit } from 'claude-code'
 
 import { handshake, isError, resolveBinary, runJson, Serial } from './binary'
 import { readOptions } from './options'
-import { fx, host, ok } from './testkit'
+import { fx, gate, host, ok, withVersion } from './testkit'
 import type { FeedJson } from '../types'
 
 // binary.ts is unit-tested through `host(...)`, a plugin-side `$.process.run`
@@ -62,14 +62,14 @@ test('runJson passes stdin, env, timeout', async () => {
 })
 
 test('handshake ready with frame', async () => {
-  const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.frame())))
+  const h = host(withVersion(ok(fx.frame())))
   const { status, frame } = await handshake(h, 'purrgotchi')
   expect(status).toEqual({ kind: 'ready', version: '3.8.0' })
   expect(frame?.name).toBe('Thalia')
 })
 
 test('no_kitten is ready', async () => {
-  const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.noKitten, 1)))
+  const h = host(withVersion(ok(fx.noKitten, 1)))
   const { status, frame } = await handshake(h, 'purrgotchi')
   expect(status).toEqual({ kind: 'ready', version: '3.8.0' })
   expect(frame).toBeNull()
@@ -90,7 +90,7 @@ test('runJson keeps bad_args JSON on exit 2', async () => {
 
 for (const code of ['state_unavailable', 'state_corrupt'] as const) {
   test(`handshake ${code} is ready without a frame`, async () => {
-    const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.error(code), 1)))
+    const h = host(withVersion(ok(fx.error(code), 1)))
     const { status, frame } = await handshake(h, 'purrgotchi')
     expect(status).toEqual({ kind: 'ready', version: '3.8.0' })
     expect(frame).toBeNull()
@@ -98,7 +98,7 @@ for (const code of ['state_unavailable', 'state_corrupt'] as const) {
 }
 
 test('handshake bad_args is outdated', async () => {
-  const h = host(argv => (argv.includes('--version') ? ok('purrgotchi 3.8.0\n') : ok(fx.badArgs('frame: ?'), 2)))
+  const h = host(withVersion(ok(fx.badArgs('frame: ?'), 2)))
   const { status } = await handshake(h, 'purrgotchi')
   expect(status).toEqual({ kind: 'outdated', version: '3.8.0' })
 })
@@ -116,9 +116,7 @@ test('handshake missing', async () => {
 })
 
 test('handshake outdated (3.8 usage)', async () => {
-  const h = host(argv =>
-    argv.includes('--version') ? ok('purrgotchi 3.7.0\n') : ok('', 2, 'Usage: purrgotchi <command>\n'),
-  )
+  const h = host(withVersion(ok('', 2, 'Usage: purrgotchi <command>\n'), '3.7.0'))
   const { status, frame } = await handshake(h, 'purrgotchi')
   expect(status).toEqual({ kind: 'outdated', version: '3.7.0' })
   expect(frame).toBeNull()
@@ -127,10 +125,9 @@ test('handshake outdated (3.8 usage)', async () => {
 test('Serial runs in order and survives rejection', async () => {
   const serial = new Serial()
   const done: number[] = []
-  let release = () => {}
-  const gate = new Promise<void>(r => (release = r))
+  const g = gate()
   const slow = serial.run(async () => {
-    await gate
+    await g.wait
     done.push(1)
     return 1
   })
@@ -148,7 +145,7 @@ test('Serial runs in order and survives rejection', async () => {
     return 3
   })
   expect(done).toEqual([])
-  release()
+  g.release()
   expect(await slow).toBe(1)
   expect(await failing).toBe('boom')
   expect(await fast).toBe(3)

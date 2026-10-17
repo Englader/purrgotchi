@@ -121,11 +121,15 @@ export const settingsFx = {
   }),
 }
 
+/** `--version` answers `purrgotchi <version>`; every other run gets `answer`. */
+export const withVersion =
+  (answer: RunAnswer, version = '3.8.0') =>
+  (argv: string[]): RunAnswer =>
+    argv.includes('--version') ? ok(`purrgotchi ${version}\n`) : answer
+
 /** Default binary: a ready handshake, then a plain feed for anything else. */
 export function defaultRun(argv: string[]): RunAnswer {
-  if (argv.includes('--version')) return ok('purrgotchi 3.8.0\n')
-  if (argv.includes('frame')) return ok(fx.frame())
-  return ok(fx.feed())
+  return withVersion(argv.includes('frame') ? ok(fx.frame()) : ok(fx.feed()))(argv)
 }
 
 /** Answers every op the mod uses and records what it saw. */
@@ -182,6 +186,14 @@ export function gate(): { wait: Promise<void>; release: () => void } {
   })
   return { wait, release }
 }
+
+/** A plain feed answer held until `g` is released. */
+export const held =
+  (g: { wait: Promise<void> }) =>
+  async (): Promise<RunAnswer> => {
+    await g.wait
+    return ok(fx.feed())
+  }
 
 /** The `feed` runs among `runs`, in order. */
 export const feeds = (runs: string[][]): string[][] => runs.filter(a => a[1] === 'feed')

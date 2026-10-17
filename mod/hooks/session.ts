@@ -12,10 +12,10 @@ import type { FrameJson } from '../types'
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 const mentions = (v: unknown): boolean => typeof v === 'string' && v.toLowerCase().includes('purrgotchi')
 
-// install.sh's BIN_RE (what --uninstall-hooks removes): `"<dir>/purrgotchi[.exe]"`,
-// quoted or bare, or the `purr` wrapper, then the verb. A hook that merely
-// mentions purrgotchi is not double feeding, and the uninstaller would not
-// remove it, so the toast could never be cleared.
+// install.sh's BIN_RE: `"<dir>/purrgotchi[.exe]"`, quoted or bare, or the `purr`
+// wrapper, then the verb. A hook that merely mentions purrgotchi is not double
+// feeding. Wider than --uninstall-hooks on purpose (any case, any matcher): a
+// hand-edited hook that still double feeds is warned about, and removed by hand.
 const BIN_RE = String.raw`^\s*("([^"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?"|([^\s"]*[/\\])?purr(gotchi)?(\.(exe|cmd|sh|bat))?)\s+`
 const runsVerb = (verb: string): RegExp => new RegExp(`${BIN_RE}${verb}(\\s|$)`, 'i')
 const FEED_HOOK = runsVerb('feed')
@@ -41,7 +41,7 @@ export function scanSettings(s: unknown): SettingsScan {
   }
 }
 
-export const WARN = {
+const WARN = {
   missing: 'Purrgotchi binary not found — set Binary path in /config or run `cargo install --path rust`',
   outdated: (version: string) =>
     `Purrgotchi binary ${version} is too old for this mod — rebuild it: \`cargo install --path rust\``,
@@ -70,12 +70,10 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
   } catch {
     // keep the defaults
   }
-  if (ready(rt) && rt.scan.classicHooks) warnOnce($, rt, 'classic-hooks', WARN.classicHooks)
-
-  // Safety net for feeds: a timer is a long-lived context, so credits go out
-  // even if a kick from a returned tool.call hook did not. Once per runtime;
-  // a hot reload kills it with the old runtime and the new one starts its own.
   if (ready(rt)) {
+    if (rt.scan.classicHooks) warnOnce($, rt, 'classic-hooks', WARN.classicHooks)
+    // Feed safety net: a timer is a long-lived context, so credits go out even
+    // if a kick from a returned tool.call hook did not. Once per runtime.
     rt.flushTimer ??= $.clock.every(2000, () => {
       void flushFeeds($, rt)
     })

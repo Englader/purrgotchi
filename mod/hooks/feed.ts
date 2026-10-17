@@ -9,8 +9,8 @@
 // at session start flushes too, so neither trigger relies on the other.
 import type { EngineInterface, On } from 'claude-code'
 
-import { isError, runJson, TIMEOUT } from './binary'
-import { ready } from './runtime'
+import { errorCode, errText, okValue, runJson, TIMEOUT } from './binary'
+import { debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
 import type { FeedJson } from '../types'
 
@@ -36,7 +36,7 @@ export class FeedQueue {
     return this.count
   }
 
-  add(n = 1): void {
+  add(n: number): void {
     this.count = Math.min(MAX_FEED_COUNT, this.count + n)
   }
 
@@ -49,11 +49,9 @@ export class FeedQueue {
 }
 
 /**
- * Sends everything pending in `rt.feeds`. Single-flight: while a flush runs,
- * another call returns that flush's promise, and the running one keeps going
- * until nothing is pending. A requeue ends the round, so a busy lock or a
- * hanging binary is retried by the next kick or clock tick, not in a tight
- * loop. No-op when nothing is pending or the binary is not ready. Never throws.
+ * Sends everything pending in `rt.feeds`, single-flight (a call during a flush
+ * gets that flush's promise). A requeue ends the round, so a busy lock or a
+ * hanging binary waits for the next kick or clock tick. Never throws.
  */
 export function flushFeeds($: FeedHost, rt: Runtime): Promise<void> {
   const q = rt.feeds
@@ -71,7 +69,7 @@ async function drainFeeds($: FeedHost, rt: Runtime): Promise<void> {
     try {
       if (!(await sendFeed($, rt, n))) return
     } catch (e) {
-      log($, `feed failed (dropped ${n}): ${e instanceof Error ? e.message : String(e)}`)
+      debugLog($, `feed failed (dropped ${n}): ${errText(e)}`)
       return
     }
   }
@@ -83,12 +81,13 @@ async function sendFeed($: FeedHost, rt: Runtime, n: number): Promise<boolean> {
   const args = ['feed', '--json', '--count', String(n)]
   const out = await rt.serial.run(() => runJson<FeedJson>($, rt.bin, args, { timeoutMs: TIMEOUT.feed }))
 
-  if (out.kind === 'json' && !isError(out.value) && out.value.ok === true) {
+  if (okValue(out) !== null) {
     q.retried = false
     // Phase 2: celebrations (out.value.celebration) are handled here.
     return true
   }
-  if (out.kind === 'json' && isError(out.value) && out.value.error === 'state_unavailable') {
+  const code = errorCode(out)
+  if (code === 'state_unavailable') {
     q.add(n) // lock busy: the credits go out with the next flush
     return false
   }
@@ -98,17 +97,9 @@ async function sendFeed($: FeedHost, rt: Runtime, n: number): Promise<boolean> {
     return false
   }
   q.retried = false
-  const why = out.kind === 'json' ? (isError(out.value) ? out.value.error : 'not ok') : `${out.reason}: ${out.detail}`
-  log($, `feed failed (dropped ${n}): ${why}`)
+  const why = code ?? (out.kind === 'failed' ? `${out.reason}: ${out.detail}` : 'not ok')
+  debugLog($, `feed failed (dropped ${n}): ${why}`)
   return false
-}
-
-function log($: FeedHost, text: string): void {
-  try {
-    $.ui.log(text, { to: 'debug' })
-  } catch {
-    // observer
-  }
 }
 
 /**

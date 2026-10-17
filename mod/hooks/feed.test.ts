@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { FeedQueue, MAX_FEED_COUNT } from './feed'
-import { defaultRun, engine, feeds, fx, gate, ok, START, startReady } from './testkit'
+import { defaultRun, engine, feeds, fx, gate, held, ok, START, startReady } from './testkit'
 import type { OpAnswer } from './testkit'
 
 // The kit loads the plugin as its own module instance, so a test cannot reach
@@ -30,10 +30,7 @@ test('hanging binary never delays the tool result', async ($, on) => {
   const g = gate()
   beneath(on)
   const spies = await startReady($, on, {
-    run: scripted(async () => {
-      await g.wait
-      return ok(fx.feed())
-    }),
+    run: scripted(held(g)),
   })
   expect(await $.tool.call(read)).toMatchObject({ result: 'file text' })
   expect(feeds(spies.runs)).toEqual([count(1)])
@@ -55,10 +52,7 @@ test('coalesces a burst into one feed --count N', async ($, on) => {
   const g = gate()
   beneath(on)
   const spies = await startReady($, on, {
-    run: scripted(async () => {
-      await g.wait
-      return ok(fx.feed())
-    }),
+    run: scripted(held(g)),
   })
   await Promise.all(Array.from({ length: 5 }, () => $.tool.call(read)))
   await spies.clock.settle()
@@ -115,10 +109,7 @@ test('session.end flushes pending', async ($, on) => {
   const g = gate()
   beneath(on)
   const spies = await startReady($, on, {
-    run: scripted(async () => {
-      await g.wait
-      return ok(fx.feed())
-    }),
+    run: scripted(held(g)),
   })
   await $.tool.call(read)
   await $.tool.call(read)
@@ -133,10 +124,7 @@ test('session.end runs the engine end step without waiting for the flush', async
   const g = gate()
   beneath(on)
   const spies = await startReady($, on, {
-    run: scripted(async () => {
-      await g.wait
-      return ok(fx.feed())
-    }),
+    run: scripted(held(g)),
   })
   await $.tool.call(read) // in flight, held by the gate
   const ended = $.session.end(end)

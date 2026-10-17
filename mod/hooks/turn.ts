@@ -1,9 +1,10 @@
 // Turn: `classic.UserPromptSubmit` → `turn --json`, with the classic stdin
 // passed through byte-compatible (`session_id`, `transcript_path`, `prompt`,
 // …); the binary reads only what it needs. The prompt never waits on it.
-import type { EngineInterface, On } from 'claude-code'
+import type { On } from 'claude-code'
 
 import { flushFeeds } from './feed'
+import type { FeedHost } from './feed'
 import { runJson, TIMEOUT } from './binary'
 import type { PurrOptions } from './options'
 import { ready } from './runtime'
@@ -24,7 +25,7 @@ export function turnEnv(o: PurrOptions): Record<string, string> | undefined {
  * Credited tool calls land first (`turn` zeroes the streak), then `turn`
  * through `rt.serial`. Never throws.
  */
-export async function runTurn($: Pick<EngineInterface, 'process' | 'ui'>, rt: Runtime, stdin: string): Promise<void> {
+export async function runTurn($: FeedHost, rt: Runtime, stdin: string): Promise<void> {
   try {
     await flushFeeds($, rt)
     // Phase 2: the TurnJson celebration is handled here.

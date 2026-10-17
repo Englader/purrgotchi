@@ -28,7 +28,7 @@ export function isError(v: unknown): v is ErrorJson {
   return o.ok === false && typeof o.error === 'string'
 }
 
-const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+export const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 /** First non-empty stdout line as a plain object, else null. */
 function parseLine(stdout: string): Record<string, unknown> | null {
@@ -76,6 +76,16 @@ export async function runJson<T>(
   return { kind: 'json', exitCode: r.exitCode, value: obj as T | ErrorJson }
 }
 
+/** The `ok: true` value of an outcome, else null. */
+export function okValue<T extends { ok: true }>(out: RunOutcome<T>): T | null {
+  return out.kind === 'json' && !isError(out.value) && out.value.ok === true ? out.value : null
+}
+
+/** The `error` code of an `ok: false` outcome, else null. */
+export function errorCode(out: RunOutcome<unknown>): string | null {
+  return out.kind === 'json' && isError(out.value) ? out.value.error : null
+}
+
 /** `purrgotchi 3.8.0` → `3.8.0`; anything else → `unknown`. Never throws. */
 async function readVersion($: ProcessHost, bin: string): Promise<string> {
   try {
@@ -101,15 +111,12 @@ export async function handshake(
   if (out.kind === 'failed' && out.reason === 'rejected') {
     return { status: { kind: 'missing', detail: out.detail }, frame: null }
   }
-  if (out.kind === 'json' && !isError(out.value) && out.value.ok === true) {
-    return { status: { kind: 'ready', version: await readVersion($, bin) }, frame: out.value }
-  }
-  // Errors only a v1 binary can give about its own state: compatible, no frame
-  // (not hatched yet, lock busy, or a corrupt state.json the binary reports).
-  if (out.kind === 'json' && isError(out.value) && STATE_ERRORS.includes(out.value.error)) {
-    return { status: { kind: 'ready', version: await readVersion($, bin) }, frame: null }
-  }
-  return { status: { kind: 'outdated', version: await readVersion($, bin) }, frame: null }
+  const frame = okValue(out)
+  // Errors only a v1 binary can give about its own state are compatible too, with
+  // no frame (not hatched yet, lock busy, or a corrupt state.json it reports).
+  const code = errorCode(out)
+  const compatible = frame !== null || (code !== null && STATE_ERRORS.includes(code))
+  return { status: { kind: compatible ? 'ready' : 'outdated', version: await readVersion($, bin) }, frame }
 }
 
 /** One job at a time, in call order; a rejected job does not break the chain. */
