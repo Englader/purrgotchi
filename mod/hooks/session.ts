@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
 import { handshake } from './binary'
+import { flushFeeds } from './feed'
 import { ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
 import type { FrameJson } from '../types'
@@ -58,6 +59,15 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     // keep the defaults
   }
   if (ready(rt) && rt.scan.classicHooks) warnOnce($, rt, 'classic-hooks', WARN.classicHooks)
+
+  // Safety net for feeds: a timer is a long-lived context, so credits go out
+  // even if a kick from a returned tool.call hook did not. Once per runtime;
+  // a hot reload kills it with the old runtime and the new one starts its own.
+  if (ready(rt)) {
+    rt.flushTimer ??= $.clock.every(2000, () => {
+      void flushFeeds($, rt)
+    })
+  }
 
   return { frame }
 }

@@ -2,6 +2,8 @@
 // plugin in `claude plugin test`, so `engine(on)` answers every op the mod
 // uses, and `fx` holds Phase 0-shaped binary output. Tests never run the
 // real binary.
+import { mock } from 'claude-code/testing'
+import type { MockClock } from 'claude-code/testing'
 import type { On, ProcessRunInit, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
@@ -99,6 +101,8 @@ export type Spies = {
   notifies: string[]
   statuses: (string | undefined)[]
   runs: string[][]
+  /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
+  clock: MockClock
 }
 
 export type EngineOptions = {
@@ -124,8 +128,9 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [] }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], clock: mock.clock(on) }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('ui.toast', ($, e) => {
     spies.toasts.push(e.text)
@@ -150,3 +155,28 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   })
   return spies
 }
+
+export const START = { cwd: '/tmp', surface: 'terminal', isInteractive: true } as const
+
+/** `engine(on, o)` plus a session start, so the handshake has run. */
+export async function startReady(
+  $: { session: { start: (e: typeof START) => Promise<unknown> } },
+  on: On,
+  o: EngineOptions = {},
+): Promise<Spies> {
+  const spies = engine(on, o)
+  await $.session.start(START)
+  return spies
+}
+
+/** A promise the test opens with `release()`. */
+export function gate(): { wait: Promise<void>; release: () => void } {
+  let release = () => {}
+  const wait = new Promise<void>(r => {
+    release = r
+  })
+  return { wait, release }
+}
+
+/** The `feed` runs among `runs`, in order. */
+export const feeds = (runs: string[][]): string[][] => runs.filter(a => a[1] === 'feed')

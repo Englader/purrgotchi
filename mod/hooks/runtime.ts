@@ -1,8 +1,9 @@
 // Per-load shared context. A module reload (hot reload, config change) makes
 // a fresh Runtime, so everything here is transient by design.
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, Timer } from 'claude-code'
 
 import { resolveBinary, Serial } from './binary'
+import { FeedQueue } from './feed'
 import type { PurrOptions } from './options'
 import type { BinaryStatus } from '../types'
 
@@ -16,6 +17,10 @@ export type Runtime = {
   serial: Serial
   /** Toast keys already shown this load (at most one toast per failure class). */
   warned: Set<string>
+  /** Tool calls counted but not yet sent to the binary. */
+  feeds: FeedQueue
+  /** The 2 s safety flush, started once per runtime when the binary is ready. */
+  flushTimer?: Timer
 }
 
 export function createRuntime(options: PurrOptions): Runtime {
@@ -26,6 +31,7 @@ export function createRuntime(options: PurrOptions): Runtime {
     scan: { classicHooks: false, classicStatusline: false },
     serial: new Serial(),
     warned: new Set(),
+    feeds: new FeedQueue(),
   }
 }
 
