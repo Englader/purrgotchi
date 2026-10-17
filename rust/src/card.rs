@@ -34,10 +34,7 @@ pub fn render(s: &State) -> String {
     let mut out = String::new();
     let inner = CARD_WIDTH; // chars between ║ and ║
 
-    let now: i64 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let now: i64 = crate::state::now_secs() as i64;
     let name_color = crate::colors::rarity_color(&s.rarity, s.shiny, now);
 
     let stars = identity::rarity_stars(&s.rarity, s.shiny);

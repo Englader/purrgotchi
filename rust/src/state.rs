@@ -146,7 +146,20 @@ pub fn life_stage(level: u64) -> &'static str {
     }
 }
 
+/// Dev/test clock override (keep out of README): PURR_NOW=<unix seconds>.
+/// Unset → the real clock; behaviour is unchanged.
+pub fn now_override() -> Option<u64> {
+    now_override_from(std::env::var("PURR_NOW").ok().as_deref())
+}
+
+pub(crate) fn now_override_from(v: Option<&str>) -> Option<u64> {
+    v?.trim().parse::<u64>().ok()
+}
+
 pub fn now_secs() -> u64 {
+    if let Some(n) = now_override() {
+        return n;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -542,5 +555,19 @@ mod tests {
         assert_eq!(back.scene_kind, PlaygroundScene::BallChase);
         assert_eq!(back.scene_last_kind, PlaygroundScene::Roll);
         assert_eq!(back.scene_next_at, 2500);
+    }
+
+    #[test]
+    fn now_override_parses_unix_seconds() {
+        assert_eq!(now_override_from(Some("1800000000")), Some(1_800_000_000));
+        assert_eq!(now_override_from(Some(" 42 ")), Some(42));
+    }
+
+    #[test]
+    fn now_override_ignores_absent_or_garbage() {
+        assert_eq!(now_override_from(None), None);
+        assert_eq!(now_override_from(Some("")), None);
+        assert_eq!(now_override_from(Some("soon")), None);
+        assert_eq!(now_override_from(Some("-5")), None);
     }
 }

@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{self, Read, Write};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::colors::{
     C_BOLD, C_CYAN, C_DIM, C_GREEN, C_MAGENTA, C_PINK, C_RED, C_RESET, C_YELLOW,
@@ -71,10 +71,7 @@ pub fn run() {
         (st.coins, st.level, st.last_fed_at, st.name.clone(), st.rarity.clone(), st.shiny);
     let celebration_kind = st.celebration_kind;
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let now = state::now_secs() as i64;
 
     let last_fed_delta: i64 = if last_fed_at > 0 {
         now - last_fed_at as i64
@@ -557,6 +554,10 @@ fn read_git_branch(cwd: &str) -> String {
 
 #[cfg(windows)]
 fn local_hour() -> u32 {
+    if let Some(n) = state::now_override() {
+        // Deterministic PEAK label under PURR_NOW (tests): UTC hour, no `date` spawn.
+        return ((n / 3600) % 24) as u32;
+    }
     // Win32 type name — intentional upper-case for FFI fidelity.
     #[allow(clippy::upper_case_acronyms)]
     #[repr(C)]
@@ -574,6 +575,10 @@ fn local_hour() -> u32 {
 
 #[cfg(not(windows))]
 fn local_hour() -> u32 {
+    if let Some(n) = state::now_override() {
+        // Deterministic PEAK label under PURR_NOW (tests): UTC hour, no `date` spawn.
+        return ((n / 3600) % 24) as u32;
+    }
     // std has no timezone database; ask the system. Falls back to UTC (the
     // old code hardcoded UTC+1, which was wrong everywhere else).
     if let Ok(out) = std::process::Command::new("date").arg("+%H").output()
@@ -582,11 +587,7 @@ fn local_hour() -> u32 {
     {
         return h % 24;
     }
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    ((secs / 3600) % 24) as u32
+    ((state::now_secs() / 3600) % 24) as u32
 }
 
 fn peak_label(hour: u32) -> (String, String) {
