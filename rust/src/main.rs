@@ -68,23 +68,24 @@ fn main() {
             process::exit(0);
         }
         "rename" => {
-            let name = args.get(2).map(String::as_str).unwrap_or("");
-            process::exit(hooks::rename(name));
+            let json = cli::has_flag(&args, "--json");
+            let name = cli::positionals(&args, &["--json"], &[]).first().copied().unwrap_or("");
+            process::exit(hooks::rename_cmd(name, json));
         }
         "card" => {
             card::run();
             process::exit(0);
         }
         "pet" => {
-            hooks::pet();
+            hooks::pet_cmd(cli::has_flag(&args, "--json"));
             process::exit(0);
         }
         "play" => {
-            hooks::play();
+            hooks::play_cmd(cli::has_flag(&args, "--json"));
             process::exit(0);
         }
         "treat" => {
-            hooks::treat();
+            hooks::treat_cmd(cli::has_flag(&args, "--json"));
             process::exit(0);
         }
         "stats" => {

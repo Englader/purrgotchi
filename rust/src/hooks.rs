@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::bond::{self, PetResult};
+use crate::json::ActionJson;
 use crate::colors::{C_BOLD, C_PINK, C_RESET, C_YELLOW};
 use crate::paths;
 use crate::state::{self, CelebrationKind, life_stage};
@@ -235,29 +236,71 @@ fn apply_turn_dispatch(state: &mut crate::state::State, now: u64) -> Option<Cele
     greeted
 }
 
-pub fn rename(new_name: &str) -> i32 {
+fn report_action_error(cmd: &str, e: &std::io::Error, json: bool) {
+    let text = format!("{cmd}: could not update state: {e}");
+    eprintln!("{text}");
+    if json {
+        crate::json::print(&ActionJson::new(false, "error", &text));
+    }
+}
+
+pub fn rename_cmd(new_name: &str, json: bool) -> i32 {
     if new_name.is_empty() {
-        eprintln!("rename: name cannot be empty");
+        let text = "rename: name cannot be empty";
+        eprintln!("{text}");
+        if json {
+            crate::json::print(&ActionJson::new(false, "error", text));
+        }
         return 1;
     }
     match state::locked_update(|s| s.name = new_name.to_string()) {
         Ok(()) => {
-            println!("kitten renamed to: {new_name}");
+            let text = format!("kitten renamed to: {new_name}");
+            if json {
+                let mut j = ActionJson::new(true, "renamed", &text);
+                j.name = Some(new_name.to_string());
+                crate::json::print(&j);
+            } else {
+                println!("{text}");
+            }
             0
         }
         Err(e) => {
-            eprintln!("rename: failed to write state.json: {e}");
+            let text = format!("rename: failed to write state.json: {e}");
+            eprintln!("{text}");
+            if json {
+                crate::json::print(&ActionJson::new(false, "error", &text));
+            }
             1
         }
     }
 }
 
-pub fn pet() {
+pub fn pet_cmd(json: bool) {
     let now = state::now_secs();
     match state::locked_update(|s| (s.name.clone(), bond::try_pet(s, now))) {
-        Ok((name, result)) => println!("{}", format_pet_message(&name, &result)),
-        Err(e) => eprintln!("pet: could not update state: {e}"),
+        Ok((name, result)) => {
+            let msg = format_pet_message(&name, &result);
+            if json { crate::json::print(&pet_json(&msg, &result)); } else { println!("{msg}"); }
+        }
+        Err(e) => report_action_error("pet", &e, json),
     }
+}
+
+pub(crate) fn pet_json(msg: &str, r: &PetResult) -> ActionJson {
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    match r {
+        PetResult::Applied { old, new, capped } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+        }
+        PetResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+    }
+    j
 }
 
 fn format_pet_message(name: &str, result: &PetResult) -> String {
@@ -283,7 +326,7 @@ fn format_pet_message(name: &str, result: &PetResult) -> String {
     }
 }
 
-pub fn play() {
+pub fn play_cmd(json: bool) {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_play(s, now);
@@ -291,14 +334,39 @@ pub fn play() {
         // empty pockets, she still wants to play. Bond/coin outcomes above are
         // untouched.
         crate::playground::start_scene_now(s, now);
-        (s.name.clone(), result, s.last_played_at)
+        (s.name.clone(), result, s.last_played_at, s.scene_kind)
     });
     match outcome {
-        Ok((name, result, last_played_at)) => {
-            println!("{}", format_play_message(&name, &result, last_played_at));
+        Ok((name, result, last_played_at, scene)) => {
+            let msg = format_play_message(&name, &result, last_played_at);
+            if json { crate::json::print(&play_json(&msg, &result, scene)); } else { println!("{msg}"); }
         }
-        Err(e) => eprintln!("play: could not update state: {e}"),
+        Err(e) => report_action_error("play", &e, json),
     }
+}
+
+pub(crate) fn play_json(msg: &str, r: &crate::bond::PlayResult, scene: crate::state::PlaygroundScene) -> ActionJson {
+    use crate::bond::PlayResult;
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    j.scene = Some(scene);
+    match r {
+        PlayResult::Applied { old, new, capped, cost } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+            j.cost = Some(*cost);
+        }
+        PlayResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+        PlayResult::InsufficientCoins { need, have } => {
+            j.result = "insufficient_coins".into();
+            j.need = Some(*need);
+            j.have = Some(*have);
+        }
+    }
+    j
 }
 
 fn format_play_message(
@@ -342,7 +410,7 @@ fn play_applied_variant(name: &str, last_played_at: u64) -> String {
     }
 }
 
-pub fn treat() {
+pub fn treat_cmd(json: bool) {
     let now = state::now_secs();
     let outcome = state::locked_update(|s| {
         let result = crate::bond::try_treat(s, now);
@@ -350,10 +418,35 @@ pub fn treat() {
     });
     match outcome {
         Ok((name, result, last_treated_at)) => {
-            println!("{}", format_treat_message(&name, &result, last_treated_at));
+            let msg = format_treat_message(&name, &result, last_treated_at);
+            if json { crate::json::print(&treat_json(&msg, &result)); } else { println!("{msg}"); }
         }
-        Err(e) => eprintln!("treat: could not update state: {e}"),
+        Err(e) => report_action_error("treat", &e, json),
     }
+}
+
+pub(crate) fn treat_json(msg: &str, r: &crate::bond::TreatResult) -> ActionJson {
+    use crate::bond::TreatResult;
+    let mut j = ActionJson::new(true, "applied", &crate::span::strip_ansi(msg));
+    match r {
+        TreatResult::Applied { old, new, capped, cost, was_hungry } => {
+            j.bond_old = Some(*old);
+            j.bond_new = Some(*new);
+            j.capped = Some(*capped);
+            j.cost = Some(*cost);
+            j.was_hungry = Some(*was_hungry);
+        }
+        TreatResult::Cooldown { wait_secs } => {
+            j.result = "cooldown".into();
+            j.wait_secs = Some(*wait_secs);
+        }
+        TreatResult::InsufficientCoins { need, have } => {
+            j.result = "insufficient_coins".into();
+            j.need = Some(*need);
+            j.have = Some(*have);
+        }
+    }
+    j
 }
 
 fn format_treat_message(
@@ -1097,5 +1190,41 @@ mod tests {
         s.last_turn_at = 1_000_000;
         assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600), Some(CelebrationKind::Greeting));
         assert_eq!(super::apply_turn_dispatch(&mut s, 1_000_000 + 7 * 3600 + 60), None);
+    }
+
+    #[test]
+    fn pet_json_applied_has_bond_fields_and_plain_message() {
+        let r = PetResult::Applied { old: 50, new: 65, capped: false };
+        let j = super::pet_json(&format_pet_message("Thalia", &r), &r);
+        assert!(j.ok);
+        assert_eq!(j.result, "applied");
+        assert_eq!((j.bond_old, j.bond_new, j.capped), (Some(50), Some(65), Some(false)));
+        assert!(!j.message.contains('\x1b'), "{:?}", j.message);
+        assert!(j.message.contains("Thalia purrs contentedly. Bond: 50 \u{2192} 65 (+15)"), "{:?}", j.message);
+    }
+
+    #[test]
+    fn pet_json_cooldown() {
+        let r = PetResult::Cooldown { wait_secs: 600 };
+        let j = super::pet_json(&format_pet_message("Thalia", &r), &r);
+        assert_eq!((j.ok, j.result.as_str(), j.wait_secs), (true, "cooldown", Some(600)));
+    }
+
+    #[test]
+    fn play_json_insufficient_coins_still_reports_scene() {
+        let r = PlayResult::InsufficientCoins { need: 50, have: 10 };
+        let j = super::play_json(&format_play_message("Thalia", &r, 0), &r, crate::state::PlaygroundScene::Roll);
+        assert_eq!(j.result, "insufficient_coins");
+        assert_eq!((j.need, j.have), (Some(50), Some(10)));
+        assert_eq!(j.scene, Some(crate::state::PlaygroundScene::Roll));
+    }
+
+    #[test]
+    fn treat_json_applied_not_hungry() {
+        let r = TreatResult::Applied { old: 60, new: 60, capped: false, cost: TREAT_COST, was_hungry: false };
+        let j = super::treat_json(&format_treat_message("Thalia", &r, 0), &r);
+        assert_eq!(j.result, "applied");
+        assert_eq!((j.was_hungry, j.cost), (Some(false), Some(TREAT_COST)));
+        assert!(!j.message.contains('\x1b'));
     }
 }

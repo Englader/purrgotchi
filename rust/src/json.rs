@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::CelebrationKind;
+use crate::state::{CelebrationKind, PlaygroundScene};
 
 pub const V: u32 = 1;
 
@@ -53,6 +53,47 @@ pub struct TurnJson {
     pub react_spawned: bool,
 }
 
+/// pet / play / treat / rename result.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ActionJson {
+    pub v: u32,
+    /// The command ran without an I/O error. A cooldown is ok:true.
+    pub ok: bool,
+    /// "applied" | "cooldown" | "insufficient_coins" | "renamed" | "error"
+    pub result: String,
+    /// The classic stdout line with ANSI stripped — short and in-character;
+    /// the mod returns it as slash-command text (which the model also reads).
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_old: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_new: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capped: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub need: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub have: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub was_hungry: Option<bool>,
+    /// play only: the playground scene that started (play always starts one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scene: Option<PlaygroundScene>,
+    /// rename only: the new name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl ActionJson {
+    pub fn new(ok: bool, result: &str, message: &str) -> Self {
+        ActionJson { v: V, ok, result: result.to_string(), message: message.to_string(), ..Default::default() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +125,17 @@ mod tests {
         let s = serde_json::to_string(&j).unwrap();
         assert_eq!(s, r#"{"v":1,"ok":false,"error":"no_kitten","message":"m"}"#);
         assert_eq!(serde_json::from_str::<ErrorJson>(&s).unwrap(), j);
+    }
+
+    #[test]
+    fn action_json_omits_absent_fields_and_round_trips() {
+        let mut j = ActionJson::new(true, "cooldown", "Thalia is already purring at you.");
+        j.wait_secs = Some(600);
+        let s = serde_json::to_string(&j).unwrap();
+        assert_eq!(
+            s,
+            r#"{"v":1,"ok":true,"result":"cooldown","message":"Thalia is already purring at you.","wait_secs":600}"#
+        );
+        assert_eq!(serde_json::from_str::<ActionJson>(&s).unwrap(), j);
     }
 }

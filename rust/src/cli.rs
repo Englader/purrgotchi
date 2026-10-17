@@ -16,8 +16,6 @@ pub fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 /// Positional args after the subcommand. Only the listed flags count as flags
 /// (value flags also swallow the next arg); any other dash-word stays
 /// positional, so `rename -Kitty` keeps working as it always has.
-// Used by `rename` now; the value-flag form is for later commands (cost, frame).
-#[allow(dead_code)]
 pub fn positionals<'a>(args: &'a [String], bool_flags: &[&str], value_flags: &[&str]) -> Vec<&'a str> {
     let mut out = Vec::new();
     let mut i = 2;
