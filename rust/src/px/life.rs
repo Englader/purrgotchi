@@ -3,13 +3,18 @@
 //! Pure and O(1) in `(now_ms, seed, mood, span, tempo)`: the statusline is re-run once a
 //! second with no process in between, so nothing is persisted. Time is cut
 //! into `BLOCK`-second blocks. Each block has an anchor x (`anchor`), and
-//! consecutive anchors are at most 11 px apart, so the cat's path is
-//! continuous by construction. A block opens with a walk from its anchor to
+//! consecutive anchors are at most 11 px apart (44 in the band), so the
+//! cat's path is continuous by construction. A block opens with a walk from its anchor to
 //! the next one, then fills the rest with behaviours picked by a per-block die
 //! (weighted by mood). Every behaviour starts and ends on the next anchor,
 //! facing the way the cat walked in (`out`), which is also how the next block
 //! expects her (`in = out(b - 1)`): no jumps, and every facing change is
 //! bracketed by a `Turn` (or happens mid-run in zoomies).
+//!
+//! The plan is in whole seconds at every tempo. In the band
+//! (`Tempo::smooth`) walks and zoomies glide over their whole stretch instead
+//! of stepping, zoomies spin and skid round, and a few beats get sub-second
+//! detail (run bob, grooming licks).
 //!
 //! Accepted jumps: a mood flip mid-block re-plans the block, and the sleep
 //! mood keeps a fixed bed at `span / 3` (entering or leaving it is a jump,
@@ -80,6 +85,8 @@ pub(crate) struct CatFrame {
     pub blink: bool,
     /// Rising sleep Z, `0..3` (low to high).
     pub z: Option<u8>,
+    /// px above the ground: the band's run bobs up on the gathered frame.
+    pub lift: u8,
 }
 
 /// `PURR_FORCE_POSE=sit|loaf|sleep|groom|stretch|look|wander|zoomies` (dev
@@ -229,7 +236,12 @@ impl Plan {
         if reach.abs() < self.t.run_px_s {
             return false;
         }
-        self.push(Kind::Zoom { reach }, 2 * zoom_out_ticks(reach, &self.t) + 1);
+        let len = if self.t.smooth {
+            (zoom_spin_ms(reach, self.right) + 2 * zoom_leg_ms(reach, &self.t) + SKID_MS).div_ceil(1000)
+        } else {
+            2 * zoom_out_ticks(reach, &self.t) + 1
+        };
+        self.push(Kind::Zoom { reach }, len);
         self.right = reach < 0;
         self.turn(home);
         true
@@ -238,7 +250,7 @@ impl Plan {
     /// A few steps back the way she came, then home, ending facing `home`.
     fn excursion(&mut self, d: &mut Dice, span: i32, home: bool) -> bool {
         let (x, back) = (self.x, if home { -1 } else { 1 });
-        let away = (x + back * d.range(4, 8) as i32).clamp(0, span);
+        let away = (x + back * d.range(self.t.wander_px.0, self.t.wander_px.1) as i32).clamp(0, span);
         if (away - x).abs() < self.t.walk_px_s {
             return false;
         }
@@ -346,6 +358,46 @@ fn is_gait(p: Pose) -> bool {
     matches!(p, Pose::Walk1 | Pose::Walk2 | Pose::Run1 | Pose::Run2)
 }
 
+/// How long a smooth grooming lick keeps the head down in its second.
+const LICK_MS: u64 = 600;
+
+/// A gliding zoom spins round (a `Turn`) for this long before it bolts the
+/// other way, and skids round for at least this long at the far end.
+const SKID_MS: u64 = 250;
+
+/// Spin-round before a gliding zoom: she bolts away from where she faces.
+fn zoom_spin_ms(reach: i32, right: bool) -> u64 {
+    if (reach > 0) == right { 0 } else { SKID_MS }
+}
+
+/// Run time of one leg of a gliding zoom, ms.
+fn zoom_leg_ms(reach: i32, t: &Tempo) -> u64 {
+    u64::from(reach.unsigned_abs()) * 1000 / t.run_px_s as u64
+}
+
+/// A gliding zoom, `ms` into its `len_ms`, started facing `right`: a spin
+/// round when she faces the wrong way, out `reach` px (signed) at the run
+/// speed, a skid round at the far end for the rest of the whole seconds, and
+/// straight back. Returns (pose, offset from the start, facing out).
+fn glide_zoom(reach: i32, right: bool, ms: u64, len_ms: u64, t: &Tempo) -> (Pose, i32, bool) {
+    let dist = u64::from(reach.unsigned_abs());
+    let spin = zoom_spin_ms(reach, right);
+    let leg = zoom_leg_ms(reach, t).min(len_ms.saturating_sub(spin) / 2).max(1);
+    let back_at = len_ms - leg;
+    let gait = |ms: u64| if ms / t.run_gait_ms % 2 == 1 { Pose::Run2 } else { Pose::Run1 };
+    let (pose, off, out) = if ms < spin {
+        (Pose::Turn, 0, true)
+    } else if ms < spin + leg {
+        (gait(ms - spin), dist * (ms - spin) / leg, true)
+    } else if ms < back_at {
+        (Pose::Turn, dist, false)
+    } else {
+        let back = ms - back_at;
+        (gait(back), dist - (dist * back / leg).min(dist), false)
+    };
+    (pose, off as i32 * reach.signum(), out)
+}
+
 /// The cat at whole second `now`, `sub_ms` (< 1000) into it. Position and
 /// pose are those of tick `now`; the gait frame and the blink / flick beats
 /// follow `sub_ms`.
@@ -363,21 +415,44 @@ fn tick_frame(now: u64, sub_ms: u64, seed: u64, mood: &str, span: usize, forced:
         .copied()
         .expect("a block plan covers the whole block");
     let k = tk - (start - seg.len);
-    // Flips every `gait_ms` from the segment's start: `k % 2` at 1 s.
-    let flip = (k * 1000 + sub_ms) / t.gait_ms % 2 == 1;
+    // ms into the segment; gait frames flip every period from its start
+    // (`k % 2` at 1 s).
+    let (ms, len_ms) = (k * 1000 + sub_ms, seg.len * 1000);
+    let flip = |period: u64| ms / period % 2 == 1;
     let (pose, x, right) = match seg.kind {
         Kind::Turn => (Pose::Turn, seg.x, seg.right),
         Kind::Walk { to } => {
-            let gait = if flip { Pose::Walk2 } else { Pose::Walk1 };
-            (gait, seg.x + (to - seg.x) * (k as i32 + 1) / seg.len as i32, seg.right)
+            let gait = if flip(t.gait_ms) { Pose::Walk2 } else { Pose::Walk1 };
+            if t.smooth {
+                // At least half the walk speed: a few px over a 2 s walk
+                // would tread in place, so she steps over and sits.
+                let d = to - seg.x;
+                let moving = len_ms.min(u64::from(d.unsigned_abs()) * 2000 / t.walk_px_s as u64);
+                if ms < moving {
+                    (gait, seg.x + (i64::from(d) * ms as i64 / moving as i64) as i32, seg.right)
+                } else {
+                    (Pose::Sit, to, seg.right)
+                }
+            } else {
+                (gait, seg.x + (to - seg.x) * (k as i32 + 1) / seg.len as i32, seg.right)
+            }
+        }
+        Kind::Zoom { reach } if t.smooth => {
+            let (pose, off, out) = glide_zoom(reach, seg.right, ms, len_ms, t);
+            (pose, seg.x + off, out == (reach > 0))
         }
         Kind::Zoom { reach } => {
             let n = zoom_out_ticks(reach, t);
             let off = if k <= n { k as i32 * t.run_px_s } else { reach.abs() - (k - n) as i32 * t.run_px_s };
-            let gait = if flip { Pose::Run2 } else { Pose::Run1 };
+            let gait = if flip(t.run_gait_ms) { Pose::Run2 } else { Pose::Run1 };
             (gait, seg.x + off.clamp(0, reach.abs()) * reach.signum(), (k <= n) == (reach > 0))
         }
-        Kind::Act(beh) => (act_pose(beh, k, seg.len, now, mood), seg.x, seg.right),
+        // Smooth: each lick dips the head and comes back up, so two licks
+        // read as two rather than one held pose.
+        Kind::Act(beh) => match act_pose(beh, k, seg.len, now, mood) {
+            Pose::GroomLick if t.smooth && sub_ms >= LICK_MS => (Pose::Sit, seg.x, seg.right),
+            p => (p, seg.x, seg.right),
+        },
         Kind::Doze { settle } if settle && k == 0 => (Pose::Loaf, seg.x, seg.right),
         Kind::Doze { .. } => (breathe(now, Pose::Curl, Pose::CurlBreath), seg.x, seg.right),
     };
@@ -395,6 +470,7 @@ fn tick_frame(now: u64, sub_ms: u64, seed: u64, mood: &str, span: usize, forced:
         tail,
         blink: has_eyes(pose) && beat(now, seed, 7) && sub_ms < t.blink_ms,
         z: matches!(pose, Pose::Curl | Pose::CurlBreath).then_some((now % 3) as u8),
+        lift: u8::from(t.smooth && pose == Pose::Run2),
     }
 }
 
@@ -409,7 +485,7 @@ fn tick_frame(now: u64, sub_ms: u64, seed: u64, mood: &str, span: usize, forced:
 pub(crate) fn life_frame_ms(now_ms: u64, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t: &Tempo) -> CatFrame {
     let (sec, sub) = (now_ms / 1000, now_ms % 1000);
     let mut f = tick_frame(sec, sub, seed, mood, span, forced, t);
-    if sub > 0 && is_gait(f.pose) {
+    if !t.smooth && sub > 0 && is_gait(f.pose) {
         let next = tick_frame(sec.wrapping_add(1), 0, seed, mood, span, forced, t);
         f.x += ((i64::from(next.x - f.x) * sub as i64) / 1000) as i32;
     }
@@ -428,14 +504,17 @@ mod tests {
 
     const MOODS: [&str; 6] = ["calm", "happy", "alert", "hungry", "panic", "sleep"];
 
-    /// One hour from 1_800_000_000: x stays in `0..=span`, moves at most
-    /// 4 px/s (the zoomies peak), and facing only flips around a Turn or mid-run.
-    fn assert_continuous(seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) {
-        let mut prev = life_frame(1_800_000_000, seed, mood, span, forced);
-        for now in 1_800_000_001..1_800_003_600u64 {
-            let f = life_frame(now, seed, mood, span, forced);
+    /// One hour from 1_800_000_000 in `step_ms` samples: x stays in
+    /// `0..=span`, moves at most `max_dx` per sample, and facing only flips
+    /// around a Turn or mid-run.
+    fn assert_continuous_at(t: &Tempo, step_ms: u64, max_dx: i32, seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) {
+        let t0 = 1_800_000_000_000;
+        let mut prev = life_frame_ms(t0, seed, mood, span, forced, t);
+        for i in 1..3_600_000 / step_ms {
+            let now = t0 + i * step_ms;
+            let f = life_frame_ms(now, seed, mood, span, forced, t);
             assert!((0..=span as i32).contains(&f.x), "{mood} {span} {forced:?}: x {} at {now}", f.x);
-            assert!((f.x - prev.x).abs() <= 4, "{mood} {forced:?}: teleport at {now}: {} -> {}", prev.x, f.x);
+            assert!((f.x - prev.x).abs() <= max_dx, "{mood} {forced:?}: teleport at {now}: {} -> {}", prev.x, f.x);
             if f.facing_right != prev.facing_right {
                 assert!(
                     f.pose == Pose::Turn || prev.pose == Pose::Turn || matches!(f.pose, Pose::Run1 | Pose::Run2),
@@ -446,6 +525,11 @@ mod tests {
         }
     }
 
+    /// At the statusline tempo, whole seconds, at most 4 px/s (the zoomies peak).
+    fn assert_continuous(seed: u64, mood: &str, span: usize, forced: Option<Behaviour>) {
+        assert_continuous_at(&Tempo::STATUSLINE, 1000, 4, seed, mood, span, forced);
+    }
+
     #[test]
     fn continuous_and_in_bounds() {
         for m in MOODS {
@@ -453,6 +537,126 @@ mod tests {
                 assert_continuous(42, m, span, None);
             }
         }
+    }
+
+    /// The band re-runs the continuity rules on its own 30-fps frames: at
+    /// most 2 px a frame (a 32 px/s run), for every mood and forced behaviour.
+    #[test]
+    fn band_continuous_and_in_bounds() {
+        let t = &Tempo::BAND;
+        for m in MOODS {
+            for span in [0usize, 10, 44, 106, 110] {
+                assert_continuous_at(t, 33, 2, 42, m, span, None);
+            }
+        }
+        use Behaviour::*;
+        for b in [Sit, Loaf, Sleep, Groom, Stretch, Look, Wander, Zoomies] {
+            assert_continuous_at(t, 33, 2, 5, "calm", 106, Some(b));
+        }
+    }
+
+    /// `n` frames from `t0_ms`, `step_ms` apart, at the band tempo.
+    fn band_frames(seed: u64, mood: &str, span: usize, forced: Option<Behaviour>, t0_ms: u64, step_ms: u64, n: u64) -> Vec<CatFrame> {
+        (0..n).map(|i| life_frame_ms(t0_ms + i * step_ms, seed, mood, span, forced, &Tempo::BAND)).collect()
+    }
+
+    /// Over 30 min in a 124-col band she visits at least 90 % of it.
+    #[test]
+    fn band_roams_full_width() {
+        let span = 110;
+        for seed in [7, 1_000, 123_456_789] {
+            for mood in ["calm", "happy", "alert"] {
+                let fr = band_frames(seed, mood, span, None, 1_800_000_000_000, 250, 30 * 60 * 4);
+                let (lo, hi) = fr.iter().fold((i32::MAX, i32::MIN), |(lo, hi), f| (lo.min(f.x), hi.max(f.x)));
+                assert!(hi - lo >= span as i32 * 9 / 10, "{seed} {mood}: x only in {lo}..={hi}");
+            }
+        }
+    }
+
+    fn walking(p: Pose) -> bool {
+        matches!(p, Pose::Walk1 | Pose::Walk2)
+    }
+
+    fn running(p: Pose) -> bool {
+        matches!(p, Pose::Run1 | Pose::Run2)
+    }
+
+    /// 33-ms frames: at most 1 px a frame while she walks, 2 while she runs,
+    /// she never stands still in a gait pose for more than 300 ms (no
+    /// treadmill), and she always moves the way she faces (no moonwalk).
+    #[test]
+    fn band_walk_is_smooth() {
+        let (mut walked, mut ran) = (0, 0);
+        for (mood, forced) in [("calm", None), ("happy", None), ("panic", None), ("calm", Some(Behaviour::Wander)), ("calm", Some(Behaviour::Zoomies))] {
+            let fr = band_frames(3, mood, 106, forced, 1_800_000_000_000, 33, 20 * 60 * 30);
+            let mut still = 0;
+            for w in fr.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                let dx = b.x - a.x;
+                if walking(a.pose) && walking(b.pose) {
+                    assert!(dx.abs() <= 1, "{mood} {forced:?}: walk step {} -> {}", a.x, b.x);
+                    walked += 1;
+                }
+                if running(a.pose) && running(b.pose) {
+                    assert!(dx.abs() <= 2, "{mood} {forced:?}: run step {} -> {}", a.x, b.x);
+                    ran += 1;
+                }
+                if (walking(b.pose) || running(b.pose)) && a.facing_right == b.facing_right && dx != 0 {
+                    assert_eq!(dx > 0, b.facing_right, "{mood} {forced:?}: moonwalk {} -> {} ({:?})", a.x, b.x, b.pose);
+                }
+                still = if (walking(b.pose) || running(b.pose)) && dx == 0 { still + 1 } else { 0 };
+                assert!(still * 33 <= 300, "{mood} {forced:?}: gait pose standing still at {} ({:?})", b.x, b.pose);
+            }
+        }
+        assert!(walked > 1000 && ran > 1000, "walked {walked}, ran {ran} frames");
+    }
+
+    /// Lengths in ms of the unbroken runs of frames (1-ms samples) where
+    /// `is` holds and the pose stays the same, skipping the first and last
+    /// run (cut by the window).
+    fn runs_ms(fr: &[CatFrame], is: impl Fn(&CatFrame) -> bool) -> Vec<u64> {
+        let mut out = Vec::new();
+        let mut len = 0u64;
+        for w in fr.windows(2) {
+            if is(&w[0]) {
+                len += 1;
+                if !is(&w[1]) || w[1].pose != w[0].pose {
+                    out.push(len);
+                    len = 0;
+                }
+            } else {
+                len = 0;
+            }
+        }
+        if out.len() > 2 { out[1..out.len() - 1].to_vec() } else { Vec::new() }
+    }
+
+    /// The walk flips Walk1/Walk2 every 100-200 ms (sub-second, a stroll
+    /// rather than a scurry), and the run flips faster.
+    #[test]
+    fn band_gait_cycles_sub_second() {
+        let fr = band_frames(3, "calm", 106, Some(Behaviour::Wander), 1_800_000_000_000, 1, 120_000);
+        let walk = runs_ms(&fr, |f| walking(f.pose));
+        assert!(walk.len() > 50, "{} walk frames", walk.len());
+        // A walk can end mid-frame; whole frames are the gait period.
+        let full = *walk.iter().max().unwrap();
+        assert!((100..=200).contains(&full), "walk frame {full} ms");
+        let fr = band_frames(3, "calm", 106, Some(Behaviour::Zoomies), 1_800_000_000_000, 1, 120_000);
+        let run = runs_ms(&fr, |f| running(f.pose));
+        assert!(run.len() > 50, "{} run frames", run.len());
+        assert!(*run.iter().max().unwrap() < full, "run frame {} ms", run.iter().max().unwrap());
+    }
+
+    /// A blink is a quick shut-open, at most 200 ms, and a tail flick is
+    /// shorter than a second.
+    #[test]
+    fn band_blink_is_short() {
+        let fr = band_frames(9, "calm", 44, None, 1_800_000_000_000, 1, 600_000);
+        let blinks = runs_ms(&fr, |f| f.blink);
+        assert!(!blinks.is_empty(), "never blinks");
+        assert!(blinks.iter().all(|&ms| ms <= 200), "blinks {blinks:?}");
+        let flicks = runs_ms(&fr, |f| f.tail == Tail::Flick);
+        assert!(!flicks.is_empty() && flicks.iter().all(|&ms| ms < 1000), "flicks {flicks:?}");
     }
 
     #[test]
@@ -524,9 +728,12 @@ mod tests {
         };
         for m in MOODS {
             let poses: Vec<Pose> = (0..7200u64).map(|t| life_frame(1_800_000_000 + t, 11, m, 60, None).pose).collect();
-            for w in poses.windows(3) {
-                if w[0] == w[2] && w[1] != w[0] {
-                    assert!(beat(w[0], w[1]), "{m}: blip {:?} {:?} {:?}", w[0], w[1], w[2]);
+            let band: Vec<Pose> = band_frames(11, m, 106, None, 1_800_000_000_000, 33, 60 * 60 * 30).iter().map(|f| f.pose).collect();
+            for (poses, at) in [(poses, "1 fps"), (band, "band")] {
+                for w in poses.windows(3) {
+                    if w[0] == w[2] && w[1] != w[0] {
+                        assert!(beat(w[0], w[1]), "{m} {at}: blip {:?} {:?} {:?}", w[0], w[1], w[2]);
+                    }
                 }
             }
         }

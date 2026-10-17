@@ -310,7 +310,7 @@ fn life_canvas(st: &crate::state::State, mood: &str, now_ms: u64, width: usize, 
     let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink, h);
     let (w, top) = (cat.w as i32, (h.px() - cat.h) as i32);
     let mut c = PxCanvas::new(width, h);
-    c.blit(&cat, f.x, top);
+    c.blit(&cat, f.x, (top - i32::from(f.lift)).max(0));
     if let Some(k) = f.z {
         // Drifts up and away from the tucked head (right end of the Curl
         // map), mirrored when she faces left; the top one is the dim frame.
