@@ -512,16 +512,21 @@ fn treat_flavor_variant(name: &str, last_treated_at: u64, was_hungry: bool) -> S
     }
 }
 
-pub fn stats() {
+pub fn stats_cmd(json: bool) {
     let s = match crate::state::load() {
         Some(s) => s,
         None => {
-            eprintln!("No kitten hatched yet. Run: purrgotchi hatch");
+            crate::json::no_kitten(json);
             std::process::exit(1);
         }
     };
-    let now = state::now_secs();
-    print!("{}", format_stats_card(&s, now));
+    let text = format_stats_card(&s, state::now_secs());
+    if json {
+        crate::json::print(&crate::json::LinesJson { v: crate::json::V, ok: true, lines: crate::span::lines_json(&text) });
+    } else {
+        // --plain is accepted and identical: the stats card has never had colour.
+        print!("{text}");
+    }
 }
 
 fn format_stats_card(s: &crate::state::State, now: u64) -> String {

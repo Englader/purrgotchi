@@ -73,7 +73,7 @@ fn main() {
             process::exit(hooks::rename_cmd(name, json));
         }
         "card" => {
-            card::run();
+            card::run_cmd(cli::has_flag(&args, "--json"), cli::has_flag(&args, "--plain"));
             process::exit(0);
         }
         "pet" => {
@@ -89,7 +89,7 @@ fn main() {
             process::exit(0);
         }
         "stats" => {
-            hooks::stats();
+            hooks::stats_cmd(cli::has_flag(&args, "--json"));
             process::exit(0);
         }
         "react" => {

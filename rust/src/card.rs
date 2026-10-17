@@ -14,7 +14,7 @@ fn stage_label(level: u64) -> &'static str {
     }
 }
 
-pub fn run() {
+pub fn run_cmd(json: bool, plain: bool) {
     // Deliberately uses `state::load()` rather than `hatch::load_or_hatch()`:
     // `card` is a read-only inspection command, so a missing state should error
     // loudly instead of silently auto-hatching (which would feel surprising
@@ -22,11 +22,18 @@ pub fn run() {
     let s = match crate::state::load() {
         Some(s) => s,
         None => {
-            eprintln!("No kitten hatched yet. Run: purrgotchi hatch");
+            crate::json::no_kitten(json);
             std::process::exit(1);
         }
     };
-    print!("{}", render(&s));
+    let text = render(&s);
+    if json {
+        crate::json::print(&crate::json::LinesJson { v: crate::json::V, ok: true, lines: crate::span::lines_json(&text) });
+    } else if plain {
+        print!("{}", crate::span::strip_ansi(&text));
+    } else {
+        print!("{text}");
+    }
 }
 
 pub fn render(s: &State) -> String {

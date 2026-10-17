@@ -28,6 +28,23 @@ pub fn print_error(code: &str, message: &str) {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinesJson {
+    pub v: u32,
+    pub ok: bool,
+    pub lines: Vec<Vec<crate::span::JsonSpan>>,
+}
+
+pub const NO_KITTEN: &str = "No kitten hatched yet. Run: purrgotchi hatch";
+
+/// Classic stderr line, plus the error JSON in --json mode. Caller exits 1.
+pub fn no_kitten(json: bool) {
+    eprintln!("{NO_KITTEN}");
+    if json {
+        print_error("no_kitten", NO_KITTEN);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedJson {
     pub v: u32,
     pub ok: bool,
@@ -117,6 +134,17 @@ mod tests {
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains(r#""celebration":"Greeting""#), "{s}");
         assert_eq!(serde_json::from_str::<TurnJson>(&s).unwrap(), j);
+    }
+
+    #[test]
+    fn lines_json_struct_round_trips() {
+        let j = LinesJson {
+            v: V, ok: true,
+            lines: vec![vec![crate::span::JsonSpan { text: "a".into(), fg: Some("#0abdc6".into()), bold: false, dim: false }], vec![]],
+        };
+        let s = serde_json::to_string(&j).unwrap();
+        assert_eq!(s, r##"{"v":1,"ok":true,"lines":[[{"text":"a","fg":"#0abdc6"}],[]]}"##);
+        assert_eq!(serde_json::from_str::<LinesJson>(&s).unwrap(), j);
     }
 
     #[test]

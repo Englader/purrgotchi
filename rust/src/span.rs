@@ -166,6 +166,16 @@ fn apply_sgr(attrs: &mut Vec<Attr>, params: &str) {
     }
 }
 
+/// `text` -> JSON lines for `stats`/`card`. A trailing `\n` does not produce a
+/// final empty line; interior blank lines stay as `[]`.
+pub fn lines_json(text: &str) -> Vec<Vec<JsonSpan>> {
+    let mut lines = parse_ansi(text);
+    if text.ends_with('\n') && lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    lines.iter().map(|l| to_json(l)).collect()
+}
+
 pub fn strip_ansi(s: &str) -> String {
     parse_ansi(s).iter().map(|l| to_plain(l)).collect::<Vec<_>>().join("\n")
 }
@@ -174,6 +184,16 @@ pub fn strip_ansi(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::colors::{Attr, CYAN, PINK};
+
+    #[test]
+    fn lines_json_drops_only_the_trailing_newline_line() {
+        let l = lines_json("a\n\n\x1b[2mb\x1b[0m\n");
+        assert_eq!(l.len(), 3);
+        assert_eq!(l[0][0].text, "a");
+        assert!(l[1].is_empty());
+        assert!(l[2][0].dim);
+        assert_eq!(lines_json("x").len(), 1);
+    }
 
     #[test]
     fn unstyled_span_prints_raw() {
