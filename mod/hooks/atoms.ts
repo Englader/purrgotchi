@@ -8,7 +8,7 @@
 import { atom, read, update } from 'claude-code'
 import type { StateDollar } from 'claude-code'
 
-import type { BinaryStatus, OutputEntry } from '../types'
+import type { BinaryStatus, FrameJson, MeasureView, OutputEntry } from '../types'
 
 export const binaryAtom = atom({ plugin: 'purrgotchi', key: 'binary' } as const, { kind: 'unknown' } as BinaryStatus)
 
@@ -38,4 +38,31 @@ export async function writeOutput($: StateDollar, entry: OutputEntry): Promise<v
 export async function readOutput($: StateDollar, command: string, text: string): Promise<OutputEntry | null> {
   const key = outputKey(command, text)
   return (await read($, outputsAtom)).find(x => x.key === key) ?? null
+}
+
+// The ticker's latest `frame --json` (null: no kitten yet). The pane, band and
+// status entry only read it.
+export const frameAtom = atom({ plugin: 'purrgotchi', key: 'frame' } as const, null as FrameJson | null)
+
+export async function writeFrame($: StateDollar, frame: FrameJson | null): Promise<void> {
+  await update($, frameAtom, () => frame)
+}
+
+export const EMPTY_MEASURE: MeasureView = {
+  contextPct: null,
+  contextTokens: null,
+  contextWindow: null,
+  rateLimits: [],
+  costUsd: null,
+  model: null,
+  cwd: null,
+  startedAt: null,
+}
+
+// Session figures: seeded at session start, then pushed by `session.measure`.
+export const measureAtom = atom({ plugin: 'purrgotchi', key: 'measure' } as const, EMPTY_MEASURE)
+
+/** Merges `patch` into the stored figures. */
+export async function writeMeasure($: StateDollar, patch: Partial<MeasureView>): Promise<void> {
+  await update($, measureAtom, m => ({ ...m, ...patch }))
 }

@@ -6,6 +6,7 @@ import { resolveBinary, Serial } from './binary'
 import type { KittenId } from './celebrate'
 import { FeedQueue } from './feed'
 import type { PurrOptions } from './options'
+import type { FrameTicker } from './ticker'
 import type { BinaryStatus } from '../types'
 
 /**
@@ -30,6 +31,16 @@ export type Runtime = {
   hadNoKitten: boolean
   /** The 2 s safety flush, started once per runtime when the binary is ready. */
   flushTimer?: Timer
+  /** The frame clock, started at the first ready session start. */
+  ticker?: FrameTicker
+  /** Layout hints the render hooks record (null until drawn); the ticker's `--width`. */
+  view: { paneColumns: number | null; bandColumns: number | null }
+  /** The context window's fill, from `session.measure` (null: not known yet). */
+  ctxPct: number | null
+  /** The status entry last shown (undefined: cleared). */
+  lastStatus?: string
+  /** Consecutive ticks with no usable answer. */
+  frameFailures: number
 }
 
 export function createRuntime(options: PurrOptions): Runtime {
@@ -43,6 +54,9 @@ export function createRuntime(options: PurrOptions): Runtime {
     feeds: new FeedQueue(),
     kitten: null,
     hadNoKitten: false,
+    view: { paneColumns: null, bandColumns: null },
+    ctxPct: null,
+    frameFailures: 0,
   }
 }
 

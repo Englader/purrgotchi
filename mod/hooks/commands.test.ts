@@ -125,12 +125,15 @@ test('rename error comes back with exitCode 1', async ($, on) => {
 })
 
 test('rename updates the cached name', async ($, on) => {
-  const run = (argv: string[]) =>
-    argv[1] === 'rename'
-      ? ok(fx.action({ result: 'renamed', name: 'Mochi', message: 'kitten renamed to: Mochi' }))
-      : argv[1] === 'feed'
-        ? ok(fx.feed({ celebration: 'LevelUp', level: 13 }))
-        : defaultRun(argv)
+  let name = 'Thalia' // the frame clock's ticks read the binary's current name
+  const run = (argv: string[]) => {
+    if (argv[1] === 'rename') {
+      name = 'Mochi'
+      return ok(fx.action({ result: 'renamed', name, message: 'kitten renamed to: Mochi' }))
+    }
+    if (argv[1] === 'feed') return ok(fx.feed({ celebration: 'LevelUp', level: 13 }))
+    return argv[1] === 'frame' ? ok(fx.frame({ name })) : defaultRun(argv)
+  }
   on('tool.call', () => ({ result: 'file text' }))
   const spies = await startReady($, on, { run })
   await $.command.run(cmd('purr-rename', 'Mochi'))

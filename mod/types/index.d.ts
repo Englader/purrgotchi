@@ -83,6 +83,20 @@ export type SceneJson = {
 
 export type CelebrationJson = { kind: CelebrationKind; remaining_ticks: number; tick_secs: number }
 
+export type PeakJson = { label: 'PEAK' | 'OFF PEAK' | (string & {}); range: string; is_peak: boolean }
+
+/** Every HUD datum the pane shows, computed by the binary (no game rules in TypeScript). */
+export type HudJson = {
+  total_tool_calls: number
+  /** Progress to the next level, 0..=98. */
+  xp_pct: number
+  last_fed_at: number
+  stars: string
+  /** `#rrggbb` the statusline colours the name with (legendary cycles). */
+  name_fg: string
+  peak: PeakJson
+}
+
 export type FrameJson = {
   v: 1
   ok: true
@@ -102,6 +116,8 @@ export type FrameJson = {
   speech_source: 'celebration' | 'birthday' | 'scene' | 'quip' | 'mood'
   scene: SceneJson | null
   celebration: CelebrationJson | null
+  /** Absent from binaries before Phase 3 (additive, `v` stays 1). */
+  hud?: HudJson
 }
 
 export type CostJson = { v: 1; ok: true; credit: number; lifetime_cost_usd: number }
@@ -117,6 +133,25 @@ export type BinaryStatus =
   | { kind: 'missing'; detail: string }
   | { kind: 'outdated'; version: string }
 
+/** One rate-limit window as the engine measured it. */
+export type RateLimitView = { kind: string; percentUsed: number; resetsAt?: string }
+
+/**
+ * The session figures the pane shows: `session.measure` pushes the first five,
+ * session start seeds all of them. Null is "not known", never zero.
+ */
+export type MeasureView = {
+  contextPct: number | null
+  contextTokens: number | null
+  contextWindow: number | null
+  rateLimits: RateLimitView[]
+  costUsd: number | null
+  model: string | null
+  cwd: string | null
+  /** Epoch ms. */
+  startedAt: number | null
+}
+
 /** One printed card/stats row: the coloured lines behind a command's summary text. */
 export type OutputEntry = { key: string; lines: Span[][] }
 
@@ -125,6 +160,8 @@ declare module 'claude-code' {
     purrgotchi: {
       binary: BinaryStatus
       outputs: OutputEntry[]
+      frame: FrameJson | null
+      measure: MeasureView
     }
   }
 }

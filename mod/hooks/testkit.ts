@@ -147,6 +147,11 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  // The engine echoes a measurement's units; the session figures it answers.
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: [] } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.cwd', () => ({ value: '/tmp' }))
   on('session.end', ($, e) => {
     spies.ends.push(e.reason)
     return { sessionId: e.sessionId }

@@ -3,6 +3,7 @@ import type { Register } from 'claude-code'
 
 import { registerCommands } from './commands'
 import { registerFeed } from './feed'
+import { registerMeasure } from './measure'
 import { gameEnabled, readOptions } from './options'
 import { registerOutputs } from './output'
 import { createRuntime } from './runtime'
@@ -29,4 +30,5 @@ export const register: Register = (on, raw) => {
   registerOutputs(on)
   registerFeed(on, rt)
   registerTurn(on, rt)
+  registerMeasure(on, rt)
 }

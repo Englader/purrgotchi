@@ -11,6 +11,7 @@ import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
 import { binaryProblem, debugLog, ready } from './runtime'
 import type { Runtime } from './runtime'
+import { pokeTicker } from './ticker'
 import type { ActionJson, FrameJson, LinesJson, Span } from '../types'
 
 export type CommandName =
@@ -163,16 +164,23 @@ export function parseHatchArgs(args: string): { ok: true; argv: string[] } | { o
 
 const reply = (o: ActionOutcome) => ({ text: o.text, ...(o.isError && { exitCode: 1 }) })
 
-async function act($: FeedHost, rt: Runtime, verb: 'pet' | 'play' | 'treat') {
-  return ready(rt) ? reply(await runAction($, rt, verb)) : notReady(rt)
+/** An action answered: the frame shows it within this tick (`play` starts a scene). */
+async function act($: Host, rt: Runtime, verb: 'pet' | 'play' | 'treat') {
+  if (!ready(rt)) return notReady(rt)
+  const o = await runAction($, rt, verb)
+  if (!o.isError) pokeTicker($, rt)
+  return reply(o)
 }
 
-async function rename($: FeedHost, rt: Runtime, rawName: string) {
+async function rename($: Host, rt: Runtime, rawName: string) {
   if (!ready(rt)) return notReady(rt)
   const v = validateName(rawName)
   if (!v.ok) return { text: v.text }
   const o = await runVerb($, rt, ['rename', v.name, '--json'])
-  if (!o.isError && o.result?.name !== undefined && rt.kitten !== null) rt.kitten.name = o.result.name
+  if (!o.isError) {
+    if (o.result?.name !== undefined && rt.kitten !== null) rt.kitten.name = o.result.name
+    pokeTicker($, rt)
+  }
   return reply(o)
 }
 
@@ -192,6 +200,7 @@ async function hatch($: Host, rt: Runtime, rawArgs: string) {
   // A new kitten: the cached one is wrong until a frame names it.
   rt.hadNoKitten = false
   rt.kitten = null
+  pokeTicker($, rt)
   const [fr, card] = await Promise.all([
     rt.serial.run(() => runJson<FrameJson>($, rt.bin, ['frame', '--json'], { timeoutMs: TIMEOUT.frame })),
     runJson<LinesJson>($, rt.bin, ['card', '--json'], { timeoutMs: TIMEOUT.command }),

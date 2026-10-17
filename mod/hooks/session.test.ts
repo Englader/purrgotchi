@@ -87,10 +87,13 @@ test('outdated binary toasts with version', async ($, on) => {
 test('ready binary with a hatched kitten does not toast', async ($, on) => {
   const spies = engine(on)
   await $.session.start(START)
+  await spies.clock.settle()
   expect(spies.toasts).toEqual([])
   expect(spies.runs).toEqual([
     ['purrgotchi', 'frame', '--json'],
     ['purrgotchi', '--version'],
+    // the frame clock's first tick
+    ['purrgotchi', 'frame', '--json', '--width', '0', '--context-pct', '0.0', '--advance'],
   ])
 })
 

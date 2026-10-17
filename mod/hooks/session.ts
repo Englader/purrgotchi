@@ -1,5 +1,6 @@
-// Session start: capability handshake, binary status atom, and the one-time
-// warnings (missing / outdated binary, classic hooks still in settings.json).
+// Session start: capability handshake, binary status atom, the one-time
+// warnings (missing / outdated binary, classic hooks still in settings.json),
+// and the frame clock.
 import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
@@ -7,8 +8,10 @@ import { handshake, locateBinary } from './binary'
 import { kittenOf } from './celebrate'
 import { registerCommandNames } from './commands'
 import { flushFeeds } from './feed'
+import { seedMeasure } from './measure'
 import { binaryProblem, ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
+import { showFrame, startTicker, tickIntervalMs } from './ticker'
 import type { FrameJson } from '../types'
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
@@ -106,6 +109,13 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     rt.flushTimer ??= $.clock.every(2000, () => {
       void flushFeeds($, rt)
     })
+  }
+  // After the scan: the ticker passes `--advance` only without a classic statusline.
+  if (ready(rt) && tickIntervalMs(rt.options.layout) !== null) {
+    rt.ctxPct = (await seedMeasure($)).contextPct
+    // A busy lock or corrupt state says nothing: the last frame and status stay.
+    if (frame !== null || noKitten) await showFrame($, rt, frame)
+    startTicker($, rt)
   }
 
   return { frame }

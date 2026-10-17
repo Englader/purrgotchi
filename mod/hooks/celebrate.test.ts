@@ -84,6 +84,9 @@ test('null celebration: no toast', async ($, on) => {
   expect(spies.toasts).toEqual([])
 })
 
+/** `frame --json` runs other than the frame clock's ticks (which pass `--width`). */
+const plainFrames = (runs: string[][]) => runs.filter(a => a[1] === 'frame' && !a.includes('--width'))
+
 /** `no_kitten` for the handshake's frame, then the new kitten's frame. */
 const hatching = (feedAnswers: string[]) => {
   let frames = 0
@@ -102,7 +105,7 @@ test('first hatch toast replaces the celebration, once', async ($, on) => {
   expect(spies.toasts).toEqual(['Mochi hatched — a common Tabby!'])
   await $.tool.call(ev)
   await spies.clock.settle()
-  expect(spies.runs.filter(a => a[1] === 'frame')).toHaveLength(2) // handshake + one hatch frame
+  expect(plainFrames(spies.runs)).toHaveLength(2) // handshake + one hatch frame
 })
 
 test('a busy lock at the handshake is not "no kitten": no hatch toast', async ($, on) => {
@@ -114,7 +117,7 @@ test('a busy lock at the handshake is not "no kitten": no hatch toast', async ($
   await $.tool.call(ev)
   await spies.clock.settle()
   expect(spies.toasts).toEqual([])
-  expect(spies.runs.filter(a => a[1] === 'frame')).toHaveLength(1)
+  expect(plainFrames(spies.runs)).toHaveLength(1)
 })
 
 test('an unknown kitten still toasts the level the feed reports', async ($, on) => {
