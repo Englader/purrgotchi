@@ -1,0 +1,13 @@
+{
+  "name": "purrgotchi",
+  "description": "Purrgotchi: a tamagotchi kitten that lives in Claude Code and grows from your tool calls",
+  "owner": { "name": "Englader" },
+  "plugins": [
+    {
+      "name": "purrgotchi",
+      "source": "./mod",
+      "description": "Purrgotchi kitten for Claude Code: feeds on tool calls, reacts to prompts, lives in a pane",
+      "author": { "name": "Englader" }
+    }
+  ]
+}

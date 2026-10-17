@@ -1,0 +1,52 @@
+{
+  "name": "purrgotchi",
+  "version": "4.0.0-dev",
+  "description": "Purrgotchi kitten for Claude Code: feeds on tool calls, reacts to prompts, lives in a pane",
+  "author": { "name": "Englader" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "binaryPath": {
+      "type": "file",
+      "title": "Binary path",
+      "description": "Explicit path to the purrgotchi binary; empty = find `purrgotchi` on PATH"
+    },
+    "layout": {
+      "type": "string",
+      "title": "Layout",
+      "description": "Where the kitten lives: dock pane, bottom band, classic statusline, or off (no game)",
+      "options": ["dock", "bottom", "classic", "off"],
+      "default": "dock"
+    },
+    "restyle": {
+      "type": "boolean",
+      "title": "Netrunner restyle",
+      "description": "Neon restyle of tool rows, user turns and spinner",
+      "default": false
+    },
+    "openPaneOnStart": {
+      "type": "boolean",
+      "title": "Open pane on start",
+      "description": "Open the kitten pane at session start when the terminal is wide enough",
+      "default": true
+    },
+    "toastStreaks": {
+      "type": "boolean",
+      "title": "Streak toasts",
+      "description": "Toast every 5-call streak (noisy)",
+      "default": false
+    },
+    "quips": {
+      "type": "string",
+      "title": "Quips",
+      "description": "Kitten one-liners: off, the session's own model, or your own provider key (classic)",
+      "options": ["off", "session-model", "own-key"],
+      "default": "own-key"
+    },
+    "devCommands": {
+      "type": "boolean",
+      "title": "Developer commands",
+      "description": "Expose /purr-hatch",
+      "default": false
+    }
+  }
+}
