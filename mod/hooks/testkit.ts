@@ -102,7 +102,16 @@ export type Spies = {
 
 export type EngineOptions = {
   run?: (argv: string[], init?: ProcessRunInit) => OpAnswer
-  settings?: object
+  /** What `$.settings.read` answers (default `{}`); `'deny'` makes it reject. */
+  settings?: object | 'deny'
+}
+
+/** User settings shapes for the migration scan. */
+export const settingsFx = {
+  /** `hooks.<event>` with one command hook, as install.sh writes it. */
+  hook: (event: string, command: string): object => ({
+    hooks: { [event]: [{ matcher: '', hooks: [{ type: 'command', command }] }] },
+  }),
 }
 
 /** Default binary: a ready handshake, then a plain feed for anything else. */
@@ -130,7 +139,9 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     return { value: undefined }
   })
   on('ui.log', () => ({ value: undefined }))
-  on('settings.read', () => ({ value: { ...(o.settings ?? {}) } }))
+  on('settings.read', () =>
+    o.settings === 'deny' ? { deny: 'settings unavailable' } : { value: { ...(o.settings ?? {}) } },
+  )
   on('process.run', ($, e) => {
     const argv = [...e.argv]
     spies.runs.push(argv)
