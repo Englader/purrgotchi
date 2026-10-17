@@ -6,6 +6,7 @@ import { registerFeed } from './feed'
 import { registerMeasure } from './measure'
 import { gameEnabled, readOptions } from './options'
 import { registerOutputs } from './output'
+import { registerPane } from './pane'
 import { createRuntime } from './runtime'
 import { onSessionStart } from './session'
 import { registerTurn } from './turn'
@@ -31,4 +32,5 @@ export const register: Register = (on, raw) => {
   registerFeed(on, rt)
   registerTurn(on, rt)
   registerMeasure(on, rt)
+  registerPane(on, rt)
 }

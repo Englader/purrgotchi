@@ -16,6 +16,11 @@ export async function writeBinary($: StateDollar, status: BinaryStatus): Promise
   await update($, binaryAtom, () => status)
 }
 
+/** The binary's status as session start left it. In a render, this subscribes it. */
+export async function readBinary($: StateDollar): Promise<BinaryStatus> {
+  return read($, binaryAtom)
+}
+
 // Full-card rows of `/purr-card`, `/purr-stats` and `/purr-hatch`: the command's
 // one-line `text` stays what the model reads; the coloured lines are drawn by
 // the `CommandOutput` render hook, found again by `outputKey`.
@@ -48,6 +53,11 @@ export async function writeFrame($: StateDollar, frame: FrameJson | null): Promi
   await update($, frameAtom, () => frame)
 }
 
+/** The latest frame (null: no kitten). In a render, this subscribes it. */
+export async function readFrame($: StateDollar): Promise<FrameJson | null> {
+  return read($, frameAtom)
+}
+
 export const EMPTY_MEASURE: MeasureView = {
   contextPct: null,
   contextTokens: null,
@@ -65,4 +75,9 @@ export const measureAtom = atom({ plugin: 'purrgotchi', key: 'measure' } as cons
 /** Merges `patch` into the stored figures. */
 export async function writeMeasure($: StateDollar, patch: Partial<MeasureView>): Promise<void> {
   await update($, measureAtom, m => ({ ...m, ...patch }))
+}
+
+/** The session figures. In a render, this subscribes it. */
+export async function readMeasure($: StateDollar): Promise<MeasureView> {
+  return read($, measureAtom)
 }

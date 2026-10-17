@@ -4,7 +4,7 @@
 // real binary.
 import { mock } from 'claude-code/testing'
 import type { MockClock } from 'claude-code/testing'
-import type { On, ProcessRunInit, ResultOf } from 'claude-code'
+import type { On, PaneOpenArgs, ProcessRunInit, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
 import type { ActionJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
@@ -107,6 +107,8 @@ export type Spies = {
   registered: string[]
   /** `ui.log` texts. */
   logs: string[]
+  /** `ui.open` arguments, in order. */
+  opens: PaneOpenArgs[]
   /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
   clock: MockClock
 }
@@ -121,6 +123,8 @@ export type EngineOptions = {
   refuse?: readonly string[]
   /** What `$.env.get` answers (default: every variable unset). */
   env?: Readonly<Record<string, string>>
+  /** What `ui.open` answers (default: placed); `notPlaced` answers not placed, with that reason. */
+  open?: { notPlaced: string }
 }
 
 /** User settings shapes for the migration scan. */
@@ -144,7 +148,7 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], ends: [], registered: [], logs: [], opens: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   // The engine echoes a measurement's units; the session figures it answers.
@@ -173,6 +177,10 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
   on('ui.status', ($, e) => {
     spies.statuses.push(e.text)
     return { value: undefined }
+  })
+  on('ui.open', ($, e) => {
+    spies.opens.push({ ...e })
+    return o.open === undefined ? { value: { isPlaced: true } } : { value: { isPlaced: false, reason: o.open.notPlaced } }
   })
   on('ui.log', ($, e) => {
     spies.logs.push(e.text)
@@ -210,6 +218,17 @@ export async function startReady(
 /** The full `CommandRunInput` the engine would build for `/name args`. */
 export const cmd = (command: string, args = '') =>
   ({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }) as const
+
+/** The `Pane` props a surface hands the kitten pane's render hook at `cols` body columns. */
+export const paneProps = (cols: number) =>
+  ({
+    title: 'Purrgotchi',
+    isFocused: true,
+    bodyColumns: cols,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 30 },
+    view: {},
+  }) as const
 
 /** A promise the test opens with `release()`. */
 export function gate(): { wait: Promise<void>; release: () => void } {

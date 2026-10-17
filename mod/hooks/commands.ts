@@ -15,6 +15,7 @@ import { pokeTicker } from './ticker'
 import type { ActionJson, FrameJson, LinesJson, Span } from '../types'
 
 export type CommandName =
+  | 'purr'
   | 'purr-pet'
   | 'purr-play'
   | 'purr-treat'
@@ -29,6 +30,8 @@ export const COMMANDS: readonly {
   argumentHint?: string
   dev?: true
 }[] = [
+  // Answered by pane.tsx (the pane owns its id and size).
+  { name: 'purr', description: 'Open the Purrgotchi kitten pane' },
   { name: 'purr-pet', description: 'Pet the kitten (+bond)' },
   { name: 'purr-play', description: 'Play with the kitten (starts a playground scene)' },
   { name: 'purr-treat', description: 'Give the kitten a treat (costs coins)' },
@@ -164,8 +167,11 @@ export function parseHatchArgs(args: string): { ok: true; argv: string[] } | { o
 
 const reply = (o: ActionOutcome) => ({ text: o.text, ...(o.isError && { exitCode: 1 }) })
 
-/** An action answered: the frame shows it within this tick (`play` starts a scene). */
-async function act($: Host, rt: Runtime, verb: 'pet' | 'play' | 'treat') {
+/**
+ * An action answered: the frame shows it within this tick (`play` starts a
+ * scene). The pane's buttons answer through this too.
+ */
+export async function act($: Host, rt: Runtime, verb: 'pet' | 'play' | 'treat') {
   if (!ready(rt)) return notReady(rt)
   const o = await runAction($, rt, verb)
   if (!o.isError) pokeTicker($, rt)

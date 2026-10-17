@@ -1,6 +1,6 @@
 // Session start: capability handshake, binary status atom, the one-time
 // warnings (missing / outdated binary, classic hooks still in settings.json),
-// and the frame clock.
+// the frame clock, and the kitten pane's unasked open.
 import type { EngineInterface } from 'claude-code'
 
 import { writeBinary } from './atoms'
@@ -9,6 +9,7 @@ import { kittenOf } from './celebrate'
 import { registerCommandNames } from './commands'
 import { flushFeeds } from './feed'
 import { seedMeasure } from './measure'
+import { autoOpenPane } from './pane'
 import { binaryProblem, ready, warnOnce } from './runtime'
 import type { Runtime, SettingsScan } from './runtime'
 import { showFrame, startTicker, tickIntervalMs } from './ticker'
@@ -117,6 +118,8 @@ export async function onSessionStart($: EngineInterface, rt: Runtime): Promise<{
     if (frame !== null || noKitten) await showFrame($, rt, frame)
     startTicker($, rt)
   }
+  // Whatever the binary's status: the pane explains a missing one.
+  await autoOpenPane($, rt)
 
   return { frame }
 }
