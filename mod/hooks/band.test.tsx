@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { pixelFixtures } from './fixtures/pixels'
 import { fx, ok, startReady, defaultRun } from './testkit'
 import type { EngineOptions } from './testkit'
 import type { HudJson } from '../types'
@@ -150,3 +151,37 @@ test('the band width feeds the scene strip', BOTTOM, async ($, on) => {
   const tick = spies.runs.filter(a => a[1] === 'frame' && a.includes('--width')).at(-1)
   expect(tick?.slice(3, 5)).toEqual(['--width', '80'])
 })
+
+for (const surface of SURFACES) {
+  test(`portrait uses the cropped grid on ${surface}`, BOTTOM, async ($, on) => {
+    const spies = await startReady($, on, { run: answering(fx.frame({ pixels: pixelFixtures[2]!.pixels })) })
+    await spies.clock.settle()
+    const band = await mountBand($, surface, 12, 120)
+    expect(await band.find({ text: /\( o\.o \)/ })).toBeUndefined()
+    if (surface === 'terminal') {
+      expect((await band.find({ type: 'Raster' }))?.props).toMatchObject({ key: 'kitten-portrait', columns: 32, rows: 10 })
+    } else {
+      const svg = await band.find({ type: 'Svg' })
+      expect(svg?.props.alt).toMatch(/Thalia the Maine Coon/)
+      expect(svg?.props.source).toMatch(/viewBox="0 \d+ 32 20"/)
+    }
+    expect(await band.find({ text: /THALIA/ })).toBeDefined()
+  })
+
+  test(`portrait is shorter when the band has few rows on ${surface}`, BOTTOM, async ($, on) => {
+    const spies = await startReady($, on, { run: answering(fx.frame({ pixels: pixelFixtures[2]!.pixels })) })
+    await spies.clock.settle()
+    const band = await mountBand($, surface, 8, 120)
+    if (surface === 'terminal') expect((await band.find({ type: 'Raster' }))?.props.rows).toBe(8)
+    else expect((await band.find({ type: 'Svg' }))?.props.source).toMatch(/viewBox="0 \d+ 32 16"/)
+  })
+
+  test(`ASCII sprite without pixels on ${surface}`, BOTTOM, async ($, on) => {
+    const spies = await startReady($, on, { run: answering(fx.frame()) })
+    await spies.clock.settle()
+    const band = await mountBand($, surface, 12, 120)
+    expect(await band.find({ text: /\( o\.o \)/ })).toBeDefined()
+    expect(await band.find({ type: 'Raster' })).toBeUndefined()
+    expect(await band.find({ type: 'Svg' })).toBeUndefined()
+  })
+}

@@ -19,6 +19,8 @@ import { act } from './commands'
 import { ago, bar, duration, kTokens, PALETTE, resetsIn, shortCwd } from './hud'
 import { renderLines } from './lines'
 import type { LineEls } from './lines'
+import { spriteElement, usesPixels } from './pixels'
+import type { SpriteEls } from './pixels'
 import { binaryProblem, debugLog } from './runtime'
 import type { Runtime } from './runtime'
 import type { BinaryStatus, FrameJson, MeasureView, Span } from '../types'
@@ -36,6 +38,8 @@ const SIDE_BY_SIDE = 56
 const KITTEN_ONLY = 40
 /** The rounded border and one column of padding on each side. */
 const CHROME = 4
+/** The pixel sprite is 32 columns: beside it the info column needs 19 and the gap is 3. */
+const SIDE_BY_SIDE_PIXELS = CHROME + 32 + 3 + 19
 
 export type Verb = 'pet' | 'treat' | 'play'
 const BUTTONS: readonly { verb: Verb; hotkey: string }[] = [
@@ -47,7 +51,7 @@ const BUTTONS: readonly { verb: Verb; hotkey: string }[] = [
 const LIMIT_LABELS: Readonly<Record<string, string>> = { five_hour: '5h', seven_day: '7d' }
 
 /** The elements the pane draws with (every surface carries them). */
-export type PaneEls = LineEls & { Button: ElementConstructor<ButtonProps> }
+export type PaneEls = SpriteEls & { Button: ElementConstructor<ButtonProps> }
 
 export type PaneModel = {
   frame: FrameJson | null
@@ -243,9 +247,10 @@ export function paneTree(els: PaneEls, m: PaneModel): RenderElement {
   const f = m.frame
   if (f === null) return frameBox([<Text wrap="wrap">{NO_KITTEN_TEXT}</Text>, buttons(els, m)])
 
-  const sprite = renderLines(els, f.sprite)
+  const sprite = spriteElement(els, m.surface, f, 'full', inner)
+  const sideBySide = cols >= (usesPixels(els, m.surface, f, inner) ? SIDE_BY_SIDE_PIXELS : SIDE_BY_SIDE)
   const kitten =
-    cols >= SIDE_BY_SIDE ? (
+    sideBySide ? (
       <Box flexDirection="row" columnGap={3}>
         {sprite}
         {info(els, f)}

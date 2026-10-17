@@ -93,7 +93,7 @@ test('ready binary with a hatched kitten does not toast', async ($, on) => {
     ['purrgotchi', 'frame', '--json'],
     ['purrgotchi', '--version'],
     // the frame clock's first tick
-    ['purrgotchi', 'frame', '--json', '--width', '0', '--context-pct', '0.0', '--advance'],
+    ['purrgotchi', 'frame', '--json', '--width', '0', '--context-pct', '0.0', '--advance', '--pixels'],
   ])
 })
 

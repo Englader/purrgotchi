@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { pixelFixtures } from './fixtures/pixels'
 import { cmd, defaultRun, engine, fx, ok, paneProps, START, startReady } from './testkit'
 import type { EngineOptions } from './testkit'
 import type { HudJson, SceneJson } from '../types'
@@ -23,6 +24,11 @@ const answering =
   (frame: string, action = fx.action()): NonNullable<EngineOptions['run']> =>
   argv =>
     argv.includes('--version') || argv[1] === 'frame' ? (argv[1] === 'frame' ? ok(frame) : defaultRun(argv)) : ok(action)
+
+/** The fixture Maine Coon (adult, alert), the breed `fx.frame()` names. */
+const MAINE_PIXELS = pixelFixtures[2]!.pixels
+/** A row of the default ASCII sprite. */
+const ASCII_SPRITE = /\( o\.o \)/
 
 for (const surface of SURFACES) {
   test(`draws name, stats and buttons at 58 cols on ${surface}`, async ($, on) => {
@@ -259,4 +265,55 @@ test('no auto-open without openPaneOnStart', { options: { openPaneOnStart: false
 test('no auto-open in the bottom layout', { options: { layout: 'bottom' } }, async ($, on) => {
   const spies = await startReady($, on)
   expect(spies.opens).toEqual([])
+})
+
+for (const surface of SURFACES) {
+  test(`pixel sprite replaces ASCII when pixels present on ${surface}`, async ($, on) => {
+    const spies = await startReady($, on, { run: answering(fx.frame({ pixels: MAINE_PIXELS })) })
+    await spies.clock.settle()
+    const pane = await mountPane($, surface)
+    expect(await pane.find({ text: ASCII_SPRITE })).toBeUndefined()
+    if (surface === 'terminal') {
+      const raster = await pane.find({ type: 'Raster' })
+      expect(raster?.props).toMatchObject({ key: 'kitten-full', columns: 32, rows: 16 })
+      expect(await pane.find({ type: 'Svg' })).toBeUndefined()
+    } else {
+      const svg = await pane.find({ type: 'Svg' })
+      expect(svg?.props.alt).toMatch(/Thalia the Maine Coon/)
+      expect(svg?.props.source).toContain('viewBox="0 0 32 32"')
+      expect(await pane.find({ type: 'Raster' })).toBeUndefined()
+    }
+    // the info column is still drawn beside it
+    expect(await pane.find({ text: /THALIA/ })).toBeDefined()
+    expect(await pane.find({ type: 'Button', key: 'pet' })).toBeDefined()
+  })
+
+  test(`falls back to ASCII when pixels absent on ${surface}`, async ($, on) => {
+    const spies = await startReady($, on, { run: answering(fx.frame()) })
+    await spies.clock.settle()
+    const pane = await mountPane($, surface)
+    expect(await pane.find({ text: ASCII_SPRITE })).toBeDefined()
+    expect(await pane.find({ type: 'Raster' })).toBeUndefined()
+    expect(await pane.find({ type: 'Svg' })).toBeUndefined()
+  })
+}
+
+test('ASCII sprite when the body is too narrow for 32 columns', async ($, on) => {
+  const spies = await startReady($, on, { run: answering(fx.frame({ pixels: MAINE_PIXELS })) })
+  await spies.clock.settle()
+  // 4 columns of border and padding: a 36 column pane leaves 32, under the 34 floor
+  const pane = await mountPane($, 'terminal', 36)
+  expect(await pane.find({ text: ASCII_SPRITE })).toBeDefined()
+  expect(await pane.find({ type: 'Raster' })).toBeUndefined()
+  await pane.redraw(paneProps(44))
+  expect(await pane.find({ text: ASCII_SPRITE })).toBeUndefined()
+  expect(await pane.find({ type: 'Raster' })).toBeDefined()
+})
+
+test('a malformed pixel grid falls back to ASCII', async ($, on) => {
+  const spies = await startReady($, on, { run: answering(fx.frame({ pixels: [['#ffffff']] })) })
+  await spies.clock.settle()
+  const pane = await mountPane($, 'terminal')
+  expect(await pane.find({ text: ASCII_SPRITE })).toBeDefined()
+  expect(await pane.find({ type: 'Raster' })).toBeUndefined()
 })

@@ -61,6 +61,7 @@ test('argv: width 0 before any pane render, ctx from measure', async ($, on) => 
     '--context-pct',
     '42.4',
     '--advance',
+    '--pixels',
   ])
 })
 
@@ -142,4 +143,61 @@ test('5 consecutive failures log once, never toast', async ($, on) => {
   expect(ticks(spies.runs)).toHaveLength(6)
   expect(spies.logs.filter(l => l.includes('frame'))).toHaveLength(1)
   expect(spies.toasts).toEqual([])
+})
+
+test('dock ticks with --pixels', async ($, on) => {
+  const spies = await startReady($, on)
+  await spies.clock.settle()
+  expect(ticks(spies.runs).length).toBeGreaterThan(0)
+  for (const a of ticks(spies.runs)) expect(a.at(-1)).toBe('--pixels')
+  // the handshake is not a drawing tick
+  expect(frames(spies.runs).filter(a => !a.includes('--width'))[0]).not.toContain('--pixels')
+})
+
+test('bottom ticks with --pixels', { options: { layout: 'bottom' } }, async ($, on) => {
+  const spies = await startReady($, on)
+  await spies.clock.settle()
+  for (const a of ticks(spies.runs)) expect(a).toContain('--pixels')
+})
+
+test('classic ticks without --pixels', { options: { layout: 'classic' } }, async ($, on) => {
+  const spies = await startReady($, on)
+  await spies.clock.settle()
+  expect(ticks(spies.runs).length).toBeGreaterThan(0)
+  for (const a of ticks(spies.runs)) expect(a).not.toContain('--pixels')
+})
+
+test('retries without --pixels after exit 2', async ($, on) => {
+  let first = true
+  const spies = await startReady($, on, {
+    run: ticking(() => {
+      if (!first) return ok(fx.frame())
+      first = false
+      return ok('', 2)
+    }),
+  })
+  await spies.clock.settle()
+  await spies.clock.advance(3000)
+  const t = ticks(spies.runs)
+  expect(t[0]).toContain('--pixels')
+  expect(t.length).toBeGreaterThan(1)
+  for (const a of t.slice(1)) expect(a).not.toContain('--pixels')
+  expect(spies.toasts).toEqual([])
+})
+
+test('a bad_args answer to --pixels also drops the flag', async ($, on) => {
+  const spies = await startReady($, on, {
+    run: ticking(() => ok(fx.badArgs('unknown flag --pixels'), 2)),
+  })
+  await spies.clock.settle()
+  await spies.clock.advance(2000)
+  const t = ticks(spies.runs)
+  expect(t[0]).toContain('--pixels')
+  for (const a of t.slice(1)) expect(a).not.toContain('--pixels')
+})
+
+test('other failures keep asking for --pixels', async ($, on) => {
+  const spies = await startReady($, on, { run: ticking(() => ({ deny: 'timed out' })) })
+  await spies.clock.advance(2000)
+  for (const a of ticks(spies.runs)) expect(a).toContain('--pixels')
 })

@@ -11,6 +11,7 @@ import type { EngineInterface, StateDollar, Timer } from 'claude-code'
 
 import { writeFrame } from './atoms'
 import { errorCode, errText, okValue, runJson, TIMEOUT } from './binary'
+import type { RunOutcome } from './binary'
 import { kittenOf } from './celebrate'
 import type { FeedHost } from './feed'
 import { statusText } from './hud'
@@ -49,7 +50,7 @@ export function tickIntervalMs(layout: PurrOptions['layout']): number | null {
 const finite = (n: number | null): number => (n !== null && Number.isFinite(n) ? n : 0)
 
 /** Width `0` is "no scene", never the inherited `COLUMNS`. */
-export function frameArgv(o: { width: number; ctxPct: number | null; advance: boolean }): string[] {
+export function frameArgv(o: { width: number; ctxPct: number | null; advance: boolean; pixels: boolean }): string[] {
   const argv = [
     'frame',
     '--json',
@@ -59,7 +60,19 @@ export function frameArgv(o: { width: number; ctxPct: number | null; advance: bo
     finite(o.ctxPct).toFixed(1),
   ]
   if (o.advance) argv.push('--advance')
+  if (o.pixels) argv.push('--pixels')
   return argv
+}
+
+/** Pixel art is only drawn by the pane and the band, and only until an older binary rejects the flag. */
+export function wantsPixels(rt: Runtime): boolean {
+  return !rt.noPixels && (rt.options.layout === 'dock' || rt.options.layout === 'bottom')
+}
+
+/** An older binary refusing `--pixels`: exit 2 with no JSON, or a `bad_args` answer. */
+function pixelsRefused(out: RunOutcome<FrameJson>): boolean {
+  if (out.kind === 'failed') return out.reason === 'not-json' && out.exitCode === 2
+  return errorCode(out) === 'bad_args'
 }
 
 /** The scene strip's width for the current layout: 0 (no scene) below 24, at most 120. */
@@ -129,8 +142,13 @@ export function tickFrame($: TickHost, rt: Runtime): Promise<void> {
 
 async function runTick($: TickHost, rt: Runtime): Promise<void> {
   try {
-    const argv = frameArgv({ width: stripWidth(rt), ctxPct: rt.ctxPct, advance: !rt.scan.classicStatusline })
+    const pixels = wantsPixels(rt)
+    const argv = frameArgv({ width: stripWidth(rt), ctxPct: rt.ctxPct, advance: !rt.scan.classicStatusline, pixels })
     const out = await runJson<FrameJson>($, rt.bin, argv, { timeoutMs: TIMEOUT.frame })
+    if (pixels && pixelsRefused(out)) {
+      rt.noPixels = true
+      debugLog($, 'binary rejected --pixels: drawing the ASCII sprite')
+    }
     const f = okValue(out)
     const code = errorCode(out)
     if (f !== null || code === 'no_kitten') {

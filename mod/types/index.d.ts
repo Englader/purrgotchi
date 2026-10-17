@@ -118,6 +118,8 @@ export type FrameJson = {
   celebration: CelebrationJson | null
   /** Absent from binaries before Phase 3 (additive, `v` stays 1). */
   hud?: HudJson
+  /** `frame --pixels` only: the generated 32x32 sprite, `pixels[y][x]` as `#rrggbb` or null (transparent). */
+  pixels?: (string | null)[][]
 }
 
 export type CostJson = { v: 1; ok: true; credit: number; lifetime_cost_usd: number }

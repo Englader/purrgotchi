@@ -41,6 +41,8 @@ export type Runtime = {
   lastStatus?: string
   /** Consecutive ticks with no usable answer. */
   frameFailures: number
+  /** The binary rejected `--pixels` (an older build): ticks stop asking for it. */
+  noPixels: boolean
 }
 
 export function createRuntime(options: PurrOptions): Runtime {
@@ -57,6 +59,7 @@ export function createRuntime(options: PurrOptions): Runtime {
     view: { paneColumns: null, bandColumns: null },
     ctxPct: null,
     frameFailures: 0,
+    noPixels: false,
   }
 }
 

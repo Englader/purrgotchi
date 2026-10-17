@@ -7,8 +7,9 @@ import type { EngineInterface, On, RenderElement, RenderInput } from 'claude-cod
 import { readBinary, readFrame, readMeasure } from './atoms'
 import { errText } from './binary'
 import { bar, duration, kTokens, PALETTE, statusText } from './hud'
-import { renderLines } from './lines'
 import type { LineEls } from './lines'
+import { spriteElement } from './pixels'
+import type { SpriteEls } from './pixels'
 import { field, limitRows, moodColor, NO_KITTEN_TEXT } from './pane'
 import { binaryProblem, debugLog } from './runtime'
 import type { Runtime } from './runtime'
@@ -32,6 +33,7 @@ export type BandModel = {
   cols: number
   rows: number
   nowMs: number
+  surface: string
 }
 
 const pct = (n: number): number => Math.max(0, Math.round(n))
@@ -90,8 +92,13 @@ function sessionColumn(els: LineEls, m: BandModel): RenderElement {
   )
 }
 
+/** The head-and-shoulders pixel portrait, else the ASCII sprite cut to the rows the band has. */
+function portrait(els: SpriteEls, m: BandModel, f: FrameJson): RenderElement {
+  return spriteElement(els, m.surface, { ...f, sprite: f.sprite.slice(0, m.rows) }, 'portrait', m.cols, m.rows)
+}
+
 /** The band's whole tree: a pure function of its inputs. */
-export function bandTree(els: LineEls, m: BandModel): RenderElement {
+export function bandTree(els: SpriteEls, m: BandModel): RenderElement {
   const { Box, Text } = els
   const dim = (text: string) => (
     <Text wrap="truncate" color={PALETTE.dim}>
@@ -105,7 +112,7 @@ export function bandTree(els: LineEls, m: BandModel): RenderElement {
 
   return (
     <Box flexDirection="row" columnGap={GAP}>
-      <Box flexShrink={0}>{renderLines(els, f.sprite.slice(0, m.rows))}</Box>
+      <Box flexShrink={0}>{portrait(els, m, f)}</Box>
       {kittenColumn(els, f)}
       {m.cols >= SESSION_COLUMNS ? sessionColumn(els, m) : null}
       {m.cols >= LIMITS_COLUMNS ? (
@@ -127,7 +134,7 @@ async function drawBand($: EngineInterface, rt: Runtime, e: BandEvent): Promise<
     if (!Number.isFinite(cols) || !Number.isFinite(rows)) return null
     rt.view.bandColumns = cols
     const [frame, measure, status] = await Promise.all([readFrame($), readMeasure($), readBinary($)])
-    return bandTree($.ui.resolve(e), { frame, measure, status, cols, rows, nowMs: Date.now() })
+    return bandTree($.ui.resolve(e), { frame, measure, status, cols, rows, nowMs: Date.now(), surface: e.surface })
   } catch (err) {
     debugLog($, `band render failed: ${errText(err)}`)
     return null
