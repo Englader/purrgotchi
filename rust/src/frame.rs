@@ -1,7 +1,8 @@
 //! `purrgotchi frame --json` — one render of the kitten for the mod's pane
 //! (spec §3.1, §4.3). Read-only unless `--advance`.
 
-use crate::json::{CelebrationJson, FrameJson, SceneJson, V};
+use crate::colors::Attr;
+use crate::json::{CelebrationJson, FrameJson, HudJson, PeakJson, SceneJson, V};
 use crate::span::{to_json, Span};
 use crate::state::{self, CelebrationKind, State};
 use crate::statusline::{advance, kitten_view, KittenView, ViewInput, CELEBRATION_TICK_SECS};
@@ -114,6 +115,31 @@ pub(crate) fn build(st: &State, now: u64, tick: u64, view: &KittenView) -> Frame
         speech_source: view.speech_source.as_str().to_string(),
         scene,
         celebration,
+        hud: hud(st, now),
+    }
+}
+
+/// Progress to the next level (level = 1 + total / 50), as a percentage.
+pub(crate) fn xp_pct(total: u64) -> u8 {
+    ((total % 50) * 2) as u8
+}
+
+fn hud(st: &State, now: u64) -> HudJson {
+    let name_fg = crate::colors::rarity_attrs(&st.rarity, st.shiny, now as i64)
+        .into_iter()
+        .find_map(|a| match a {
+            Attr::Fg(rgb) => Some(rgb.hex()),
+            Attr::Bold | Attr::Dim => None,
+        })
+        .unwrap_or_else(|| "#0abdc6".to_string());
+    let (label, range) = crate::statusline::peak_period(crate::statusline::local_hour());
+    HudJson {
+        total_tool_calls: st.total_tool_calls,
+        xp_pct: xp_pct(st.total_tool_calls),
+        last_fed_at: st.last_fed_at,
+        stars: crate::identity::rarity_stars(&st.rarity, st.shiny),
+        name_fg,
+        peak: PeakJson { label: label.to_string(), range: range.to_string(), is_peak: label == "PEAK" },
     }
 }
 
@@ -123,6 +149,26 @@ mod tests {
 
     fn a(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn xp_pct_is_progress_to_next_level() {
+        for (total, want) in [(0, 0), (49, 98), (50, 0), (125, 50)] {
+            assert_eq!(xp_pct(total), want, "{total}");
+        }
+    }
+
+    #[test]
+    fn name_fg_is_hex_for_every_rarity() {
+        let mut st = crate::state::State::base(1_700_000_000);
+        for r in ["common", "uncommon", "rare", "epic", "legendary"] {
+            st.rarity = r.to_string();
+            for shiny in [false, true] {
+                st.shiny = shiny;
+                let fg = hud(&st, 1_700_000_000).name_fg;
+                assert!(fg.len() == 7 && fg.starts_with('#') && fg[1..].chars().all(|c| c.is_ascii_hexdigit()), "{r}: {fg}");
+            }
+        }
     }
 
     #[test]

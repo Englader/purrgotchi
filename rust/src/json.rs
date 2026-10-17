@@ -201,6 +201,30 @@ pub struct FrameJson {
     pub speech_source: String,
     pub scene: Option<SceneJson>,
     pub celebration: Option<CelebrationJson>,
+    /// Additive HUD data (xp, stars, name colour, peak window, last feed).
+    pub hud: HudJson,
+}
+
+/// Everything the pane shows that is not already a top-level `frame` field,
+/// so the mod never re-implements game rules.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HudJson {
+    pub total_tool_calls: u64,
+    /// Progress to the next level, 0..=98 (`(total % 50) * 2`).
+    pub xp_pct: u8,
+    pub last_fed_at: u64,
+    pub stars: String,
+    /// `#rrggbb` the statusline colours the name with (legendary cycles).
+    pub name_fg: String,
+    pub peak: PeakJson,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PeakJson {
+    /// "PEAK" | "OFF PEAK"
+    pub label: String,
+    pub range: String,
+    pub is_peak: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -315,6 +339,11 @@ mod tests {
             rarity: "common".into(), shiny: false, level: 5, stage: "kitten".into(), coins: 340,
             bond: 50, mood: "calm".into(), sprite: vec![vec![span(" /\\_/\\ ")]; 6],
             speech: vec![span("mrow")], speech_source: "mood".into(), scene: None, celebration: None,
+            hud: HudJson {
+                total_tool_calls: 610, xp_pct: 20, last_fed_at: 1, stars: "★☆☆☆☆".into(),
+                name_fg: "#0abdc6".into(),
+                peak: PeakJson { label: "OFF PEAK".into(), range: "8PM-2PM".into(), is_peak: false },
+            },
         };
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains(r#""scene":null"#) && s.contains(r#""celebration":null"#), "{s}");

@@ -556,7 +556,7 @@ fn read_git_branch(cwd: &str) -> String {
     }
 }
 
-fn local_hour() -> u32 {
+pub(crate) fn local_hour() -> u32 {
     match state::now_override() {
         // Deterministic PEAK label under PURR_NOW (tests): UTC hour, no `date` spawn.
         Some(n) => ((n / 3600) % 24) as u32,
@@ -620,7 +620,7 @@ fn compute_h1_layout(title_len: usize, stars_len: usize, peak_len: usize)
     (pre_stars, mid_stars, post_peak)
 }
 
-fn peak_period(hour: u32) -> (&'static str, &'static str) {
+pub(crate) fn peak_period(hour: u32) -> (&'static str, &'static str) {
     // 14..=19 == 2:00PM-7:59PM, matching the displayed "2PM-8PM" exactly.
     // (The old 14..=20 bound plus an "9PM-3PM" off-peak label claimed
     // 2PM-3PM for both ranges.)

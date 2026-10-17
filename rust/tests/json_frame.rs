@@ -32,7 +32,7 @@ fn frame_json_contract() {
     let sb = Sandbox::with_state("frame_contract", json!({}));
     let (v, out) = run_json(&sb, &["frame", "--json", "--width", "60"], "");
     assert!(out.status.success());
-    assert_eq!(keys(&v), ["bond", "breed", "celebration", "coins", "level", "mood", "name", "now", "ok",
+    assert_eq!(keys(&v), ["bond", "breed", "celebration", "coins", "hud", "level", "mood", "name", "now", "ok",
                           "rarity", "scene", "shiny", "speech", "speech_source", "sprite", "stage", "tick", "v"]);
     assert_eq!((v["v"].as_u64(), v["ok"].as_bool()), (Some(1), Some(true)));
     assert_eq!((v["now"].as_u64(), v["tick"].as_u64()), (Some(NOW), Some(NOW)));
@@ -218,4 +218,21 @@ fn statusline_turn_anchor_follows_purr_now() {
     statusline_at(&sb, NOW);
     assert_eq!(std::fs::read_to_string(sb.state.join("turn-start-cost.txt")).unwrap(),
                format!("0\n{NOW}.000000\n"));
+}
+
+#[test]
+fn frame_hud_contract() {
+    let sb = Sandbox::with_state("frame_hud", json!({ "total_tool_calls": 610, "last_fed_at": NOW - 12 }));
+    let (v, _) = run_json(&sb, &["frame", "--json"], "");
+    let hud = &v["hud"];
+    assert_eq!(keys(hud), ["last_fed_at", "name_fg", "peak", "stars", "total_tool_calls", "xp_pct"]);
+    assert_eq!(hud["total_tool_calls"], 610);
+    assert_eq!(hud["xp_pct"], 20);
+    assert_eq!(hud["last_fed_at"], NOW - 12);
+    assert!(!hud["stars"].as_str().unwrap().is_empty());
+    assert!(hud["name_fg"].as_str().unwrap().starts_with('#'));
+    assert_eq!(keys(&hud["peak"]), ["is_peak", "label", "range"]);
+    let label = hud["peak"]["label"].as_str().unwrap();
+    assert!(label == "PEAK" || label == "OFF PEAK");
+    assert_eq!(hud["peak"]["is_peak"].as_bool(), Some(label == "PEAK"));
 }
