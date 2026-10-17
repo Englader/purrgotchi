@@ -187,8 +187,18 @@ pub fn strip_ansi(s: &str) -> String {
     out
 }
 
-fn golden_path(rel: &str) -> PathBuf {
+pub fn golden_path(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("golden").join(rel)
+}
+
+/// Bytes of statusline row `i` up to and including the box's right border + reset.
+/// Row 6 (bottom rail + speech bubble) is pinned whole. The reset+spaces sequence
+/// also occurs inside the box, so never split on it: `║` occurs only at row edges
+/// (inner separators are `│`).
+pub fn box_prefix(row: &str, i: usize) -> &str {
+    let end = match i { 0 => "╗\x1b[0m", 1..=5 => "║\x1b[0m", _ => return row };
+    let at = row.rfind(end).unwrap_or_else(|| panic!("row {i}: no right border in {row:?}"));
+    &row[..at + end.len()]
 }
 
 /// Used only by the `#[ignore]`d recorder tests: writes `rust/tests/golden/<rel>`

@@ -163,6 +163,11 @@ fn extra_cases() -> Vec<Case> {
 }
 
 fn run_case(c: &Case) -> (Vec<u8>, Sandbox) {
+    run_case_with(c, &[])
+}
+
+/// `extra` is appended after `c.env`, so it wins.
+fn run_case_with(c: &Case, extra: &[(&str, &str)]) -> (Vec<u8>, Sandbox) {
     let sb = Sandbox::new(c.name);
     let mut st = base_state();
     merge(&mut st, c.state.clone());
@@ -194,6 +199,7 @@ fn run_case(c: &Case) -> (Vec<u8>, Sandbox) {
     let now = c.now.to_string();
     let mut env: Vec<(&str, &str)> = vec![("PURR_NOW", now.as_str())];
     env.extend_from_slice(c.env);
+    env.extend_from_slice(extra);
     let out = sb.run(&["statusline"], &stdin, &env);
     assert!(out.status.success(), "{}: exit {:?} stderr {}", c.name, out.status, String::from_utf8_lossy(&out.stderr));
     (out.stdout, sb)
@@ -264,5 +270,45 @@ fn card_goldens() {
         let out = sb.run(&["card"], "", &[("PURR_NOW", &now)]);
         assert!(out.status.success());
         assert_golden(&format!("{name}.ansi"), &out.stdout);
+    }
+}
+
+/// Where the classic (pixel cat off) goldens live.
+const CLASSIC_DIR: &str = "statusline";
+
+/// Rows 0-5 cut after the box's right border, row 6 whole; every line `\n`-terminated.
+fn box_rows(text: &str) -> String {
+    text.lines().enumerate().map(|(i, l)| common::box_prefix(l, i)).collect::<Vec<_>>().join("\n") + "\n"
+}
+
+#[test]
+#[ignore = "one-off: derive statusline_box/ from the classic goldens"]
+fn derive_box_goldens() {
+    for c in cases() {
+        let classic = std::fs::read_to_string(common::golden_path(&format!("{CLASSIC_DIR}/{}.ansi", c.name))).unwrap();
+        common::record_missing_golden(&format!("statusline_box/{}.ansi", c.name), box_rows(&classic).as_bytes());
+    }
+}
+
+/// The HUD box is frozen: whatever the sprite column draws, the box bytes of
+/// every case stay as recorded.
+#[test]
+fn statusline_box_goldens() {
+    for c in cases() {
+        for extra in [&[][..], &[("PURR_PIXELS", "1")][..], &[("PURR_PIXELS", "fg")][..]] {
+            let (bytes, _sb) = run_case_with(&c, extra);
+            assert_golden(&format!("statusline_box/{}.ansi", c.name), box_rows(&String::from_utf8(bytes).unwrap()).as_bytes());
+        }
+    }
+}
+
+/// Opting out (`PURR_PIXELS=0`, `NO_COLOR`) reproduces the classic bytes exactly.
+#[test]
+fn statusline_pixels_off_is_classic() {
+    for c in cases() {
+        for extra in [&[("PURR_PIXELS", "0")][..], &[("NO_COLOR", "1"), ("PURR_PIXELS", "1")][..]] {
+            let (bytes, _sb) = run_case_with(&c, extra);
+            assert_golden(&format!("{CLASSIC_DIR}/{}.ansi", c.name), &bytes);
+        }
     }
 }
