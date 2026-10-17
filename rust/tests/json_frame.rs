@@ -286,3 +286,18 @@ fn frame_pixels_is_read_only() {
     at(&sb, &["frame", "--json", "--pixels"], NOW);
     assert_eq!(sb.snapshot(), before);
 }
+
+#[test]
+fn pixels_dev_verbs_clamp_odd_widths() {
+    let sb = Sandbox::new("pixels_odd_width");
+    for width in ["18446744073709551615", "100000"] {
+        let out = sb.run(&["pixels", "scene", "ball", "--width", width], "", &[]);
+        assert!(out.status.success(), "scene --width {width}");
+    }
+    let out = sb.run(&["pixels", "celebrate", "birthday", "--width", "18446744073709551615"], "", &[]);
+    assert!(out.status.success());
+    for width in ["0", "5"] {
+        let out = sb.run(&["pixels", "celebrate", "birthday", "--width", width], "", &[]);
+        assert_eq!(out.status.code(), Some(2), "--width {width}: clean usage error, no panic");
+    }
+}

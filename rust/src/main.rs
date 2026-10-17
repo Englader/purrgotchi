@@ -136,14 +136,14 @@ fn main() {
                     eprintln!("usage: purrgotchi pixels scene run|zoomies|ball|butterfly|roll|yarn [--width W] [--breed B] [--stage S] [--json]");
                     process::exit(2);
                 };
-                let width = cli::flag_value(&args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+                let width = dev_width(&args);
                 let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
                 let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
                 println!("{}", px::scene_sheet(kind, width, breed, stage, json));
                 process::exit(0);
             }
             Some("celebrate") => {
-                let width = cli::flag_value(&args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+                let width = dev_width(&args);
                 let breed = cli::flag_value(&args, "--breed").unwrap_or("Ginger");
                 let stage = cli::flag_value(&args, "--stage").unwrap_or("adult");
                 let Some(sheet) = args.get(3).and_then(|n| px::celebrate_sheet(n, width, breed, stage, json)) else {
@@ -176,4 +176,13 @@ fn bad_args(cmd: &str, detail: &str, json: bool) {
     if json {
         json::print_bad_args(&format!("{cmd}: {detail}"));
     }
+}
+
+/// `--width` of the `pixels` dev verbs, clamped like the statusline's cat column.
+fn dev_width(args: &[String]) -> usize {
+    let w = cli::flag_value(args, "--width").and_then(|w| w.parse().ok()).unwrap_or(playground::DEFAULT_STRIP);
+    playground::clamp_strip(w).unwrap_or_else(|| {
+        eprintln!("--width must be at least {} (capped at {})", playground::MIN_STRIP, playground::MAX_STRIP);
+        process::exit(2);
+    })
 }

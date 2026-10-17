@@ -68,7 +68,7 @@ fn confetti(f: &mut SceneFrame, w: usize, n: usize, now: u64) {
     let (block, k) = (now / CYCLE, (now % CYCLE) as i32);
     for i in 0..n as u64 {
         let h = ihash(i << 32 ^ block);
-        let (x, y0) = ((h % w as u64) as i32, ((h >> 24) % H as u64) as i32);
+        let (x, y0) = ((h % w.max(1) as u64) as i32, ((h >> 24) % H as u64) as i32);
         put(f, w, Prop::Confetti, ((h >> 48) % 6) as u8, x, (y0 + SPEED * k) % H);
     }
 }
@@ -171,6 +171,15 @@ mod tests {
 
     fn overlays() -> Vec<Overlay> {
         KINDS.iter().map(|&k| Overlay::Celebration(k)).chain([Overlay::Birthday]).collect()
+    }
+
+    #[test]
+    fn zero_width_does_not_panic() {
+        for o in overlays() {
+            for now in [NOW, NOW + 3] {
+                let _ = overlay_canvas(o, now, 0, &look("adult"));
+            }
+        }
     }
 
     #[test]
