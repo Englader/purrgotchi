@@ -166,11 +166,16 @@ pub(crate) fn paint(p: Pose, look: &CatLook, facing_right: bool, tail: Tail, bli
     }
 
     // 4. rim light: cyan leftmost, magenta rightmost coat px per row. The
-    // small cats skip short rows, so the face keeps its coat colour.
+    // 10-px cat skips short rows and its eye rows, so a rim pixel never sits
+    // beside an eye and reads as a second one.
     let rim_min = if ph == PxHeight::H12 { 3 } else { 5 };
     let mut out = col;
     for y in 0..h {
-        let coat: Vec<usize> = (0..w).filter(|&x| is_coat(slots[at(x, y)])).collect();
+        let row = &slots[at(0, y)..at(0, y) + w];
+        if ph == PxHeight::H10 && row.contains(&b'e') {
+            continue;
+        }
+        let coat: Vec<usize> = (0..w).filter(|&x| is_coat(row[x])).collect();
         if coat.len() >= rim_min {
             let (l, r) = (at(coat[0], y), at(coat[coat.len() - 1], y));
             out[l] = Some(RIM_CYAN);
@@ -316,7 +321,7 @@ mod tests {
         let at = |t| paint(Pose::Sit, &look("Ginger", "adult"), true, t, false, h).px;
         assert_ne!(at(Tail::Curl), at(Tail::Up), "{h:?}");
         assert_ne!(at(Tail::Up), at(Tail::Flick), "{h:?}");
-        // The eye row is short: no rim on the face.
+        // No rim on the eye row.
         let s = paint(Pose::Sit, &look("Ginger", "adult"), true, Tail::Curl, false, h);
         let eye_row = (0..s.h).find(|&y| s.px[y * s.w..(y + 1) * s.w].contains(&Some(crate::colors::CYAN))).unwrap();
         assert!(!s.px[eye_row * s.w..(eye_row + 1) * s.w].iter().any(|c| *c == Some(RIM_CYAN) || *c == Some(RIM_MAGENTA)), "{h:?}");

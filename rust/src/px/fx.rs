@@ -126,7 +126,7 @@ pub(crate) fn fx_frame(o: Overlay, now: u64, width: usize, look: &CatLook, h: Px
             // above her sprite (an adult has no headroom and wears it low).
             let over_head = match h {
                 PxHeight::H12 => 7,
-                PxHeight::H10 => 6,
+                PxHeight::H10 => 7,
             };
             put(&mut f, width, Prop::Hat, 0, cx + cw - over_head, (top - 2).max(0), h);
         }

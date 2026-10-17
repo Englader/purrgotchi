@@ -1,6 +1,8 @@
-//! The 10-px cat (band 5 rows). The slot maps below are the unedited output
-//! of `purrgotchi pixels downscale --height 10` (slot-priority voting over
-//! fractional blocks of the 12-px maps) until the art pass hand-fixes them.
+//! The 10-px cat (band 5 rows). The slot maps below started from
+//! `purrgotchi pixels downscale --height 10` (slot-priority voting over
+//! fractional blocks of the 12-px maps) and were then redrawn by hand: the
+//! vote doubles eyes and noses where blocks overlap, so every map keeps the
+//! 12-px head nearly whole (a 7-px face under notched ears) on a shorter body.
 //! Same legend and `-` droppable-row rule as `art.rs`; the outline is added
 //! by `paint.rs`.
 
@@ -105,200 +107,237 @@ fn const_name(p: Pose, h: PxHeight) -> String {
     out + &h.px().to_string()
 }
 
-// ---- generated maps ----
+// ---- maps (hand-drawn) ----
 
+/// Sitting, faces right, face toward the viewer. Four columns behind `*` hold the tail.
 const SIT10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    ".....eelnneh",
-    "-.....hhlnnhh",
-    "-.....bblll..",
-    "...*bbbbllb.",
-    "...bbbbamm..",
+    "......r...r.",
+    ".....rir.rir",
+    ".....hehhheh",
+    ".....hhlnlhh",
+    "-......hhllh.",
+    "-.....bbbllb.",
+    "....*bbbbbbb",
+    "....bbbbbama",
 ];
+
+/// Walking, legs apart: front-left and back-right forward.
 const WALK1_10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    "t....eehhheh",
-    "tbbbbeelnneh",
-    "-.bbbbhhlnnhh",
-    "-.bbbbbblll..",
-    ".bbbbbbbbb..",
-    ".a..a..a....",
+    "......r...r.",
+    "t....rir.rir",
+    "t....hehhheh",
+    ".tbbbhhlnlhh",
+    "-..bbbbbhllh.",
+    "..bbbbbbbbb.",
+    "..b.b...b.b.",
+    ".a...a.a...a",
 ];
+
+/// Walking, legs gathered under the body. Head and tail match `WALK1_10`.
 const WALK2_10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    "t....eehhheh",
-    "tbbbbeelnneh",
-    "-.bbbbhhlnnhh",
-    "-.bbbbbblll..",
-    "..bbbbbbbb..",
-    "..aaa..aaa..",
-];
-const LOAF10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    "....beehhheh",
-    "...bbeelnneh",
-    "...bbhhlnnhh",
-    "-...bbbbbllbb",
-    "-...*bbbbbbbb",
-    "....bbbbbbbb",
-];
-const LOAF_BREATH10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    "...bbeehhheh",
-    "...bbeelnneh",
-    "...bbhhlnnhh",
-    "-...bbbbbllbb",
-    "-...*bbbbbbbb",
-    "....bbbbbbbb",
-];
-const CURL10: [&str; 5] = [
-    "...bbbbriiir",
-    "..bbbbmmmmmr",
-    ".bbbbbmmmnmh",
-    "-bbbbbbmmmnlh",
-    "-.bbbbbbmmhhh",
-];
-const CURL_BREATH10: [&str; 5] = [
-    "..bbbbbriiir",
-    "..bbbbmmmmmr",
-    ".bbbbbmmmnmh",
-    "-bbbbbbmmmnlh",
-    "-.bbbbbbmmhhh",
-];
-const GROOM_PAW10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    ".....eelnneh",
-    "-.....hhlnnah",
-    "-.....bblll..",
-    "...*bbbbllb.",
-    "...bbbbamm..",
-];
-const GROOM_LICK10: [&str; 8] = [
-    ".....iirrirh",
-    ".....mmhhhmh",
-    ".....mmlnnmh",
-    "-.....hhlnnhh",
-    "-.....hhlll..",
-    "...*bbbbllb.",
-    "...bbbbamm..",
-    "...bbbbamm..",
-];
-const STRETCH10: [&str; 6] = [
-    "-bbb.........",
-    "-bbbbb.rr..rr",
-    "bbbbbbriihir",
-    "bbbbbbreeher",
-    "bbbbbbheeneh",
-    "aaa.baaaaaaa",
-];
-const TURN10: [&str; 8] = [
-    "..rii.riir..",
-    "..riihriir..",
-    "..heehheeh..",
-    "..heenneeh..",
-    "-...hlnnlh...",
-    "-..bbbllbbb..",
-    "..bbbllbbb..",
-    "...aabaaa...",
-];
-const LOOK10: [&str; 8] = [
-    ".....rr..r..",
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    ".....eelnneh",
-    "-.....hhlll..",
-    "-...*bbblll..",
-    "...bbbbamm..",
-];
-const MEOW10: [&str; 8] = [
-    ".....rr..r..",
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    ".....eemnneh",
-    "-.....hhlll..",
-    "-...*bbblll..",
-    "...bbbbamm..",
-];
-const RUN1_10: [&str; 7] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    "tbbbbeelnneh",
-    "-tbbbbhhlnnhh",
-    "-aaabbbbbbaaa",
-    "aaa......aaa",
-];
-const RUN2_10: [&str; 7] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....eehhheh",
-    "tbbbbeelnneh",
-    "-tbbbbhhlnnhh",
-    "-..baabbbaa..",
+    "......r...r.",
+    "t....rir.rir",
+    "t....hehhheh",
+    ".tbbbhhlnlhh",
+    "-..bbbbbhllh.",
+    "..bbbbbbbbb.",
+    "...bb...bb..",
     "...aa...aa..",
 ];
-const CROUCH10: [&str; 7] = [
-    ".....iirrir.",
-    "..b..iirrirh",
-    ".bbb.eehhheh",
-    "bbbbbeelnneh",
-    "-bbbbbeelnneh",
-    "-.aaabbball..",
-    ".aaa...aaa..",
+
+/// Loaf: flat oval, paws tucked away. The tail socket sits at the rear.
+const LOAF10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    "....bhehhheh",
+    "...bbhhlnlhh",
+    "-...bbbbbhllh",
+    "-...bbbbbbbbb",
+    "....*bbbbbbb",
 ];
-const POUNCE10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....mmhhhmh",
-    "....bmmmnnmh",
-    "-..bbbhmmnnhh",
-    "-bbbbbbbbllaa",
-    "aabbbb....aa",
+
+/// Loaf breathing in: the back rises one px.
+const LOAF_BREATH10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    "...bbhehhheh",
+    "...bbhhlnlhh",
+    "-...bbbbbhllh",
+    "-...bbbbbbbbb",
+    "....*bbbbbbb",
+];
+
+/// Sleeping donut, head tucked at the right, eyes shut, tail along the front (a kitten drops the tail row).
+const CURL10: [&str; 5] = [
+    "..bbbb.r...r",
+    ".bbbbbbrihir",
+    "bbbbbbmhmhmh",
+    "bbbbbbmhlnlh",
+    "-.ttttttttt..",
+];
+
+/// Curl breathing in: the top of the back rises one px.
+const CURL_BREATH10: [&str; 5] = [
+    ".bbbbb.r...r",
+    ".bbbbbbrihir",
+    "bbbbbbmhmhmh",
+    "bbbbbbmhlnlh",
+    "-.ttttttttt..",
+];
+
+/// Sit with the paw raised to the mouth.
+const GROOM_PAW10: [&str; 8] = [
+    "......r...r.",
+    ".....rir.rir",
+    ".....hehhheh",
+    ".....hhlnaah",
+    "-......hhlah.",
+    "-.....bbbllb.",
+    "....*bbbbbbb",
+    "....bbbbbam.",
+];
+
+/// Head dipped onto the chest, eyes shut, tongue out.
+const GROOM_LICK10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    ".....hmhhhmh",
+    ".....hhlnnhh",
+    "-.....bbbllb.",
+    "....*bbbbbbb",
+    "....bbbbbama",
+];
+
+/// Downward-dog: rear up, chest low, front legs reaching along the ground.
+const STRETCH10: [&str; 7] = [
+    "t...........",
+    "-tbbb........",
+    ".bbbb.r....r",
+    ".bbbbbrihhir",
+    "bbbbbbhehheh",
+    ".b.bbbhhlnlh",
+    ".aa..baaaaaa",
+];
+
+/// Front view, between facings.
+const TURN10: [&str; 8] = [
+    "....r...r...",
+    "...rir.rir..",
+    "...hehhheh..",
+    "...hhlnlhh..",
+    "-....hhhhh...",
+    "-...bblllbb..",
+    "...bbbbbbb..",
+    "....aa.aa...",
+];
+
+/// Sit with the head raised and the ears tall.
+const LOOK10: [&str; 8] = [
+    "......r...r.",
+    "......r...r.",
+    ".....rir.rir",
+    ".....hehhheh",
+    ".....hhlnlhh",
+    "-.....bbhllh.",
+    "....*bbbbbbb",
+    "....bbbbbama",
+];
+
+/// `LOOK10` with the mouth open under the nose, tongue showing.
+const MEOW10: [&str; 8] = [
+    "......r...r.",
+    "......r...r.",
+    ".....rir.rir",
+    ".....hehhheh",
+    ".....hhlnlhh",
+    "-.....bhmnmh.",
+    "....*bbbbbbb",
+    "....bbbbbama",
+];
+
+/// Running, legs fully extended front and back.
+const RUN1_10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    "t....hehhheh",
+    "ttbbbhhlnlhh",
+    "-..bbbbbbhlh.",
+    "..bbbbbbbbb.",
+    "aaa......aaa",
+];
+
+/// Running, legs gathered under the body.
+const RUN2_10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    "t....hehhheh",
+    "ttbbbhhlnlhh",
+    "-..bbbbbbhlh.",
+    "..bbbbbbbbb.",
+    "....aa..aa..",
+];
+
+/// Anticipation: low body, rear up, wide eyes (two px tall).
+const CROUCH10: [&str; 7] = [
+    "......r...r.",
+    "..b..rir.rir",
+    ".bbb.hehhheh",
+    "tbbbbhelnleh",
+    "-tbbbbbbbhhh.",
+    ".bbbbbbbbllb",
+    ".aa.....aaa.",
+];
+
+/// Mid-air: rear low-left, head high-right, paws reaching, `> <` squint.
+const POUNCE10: [&str; 7] = [
+    "......r...r.",
+    ".....rir.rir",
+    ".....hmhhhmh",
+    "...bbhhmnmhh",
+    "t.bbbbbbllaa",
+    "-tbbbbbb...aa",
     "aabbb.......",
 ];
+
+/// On its back, four paws up.
 const ROLL1_10: [&str; 5] = [
-    "aaaa.aariiir",
-    "aaaabaareeer",
-    "lllllllleeeh",
-    "-llllllllhnhh",
-    "-bllllllhhhhh",
+    "a.a.a.a.r..r",
+    "a.a.a.arihir",
+    "bbbbbbbheheh",
+    "blllllbhhnhh",
+    "tbbbbbbbhhh.",
 ];
+
+/// On its side, belly toward the viewer, paws reaching out.
 const ROLL2_10: [&str; 5] = [
-    ".bbbbbbriiir",
-    "lllllllreeer",
-    "lllllllleeeh",
-    "-bllllllhhnhh",
-    "-aaaaaaaaaahh",
+    ".bbbbbb.r..r",
+    "bbbbbbbrihir",
+    "blllllbheheh",
+    "tbbbbbbhhnhh",
+    ".aa.aa.aa.a.",
 ];
-const CHEER10: [&str; 8] = [
-    ".....iirrir.",
-    ".....iirrirh",
-    ".....mmhhhmh",
-    "....ammmnnmm",
-    "-.....mmmnnmm",
-    "-.....bblll..",
-    "...*bbbbllb.",
-    "...bbbbamm..",
+
+/// Sit with `^^` eyes and both paws up, one row shorter than `SIT10` so the birthday hat sits on the ears. Tail grows from `*` (caller picks `Tail::Up`).
+const CHEER10: [&str; 7] = [
+    ".....r...r..",
+    "....rir.rir.",
+    "...ahmhhhmh.",
+    "...amhmnmhma",
+    "-....ahhllha.",
+    "...*bbbbbbb.",
+    "...bbbbbama.",
 ];
+
+/// Sit with `^^` eyes and one front paw waving beside the head.
 const WAVE10: [&str; 8] = [
-    "..aaaiirrir.",
-    "...aaiirrirh",
-    "...aammhhhmh",
-    "...aammmnnmm",
-    "....ammmnnmm",
-    "-.....bblll..",
-    "-...*bbbbllb.",
-    "...bbbbamm..",
+    "..aa..r...r.",
+    "..aa.rir.rir",
+    "...a.hmhhhmh",
+    "...a.mhmnmhm",
+    "-....aahhllh.",
+    "-.....bbbllb.",
+    "....*bbbbbbb",
+    "....bbbbbama",
 ];
 
 /// Interior slot map for a pose at 10 px, facing right.
