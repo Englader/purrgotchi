@@ -143,12 +143,34 @@ fn main() {
                 process::exit(2);
             }
         },
+        "cost" => {
+            let json = cli::has_flag(&args, "--json");
+            let session = cli::flag_value(&args, "--session").unwrap_or("");
+            let total = cli::flag_value(&args, "--total")
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .filter(|t| t.is_finite() && *t >= 0.0);
+            match total {
+                Some(t) if !session.is_empty() && !session.starts_with("--") => {
+                    process::exit(cost_acc::run_cmd(session, t, json))
+                }
+                _ => {
+                    eprintln!("usage: purrgotchi cost --session <id> --total <usd> [--json]");
+                    process::exit(2);
+                }
+            }
+        }
+        "quip-prompt" => process::exit(react::quip_prompt_cmd(cli::has_flag(&args, "--json"))),
+        "quip-store" => {
+            let json = cli::has_flag(&args, "--json");
+            let text = cli::positionals(&args, &["--json"], &[]).join(" ");
+            process::exit(react::quip_store_cmd(&text, json));
+        }
         "--version" | "-V" => {
             println!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
         }
         _ => {
             eprintln!("purrgotchi {}", env!("CARGO_PKG_VERSION"));
-            eprintln!("usage: purrgotchi <statusline|frame|feed|turn|rename|hatch|card|pet|play|treat|stats|react>");
+            eprintln!("usage: purrgotchi <statusline|frame|feed|turn|rename|hatch|card|pet|play|treat|stats|react|cost|quip-prompt|quip-store> [--json]");
             process::exit(2);
         }
     }

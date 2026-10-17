@@ -384,6 +384,94 @@ fn best_effort_mood(s: &State) -> &'static str {
     "calm"
 }
 
+#[derive(serde::Deserialize, Default)]
+struct QuipPromptInput {
+    #[serde(default)]
+    last_user: String,
+    #[serde(default)]
+    last_assistant: String,
+}
+
+/// `purrgotchi quip-prompt [--json]` — the react prompt without a transcript
+/// file: the mod passes `{last_user,last_assistant}` on stdin (spec §4.6).
+pub fn quip_prompt_cmd(json: bool) -> i32 {
+    use std::io::{IsTerminal, Read};
+    let s = match state::load() {
+        Some(s) if !s.breed.is_empty() => s,
+        _ => {
+            crate::json::no_kitten(json);
+            return 1;
+        }
+    };
+    let mut input = String::new();
+    if !std::io::stdin().is_terminal() {
+        let _ = std::io::stdin().read_to_string(&mut input);
+    }
+    let inp: QuipPromptInput = if input.trim().is_empty() {
+        QuipPromptInput::default()
+    } else {
+        match serde_json::from_str(&input) {
+            Ok(v) => v,
+            Err(e) => {
+                let m = format!("quip-prompt: stdin is not valid JSON: {e}");
+                eprintln!("{m}");
+                if json {
+                    crate::json::print_error("bad_input", &m);
+                }
+                return 2;
+            }
+        }
+    };
+    let tail = TranscriptTail {
+        last_user: truncate_chars(&inp.last_user, USER_MSG_MAX_CHARS),
+        last_assistant: truncate_chars(&inp.last_assistant, ASSISTANT_MSG_MAX_CHARS),
+        recent_tool_calls: Vec::new(),
+    };
+    let mood = best_effort_mood(&s);
+    let req = build_prompt(&s, mood, &tail);
+    if json {
+        crate::json::print(&crate::json::QuipPromptJson {
+            v: crate::json::V, ok: true, mood: mood.to_string(),
+            system: req.system, user: req.user, max_tokens: req.max_tokens,
+        });
+    } else {
+        println!("{}\n\n{}", req.system, req.user);
+    }
+    0
+}
+
+/// `purrgotchi quip-store <text…> [--json]` — sanitize a model reply and put
+/// it in the quip cache the statusline/pane already read.
+pub fn quip_store_cmd(text: &str, json: bool) -> i32 {
+    let q = sanitize_quip(text);
+    if q.is_empty() {
+        let m = "quip-store: quip is empty after sanitizing";
+        eprintln!("{m}");
+        if json {
+            crate::json::print_error("empty_quip", m);
+        }
+        return 1;
+    }
+    match quip_cache::write(&q) {
+        Ok(()) => {
+            if json {
+                crate::json::print(&crate::json::QuipStoreJson { v: crate::json::V, ok: true, stored: q });
+            } else {
+                println!("{q}");
+            }
+            0
+        }
+        Err(e) => {
+            let m = format!("quip-store: {e}");
+            eprintln!("{m}");
+            if json {
+                crate::json::print_error("write_failed", &m);
+            }
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -162,6 +162,33 @@ pub struct CelebrationJson {
     pub tick_secs: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CostJson {
+    pub v: u32,
+    pub ok: bool,
+    /// USD credited to the lifetime tally by this call (0 when nothing new).
+    pub credit: f64,
+    pub lifetime_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QuipPromptJson {
+    pub v: u32,
+    pub ok: bool,
+    pub mood: String,
+    pub system: String,
+    pub user: String,
+    pub max_tokens: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QuipStoreJson {
+    pub v: u32,
+    pub ok: bool,
+    /// The sanitized text actually written to the quip cache.
+    pub stored: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +268,19 @@ mod tests {
         assert_eq!(serde_json::from_str::<SceneJson>(&s).unwrap(), sc);
         let c = CelebrationJson { kind: CelebrationKind::LevelUp, remaining_ticks: 2, tick_secs: 2 };
         assert_eq!(serde_json::from_str::<CelebrationJson>(&serde_json::to_string(&c).unwrap()).unwrap(), c);
+    }
+
+    #[test]
+    fn small_command_structs_round_trip() {
+        let c = CostJson { v: V, ok: true, credit: 0.5, lifetime_cost_usd: 3.92 };
+        let s = serde_json::to_string(&c).unwrap();
+        assert_eq!(s, r#"{"v":1,"ok":true,"credit":0.5,"lifetime_cost_usd":3.92}"#);
+        assert_eq!(serde_json::from_str::<CostJson>(&s).unwrap(), c);
+
+        let p = QuipPromptJson { v: V, ok: true, mood: "calm".into(), system: "sys".into(), user: "u".into(), max_tokens: 50 };
+        assert_eq!(serde_json::from_str::<QuipPromptJson>(&serde_json::to_string(&p).unwrap()).unwrap(), p);
+
+        let q = QuipStoreJson { v: V, ok: true, stored: "mrow".into() };
+        assert_eq!(serde_json::to_string(&q).unwrap(), r#"{"v":1,"ok":true,"stored":"mrow"}"#);
     }
 }

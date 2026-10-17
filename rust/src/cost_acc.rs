@@ -143,9 +143,9 @@ pub fn apply(
 ///    retries the same delta — no double-count.
 /// 5. **Then save state.** If this fails, we lose at most one render's delta
 ///    — never duplicate. See spec §2 write-order rationale.
-pub fn accumulate_from_payload(session_id: &str, cur: f64) {
+pub fn accumulate_from_payload(session_id: &str, cur: f64) -> f64 {
     if session_id.is_empty() {
-        return;
+        return 0.0;
     }
     let now = crate::state::now_secs();
     let path = crate::paths::cost_sessions_file();
@@ -155,29 +155,51 @@ pub fn accumulate_from_payload(session_id: &str, cur: f64) {
     // whole-struct state save could clobber a concurrent feed hook's
     // increments. A missed lock just skips this render; the next one retries
     // the same delta.
-    let Some(_lock) = crate::state::acquire_lock() else { return };
+    let Some(_lock) = crate::state::acquire_lock() else { return 0.0 };
     let mut sessions = load_at(&path);
 
     let mut state = match crate::state::load() {
         Some(s) => s,
-        None => return, // not yet hatched — nothing to accumulate against
+        None => return 0.0, // not yet hatched — nothing to accumulate against
     };
 
     let outcome = apply(&mut sessions, &mut state, session_id, cur, now, MAX_AGE_SECS);
 
     if !outcome.sidecar_dirty && outcome.credit == 0.0 {
-        return; // steady-state no-op render — zero disk writes
+        return 0.0; // steady-state no-op render — zero disk writes
     }
 
     // Sidecar first.
     if outcome.sidecar_dirty && save_at(&path, &sessions).is_err() {
-        return;
+        return 0.0;
     }
     // Only credit the lifetime field on disk if we actually moved the needle.
-    if outcome.credit > 0.0 {
-        let _ = crate::state::save_atomic(&state);
+    if outcome.credit > 0.0 && crate::state::save_atomic(&state).is_err() {
+        return 0.0;
     }
+    outcome.credit
 }
+
+/// `purrgotchi cost --session <id> --total <usd> [--json]` — the statusline's
+/// lifetime-cost tally as a command, for the mod's `session.measure` hook.
+pub fn run_cmd(session_id: &str, total: f64, json: bool) -> i32 {
+    // Check first: accumulate_from_payload would take the lock (creating the
+    // lock file) before discovering there is no kitten.
+    if crate::state::load().is_none() {
+        crate::json::no_kitten(json);
+        return 1;
+    }
+    let credit = accumulate_from_payload(session_id, total);
+    let lifetime = crate::state::load().map(|s| s.lifetime_cost_usd).unwrap_or(0.0);
+    if json {
+        crate::json::print(&crate::json::CostJson { v: crate::json::V, ok: true, credit, lifetime_cost_usd: lifetime });
+    } else {
+        println!("credited ${credit:.4} (lifetime ${lifetime:.2})");
+    }
+    0
+}
+
+
 
 #[cfg(test)]
 mod tests {
