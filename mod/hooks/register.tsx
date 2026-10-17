@@ -8,6 +8,7 @@ import { registerMeasure } from './measure'
 import { gameEnabled, readOptions } from './options'
 import { registerOutputs } from './output'
 import { registerPane } from './pane'
+import { registerQuips } from './quips'
 import { createRuntime } from './runtime'
 import { onSessionStart } from './session'
 import { registerSkin } from './skin'
@@ -43,6 +44,7 @@ export const register: Register = (on, raw) => {
   registerFeed(on, rt)
   registerTurn(on, rt)
   registerMeasure(on, rt)
+  if (options.quips === 'session-model') registerQuips(on, rt)
   registerPane(on, rt)
   if (options.layout === 'bottom') registerBand(on)
 }

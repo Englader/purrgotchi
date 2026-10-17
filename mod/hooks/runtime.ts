@@ -48,6 +48,10 @@ export type Runtime = {
   serve?: ServeSource
   /** Never spawn `serve`: the clock polls `frame` instead. */
   serveDisabled: boolean
+  /** The latest prompt's text (capped), the quip's "what the user asked". */
+  lastUser: string
+  /** A session-model quip is being made: no second one starts meanwhile. */
+  quipInFlight: boolean
 }
 
 export function createRuntime(options: PurrOptions): Runtime {
@@ -66,6 +70,8 @@ export function createRuntime(options: PurrOptions): Runtime {
     frameFailures: 0,
     noPixels: false,
     serveDisabled: false,
+    lastUser: '',
+    quipInFlight: false,
   }
 }
 

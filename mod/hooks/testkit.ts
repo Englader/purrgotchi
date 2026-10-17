@@ -4,13 +4,22 @@
 // real binary.
 import { mock } from 'claude-code/testing'
 import type { MockClock } from 'claude-code/testing'
-import type { ConfigValue, On, PaneOpenArgs, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
+import type { ConfigValue, ModelCompleteInput, On, PaneOpenArgs, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
 
 import type { ProcessHost } from './binary'
-import type { ActionJson, CostJson, FeedJson, FrameJson, Span, TurnJson } from '../types'
+import type { ActionJson, CostJson, FeedJson, FrameJson, QuipPromptJson, QuipStoreJson, Span, TurnJson } from '../types'
 
 export type RunAnswer = ResultOf['process.run']
 export type OpAnswer = RunAnswer | Promise<RunAnswer>
+export type CompleteAnswer = ResultOf['model.complete']
+
+const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+
+/** A `model.complete` op answer: the model replied `text`. */
+export const modelText = (text: string): CompleteAnswer => ({ value: { isAnswered: true, text, usage: USAGE } })
+
+/** A `model.complete` op answer: the call ended with no reply. */
+export const modelUnanswered: CompleteAnswer = { value: { isAnswered: false, reason: 'empty-reply', usage: USAGE } }
 
 /** A `process.run` op answer: the child exited with `exitCode`. */
 export function ok(stdout: string, exitCode = 0, stderr = ''): RunAnswer {
@@ -40,6 +49,9 @@ export const fx = {
     line({ v: 1, ok: true, celebration: null, react_spawned: false, ...patch } satisfies TurnJson),
   cost: (patch: Partial<CostJson> = {}): string =>
     line({ v: 1, ok: true, credit: 0.12, lifetime_cost_usd: 3.42, ...patch } satisfies CostJson),
+  quipPrompt: (patch: Partial<QuipPromptJson> = {}): string =>
+    line({ v: 1, ok: true, mood: 'calm', system: 'You are a kitten.', user: 'Say a quip.', max_tokens: 60, ...patch } satisfies QuipPromptJson),
+  quipStore: (stored = 'mrrp! nice fix'): string => line({ v: 1, ok: true, stored } satisfies QuipStoreJson),
   action: (patch: Partial<ActionJson> = {}): string =>
     line({
       v: 1,
@@ -132,6 +144,8 @@ export type Spies = {
   opens: PaneOpenArgs[]
   /** `config.set` rows a plugin asked for, in order. */
   configs: { key: string; value: ConfigValue }[]
+  /** `model.complete` requests, in order. */
+  completes: ModelCompleteInput[]
   /** The mocked `$.clock` beneath the plugin (`advance`, `settle`). */
   clock: MockClock
 }
@@ -155,6 +169,8 @@ export type EngineOptions = {
   open?: { notPlaced: string }
   /** What `$.config.set` answers (default: written); `deny` refuses with that reason. */
   config?: { deny: string }
+  /** What `$.model.complete` answers (default: no reply). */
+  complete?: (req: ModelCompleteInput) => CompleteAnswer | Promise<CompleteAnswer>
   /** What `$.session.id` answers (default `s-1`); `'deny'` makes it reject. */
   sessionId?: string
 }
@@ -180,7 +196,7 @@ export function defaultRun(argv: string[]): RunAnswer {
 
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
-  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], spawns: [], stops: 0, ends: [], registered: [], logs: [], opens: [], configs: [], clock: mock.clock(on) }
+  const spies: Spies = { toasts: [], notifies: [], statuses: [], runs: [], spawns: [], stops: 0, ends: [], registered: [], logs: [], completes: [], opens: [], configs: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   // The engine echoes a measurement's units; the session figures it answers.
@@ -260,6 +276,10 @@ export function engine(on: On, o: EngineOptions = {}): Spies {
     if (script.end !== undefined) return { value: script.end }
     await aborted
     return { value: KILLED }
+  })
+  on('model.complete', ($, e) => {
+    spies.completes.push({ ...e })
+    return (o.complete ?? (() => modelUnanswered))(e)
   })
   on('process.run', ($, e) => {
     const argv = [...e.argv]
