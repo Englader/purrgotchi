@@ -1,0 +1,6 @@
+src/**
+build.py
+*.vsix
+.vscodeignore
+__pycache__/**
+.gitignore
