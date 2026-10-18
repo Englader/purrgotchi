@@ -1,7 +1,7 @@
-// InfoNotice: the engine's words, uppercased, after a `▸`; the `/command` keeps its case.
+// InfoNotice: the engine's words, uppercased (paths and filenames keep their case), after a `▸`; the `/command` keeps its case.
 import type { On, RenderElement } from 'claude-code'
 
-import { NEON, PALETTE } from './neon'
+import { NEON, PALETTE, noticeText } from './neon'
 import type { TextCtor } from './turn-duration'
 
 export function noticeTree(Text: TextCtor, text: string, command: string | null): RenderElement {
@@ -9,7 +9,7 @@ export function noticeTree(Text: TextCtor, text: string, command: string | null)
     wrap: 'truncate-end',
     children: [
       Text({ color: PALETTE.magenta, children: [NEON.notice] }),
-      Text({ color: PALETTE.cyan, children: [text.toUpperCase()] }),
+      Text({ color: PALETTE.cyan, children: [noticeText(text)] }),
       ...(command === null ? [] : [' ', Text({ color: PALETTE.yellow, children: [command] })]),
     ],
   })

@@ -182,10 +182,10 @@ v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same 
 **What is restyled** (one example per piece):
 
 - Spinner word: `▓▒░ DECRYPTING ░▒▓`. The word rotates per turn; the engine keeps its own `(12s · tokens)` tail.
-- Turn duration: `◢◤ EXECUTED IN 12.3s`
-- Info notices: `▸ ` before the notice text.
-- Session mode: `⟦ AUTO MODE ⟧`
-- Idle hint line: `[?] SHORTCUTS`. Only hints the engine shows and the mod knows are redrawn.
+- Turn duration: `◢◤ EXECUTED IN 12.3s ◢◤`
+- Info notices: `▸ ` before the notice text, uppercased. Paths, filenames and `/commands` keep their own case.
+- Session mode: `⟦ FOCUS ⟧` (label text uppercased).
+- Hint line: `[?] SHORTCUTS`. Only hints the engine shows and the mod knows are redrawn.
 - Background pill: `[CTRL+B] SEND TO BACKGROUND`
 
 **Engine-drawn, only recoloured by the theme:** the logo, the input box, the permission dialog, the menus, and the left `⏵⏵ auto mode on` indicator.

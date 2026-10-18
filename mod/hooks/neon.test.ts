@@ -45,6 +45,18 @@ test("parseHint keeps the engine's key", () => {
   expect(parseHint('ctrl+g to interrupt')).toEqual([{ key: 'CTRL+G', word: 'ABORT' }])
 })
 
+test('parseHint rejects prose as a key', () => {
+  expect(parseHint('Unable to find')).toBeNull()
+  expect(parseHint('Unable to find · esc to interrupt')).toBeNull()
+  expect(parseBackgroundHint('(Unable to run in background)')).toBeNull()
+})
+
+test('parseHint accepts key-shaped tokens', () => {
+  expect(parseHint('Ctrl+X to stop')).toEqual([{ key: 'CTRL+X', word: 'STOP' }])
+  expect(parseHint('ctrl+shift+k to clear')).toEqual([{ key: 'CTRL+SHIFT+K', word: 'CLEAR' }])
+  expect(parseHint('pagedown to find')).toEqual([{ key: 'PAGEDOWN', word: 'FIND' }])
+})
+
 test('parseHint passes the unknown', () => {
   for (const h of ['', '   ', '2 background tasks', '? for shortcuts 2 background tasks', 'esc to interrupt now'])
     expect(parseHint(h)).toBeNull()

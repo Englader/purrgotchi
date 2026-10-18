@@ -23,7 +23,14 @@ test('a corpus notice keeps its words', async ($, on) => {
   engineDraws(on)
   const text = 'Debug mode enabled · logging to /tmp/x/probe.debug.log'
   const ui = await mountOn($, 'InfoNotice', { text, command: null })
-  expect(shape(await ui.drawn())).toEqual(frame(text.toUpperCase()))
+  expect(shape(await ui.drawn())).toEqual(frame('DEBUG MODE ENABLED · LOGGING TO /tmp/x/probe.debug.log'))
+})
+
+test('notice keeps paths in their case', async ($, on) => {
+  engineDraws(on)
+  const text = 'Wrote C:\\Users\\Me\\a.txt and v1.2.3 to ./Out/File'
+  const ui = await mountOn($, 'InfoNotice', { text, command: null })
+  expect(shape(await ui.drawn())).toEqual(frame('WROTE C:\\Users\\Me\\a.txt AND v1.2.3 TO ./Out/File'))
 })
 
 test('empty notice passes', async ($, on) => {

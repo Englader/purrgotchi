@@ -170,21 +170,38 @@ export type KeyHint = { key: string; word: string }
 /** `re` is sticky with exactly one capture group, the key. */
 export type HintRule = { re: RegExp; word: string }
 
+const KEY_NAMES = 'esc|enter|return|tab|space|backspace|delete|up|down|left|right|home|end|pageup|pagedown'
+/** One key: a chord of modifiers, then a named key or a single non-space character. */
+export const KEY_SHAPE = `(?:(?:ctrl|alt|shift|meta|cmd|option|super)\\+)*(?:${KEY_NAMES}|\\S)`
+
+const rule = (before: string, after: string, word: string): HintRule => ({
+  re: new RegExp(`${before}(${KEY_SHAPE})${after}`, 'iyu'),
+  word,
+})
+
 /** Longest-first; every action is a binary literal or in the 2.1.302 corpus. */
 export const HINTS: readonly HintRule[] = [
-  { re: /(\S+) for shortcuts/y, word: 'SHORTCUTS' },
-  { re: /(\S+) for shell mode/y, word: 'SHELL MODE' },
-  { re: /(\S+) to interrupt and send/y, word: 'ABORT + SEND' },
-  { re: /(\S+) to interrupt/y, word: 'ABORT' },
-  { re: /(\S+) to clear/y, word: 'CLEAR' },
-  { re: /(\S+) to delete/y, word: 'DELETE' },
-  { re: /(\S+) to stop/y, word: 'STOP' },
-  { re: /(\S+) to find/y, word: 'FIND' },
-  { re: /(\S+) to group/y, word: 'GROUP' },
-  { re: /hold (\S+) to speak/y, word: 'HOLD TO SPEAK' },
-  { re: /\((\S+) to cycle\)/y, word: 'CYCLE' },
-  { re: /(\S+) for agents/y, word: 'AGENTS' },
+  rule('', ' for shortcuts', 'SHORTCUTS'),
+  rule('', ' for shell mode', 'SHELL MODE'),
+  rule('', ' to interrupt and send', 'ABORT + SEND'),
+  rule('', ' to interrupt', 'ABORT'),
+  rule('', ' to clear', 'CLEAR'),
+  rule('', ' to delete', 'DELETE'),
+  rule('', ' to stop', 'STOP'),
+  rule('', ' to find', 'FIND'),
+  rule('', ' to group', 'GROUP'),
+  rule('hold ', ' to speak', 'HOLD TO SPEAK'),
+  rule('\\(', ' to cycle\\)', 'CYCLE'),
+  rule('', ' for agents', 'AGENTS'),
 ]
+
+/** The engine's notice text, uppercased except path-like tokens (`/`, backslash, `a.b`), which keep their case. */
+export function noticeText(text: string): string {
+  return text
+    .split(/(\s+)/)
+    .map((t) => (/[/\\]|\w\.\w/.test(t) ? t : t.toUpperCase()))
+    .join('')
+}
 
 /** Maps `a · b` style engine hints to key/word pairs, or null if any part is unknown. */
 export function parseHint(hint: string): KeyHint[] | null {
@@ -211,7 +228,7 @@ export function parseHint(hint: string): KeyHint[] | null {
   return out
 }
 
-export const BACKGROUND_HINT = /^\((\S+) to run in background\)$/
+export const BACKGROUND_HINT = new RegExp(`^\\((${KEY_SHAPE}) to run in background\\)$`, 'iu')
 
 export function parseBackgroundHint(hint: string): KeyHint | null {
   const m = BACKGROUND_HINT.exec(hint)
