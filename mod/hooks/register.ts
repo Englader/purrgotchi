@@ -1,6 +1,7 @@
 // Composition root: the cat band above the prompt.
 import type { EngineInterface, Register } from 'claude-code'
 
+import { registerBackdrop, startBackdrop } from './backdrop'
 import { B, KEY, MAX_COLS, MIN_COLS, RECONCILE_MS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
 import { beat } from './heartbeat'
 import type { HeartbeatHost } from './heartbeat'
@@ -33,11 +34,12 @@ async function startBand($: HeartbeatHost & Pick<EngineInterface, 'env' | 'fs' |
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
+    await startBackdrop($)
     await startBand($)
     return r
   })
 
-  // `/clear` keeps the child: session.end does nothing.
+  // `/clear` keeps the child: the band does nothing on session.end.
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
@@ -55,6 +57,7 @@ export const register: Register = on => {
     const { Raster } = $.ui.resolve(e)
     return Raster({ key: KEY, columns: B.cols, rows, cells })
   })
+  registerBackdrop(on)
   registerSpinner(on)
   registerTurnDuration(on)
   registerInfoNotice(on)
