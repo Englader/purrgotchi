@@ -2,8 +2,8 @@
 // plugin in `claude plugin test`, so `engine(on, o)` answers every op the mod
 // uses. Tests never run the real binary.
 import { mock } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
-import type { EngineInterface, On, ProcessRunInit, ProcessSpawnResult, ResultOf } from 'claude-code'
+import type { Engine, MockClock } from 'claude-code/testing'
+import type { EngineInterface, On, ProcessRunInit, ProcessSpawnResult, RenderComponent, RenderNode, ResultOf } from 'claude-code'
 
 export type RunAnswer = ResultOf['process.run']
 export type OpAnswer = RunAnswer | Promise<RunAnswer>
@@ -162,4 +162,36 @@ export function fakeHost(o: {
       },
     },
   } as unknown as FakeHost
+}
+
+/**
+ * The engine's own draw beneath the plugin: records a deep copy of every
+ * `ui.render` props it receives and draws `Text('engine')`.
+ */
+export function engineDraws(on: On): { props: unknown[] } {
+  const seen: { props: unknown[] } = { props: [] }
+  on('ui.render', ($, e) => {
+    seen.props.push(structuredClone(e.props))
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: ['engine'] })
+  })
+  return seen
+}
+
+/** A render tree as plain data: strings stay, elements lose `part`, `group` and `hover`. */
+export function shape(node: RenderNode): unknown {
+  if (typeof node === 'string') return node
+  const n = node as { type: string; props?: object; children?: readonly RenderNode[] }
+  return { type: n.type, props: n.props ?? {}, children: (n.children ?? []).map(shape) }
+}
+
+/** An expected `Text` shape. */
+export const T = (props: Record<string, unknown>, ...children: unknown[]) => ({ type: 'Text', props, children })
+
+/** What `engineDraws` draws. */
+export const ENGINE = T({}, 'engine')
+
+/** Mounts `component` the way a surface draws it. */
+export function mountOn($: Engine, component: RenderComponent, props: object, surface: 'terminal' | 'desktop' = 'terminal') {
+  return $.ui.mount({ plugin: 'purrgotchi', surface, component, requestId: component, props } as Parameters<Engine['ui']['mount']>[0])
 }
