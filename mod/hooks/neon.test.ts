@@ -102,7 +102,7 @@ test('every THEME value names a palette hex', () => {
 
 test('spec colours are pinned', () => {
   const pins: [string, string][] = [
-    ['claude', '#ea00d9'], ['promptBorder', '#ea00d9'], ['text', '#e4dcff'], ['userMessageBackground', '#2a1640'],
+    ['claude', '#ea00d9'], ['promptBorder', '#ea00d9'], ['text', '#e4dcff'], ['userMessageBackground', '#073a46'],
     ['diffAdded', '#0f3a2a'], ['diffRemoved', '#4a1020'], ['bashBorder', '#f3f31b'], ['success', '#57eca6'],
     ['error', '#ff5468'],
     // The dark base's own value: the HUD statusline's dim labels look as before.
