@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import { B, KEY, MAX_COLS, MIN_COLS, RECONCILE_MS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
 import { beat } from './heartbeat'
 import type { HeartbeatHost } from './heartbeat'
+import { registerSpinner } from './spinner'
 
 /** `PURR_BAND_STATS`: the dev counters file, rewritten once a second. */
 async function writeStats($: Pick<EngineInterface, 'fs' | 'clock'>, path: string): Promise<void> {
@@ -49,4 +50,5 @@ export const register: Register = on => {
     const { Raster } = $.ui.resolve(e)
     return Raster({ key: KEY, columns: B.cols, rows, cells })
   })
+  registerSpinner(on)
 }
