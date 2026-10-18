@@ -4,6 +4,7 @@ import { expandHome, locateBinary } from './locate'
 import { fakeHost } from './testkit'
 
 const FALLBACK = '/home/u/.claude/purrgotchi/bin/purrgotchi'
+const FALLBACK_EXE = FALLBACK + '.exe'
 const onPath = () => ({ exitCode: 0, stdout: 'purrgotchi 4.1.0\n' })
 
 test('PURR_BIN wins when it exists', async () => {
@@ -47,4 +48,9 @@ test('expandHome table', () => {
   expect(expandHome('/opt/~/purr', '/home/u')).toBe('/opt/~/purr')
   expect(expandHome('~/bin/purr', undefined)).toBe('~/bin/purr')
   expect(expandHome('~/bin/purr', '')).toBe('~/bin/purr')
+})
+
+test('the .exe fallback is found (Windows)', async () => {
+  expect(await locateBinary(fakeHost({ env: { USERPROFILE: '/home/u' }, exists: [FALLBACK_EXE] }))).toBe(FALLBACK_EXE)
+  expect(await locateBinary(fakeHost({ env: { HOME: '/home/u' }, exists: [FALLBACK, FALLBACK_EXE] }))).toBe(FALLBACK)
 })

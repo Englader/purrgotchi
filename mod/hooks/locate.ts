@@ -24,7 +24,7 @@ async function onPath($: Pick<EngineInterface, 'process'>): Promise<boolean> {
   }
 }
 
-/** `PURR_BIN`, then `purrgotchi` on PATH, then `~/.claude/purrgotchi/bin/purrgotchi`; else null. */
+/** `PURR_BIN`, then `purrgotchi` on PATH, then `~/.claude/purrgotchi/bin/purrgotchi` (or `.exe`); else null. */
 export async function locateBinary($: Pick<EngineInterface, 'env' | 'fs' | 'process'>): Promise<string | null> {
   try {
     const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
@@ -35,8 +35,9 @@ export async function locateBinary($: Pick<EngineInterface, 'env' | 'fs' | 'proc
     }
     if (await onPath($)) return 'purrgotchi'
     if (home !== undefined && home !== '') {
-      const fallback = `${home.replace(/[/\\]+$/, '')}/.claude/purrgotchi/bin/purrgotchi`
-      if (await exists($, fallback)) return fallback
+      const base = `${home.replace(/[/\\]+$/, '')}/.claude/purrgotchi/bin/purrgotchi`
+      // `.exe` only exists on Windows, so probing it elsewhere is harmless.
+      for (const fallback of [base, `${base}.exe`]) if (await exists($, fallback)) return fallback
     }
   } catch {
     // no binary
