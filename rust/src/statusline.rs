@@ -257,6 +257,7 @@ pub fn run() {
     }
 
     let payload = Payload::parse(&input);
+    crate::budget_cache::write_cache(&input);
 
     // v3.4.7 — credit any new cost on this render to the kitten's lifetime tally.
     // Runs BEFORE load_or_hatch so the in-memory `st` below picks up our save.
