@@ -111,9 +111,14 @@ mod tests {
 
     #[test]
     fn state_dir_override_wins() {
+        // A drive-less path is not absolute on Windows, so use a platform-absolute one.
+        #[cfg(windows)]
+        let abs = "C:\\purr-x";
+        #[cfg(not(windows))]
+        let abs = "/tmp/purr-x";
         assert_eq!(
-            state_dir_from(Some(OsString::from("/tmp/purr-x")), PathBuf::from("/h")),
-            PathBuf::from("/tmp/purr-x")
+            state_dir_from(Some(OsString::from(abs)), PathBuf::from("/h")),
+            PathBuf::from(abs)
         );
     }
 
