@@ -2,7 +2,7 @@
 //! plus the small coloured props. Cat colours, outline and lighting are added
 //! by `paint.rs`.
 
-use super::PxSprite;
+use super::{PxHeight, PxSprite};
 use super::paint::OUTLINE;
 use crate::colors::{self, Rgb};
 use crate::pixel;
@@ -342,7 +342,10 @@ const WAVE: [&str; 10] = [
 ];
 
 /// Interior slot map for a pose, facing right.
-pub(crate) fn pose_map(p: Pose) -> &'static [&'static str] {
+pub(crate) fn pose_map(p: Pose, h: PxHeight) -> &'static [&'static str] {
+    if h == PxHeight::H10 {
+        return super::art10::pose_map10(p);
+    }
     match p {
         Pose::Sit => &SIT,
         Pose::Walk1 => &WALK1,
@@ -395,11 +398,11 @@ pub(crate) const ALL_PROPS: [Prop; 10] = [
     Prop::Z,
 ];
 
-const ORANGE: Rgb = Rgb(255, 140, 40);
+pub(super) const ORANGE: Rgb = Rgb(255, 140, 40);
 
 /// Rows of palette letters (`.` transparent) to a sprite. Unknown letters panic:
 /// the grids are static art.
-fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
+pub(super) fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
     let (w, h) = (rows[0].len(), rows.len());
     let px = rows
         .iter()
@@ -411,7 +414,8 @@ fn grid(rows: &[&str], pal: &[(char, Rgb)]) -> PxSprite {
 
 /// A prop, already coloured. `frame` toggles the 2-frame flaps and flickers
 /// (odd = second frame); for `Confetti` it picks the `colors::RAINBOW` hue.
-/// No outline: props are drawn over the cat's ground and sky.
+/// No outline: props are drawn over the cat's ground and sky. Every height
+/// uses these.
 pub(crate) fn prop(p: Prop, frame: u8) -> PxSprite {
     let second = frame % 2 == 1;
     let (yellow, wing, pink, gold, flame, z) = (colors::YELLOW, colors::PINK, pixel::NOSE, pixel::EPIC, ORANGE, pixel::NEON_CYAN);
@@ -458,13 +462,14 @@ pub(crate) fn stage_rows<'a>(map: &'a [&'a str], stage: &str) -> Vec<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const H12: PxHeight = PxHeight::H12;
 
     const TAIL_LAYER_POSES: [Pose; 5] = [Pose::Sit, Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave];
 
     #[test]
     fn maps_are_rectangular_and_use_the_legend() {
         for p in ALL_POSES {
-            let rows = stage_rows(pose_map(p), "adult");
+            let rows = stage_rows(pose_map(p, H12), "adult");
             let w = rows[0].len();
             for r in &rows {
                 assert_eq!(r.len(), w, "{p:?}: ragged row {r:?}");
@@ -477,7 +482,7 @@ mod tests {
     #[test]
     fn one_tail_socket_where_the_tail_layer_grows() {
         for p in TAIL_LAYER_POSES {
-            let n = pose_map(p).iter().map(|r| r.matches('*').count()).sum::<usize>();
+            let n = pose_map(p, H12).iter().map(|r| r.matches('*').count()).sum::<usize>();
             assert_eq!(n, 1, "{p:?}");
         }
     }
@@ -519,7 +524,7 @@ mod tests {
 
     #[test]
     fn stage_drop_rule() {
-        let m = pose_map(Pose::Sit);
+        let m = pose_map(Pose::Sit, H12);
         assert_eq!(stage_rows(m, "adult").len(), 10);
         assert_eq!(stage_rows(m, "young").len(), 9);
         assert_eq!(stage_rows(m, "kitten").len(), 8);
@@ -530,7 +535,7 @@ mod tests {
     #[test]
     fn kittens_are_smaller_than_adults() {
         for p in ALL_POSES {
-            let m = pose_map(p);
+            let m = pose_map(p, H12);
             assert!(stage_rows(m, "kitten").len() < stage_rows(m, "adult").len(), "{p:?}");
         }
     }
@@ -539,7 +544,7 @@ mod tests {
     fn every_pose_is_drawn() {
         for p in ALL_POSES {
             if p != Pose::Sit {
-                assert_ne!(pose_map(p), pose_map(Pose::Sit), "{p:?}");
+                assert_ne!(pose_map(p, H12), pose_map(Pose::Sit, H12), "{p:?}");
             }
         }
     }
@@ -548,7 +553,7 @@ mod tests {
     #[test]
     fn gait_frames_share_head_and_tail() {
         for (a, b, rows) in [(Pose::Walk1, Pose::Walk2, 6), (Pose::Run1, Pose::Run2, 7)] {
-            let (a, b) = (pose_map(a), pose_map(b));
+            let (a, b) = (pose_map(a, H12), pose_map(b, H12));
             assert_eq!(a[..rows], b[..rows]);
         }
     }

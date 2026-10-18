@@ -134,6 +134,45 @@ To check that your terminal renders background colours, run `purrgotchi pixels t
 
 ---
 
+## The cat band (v4.1)
+
+v4.1 adds an optional Claude Code **mod** (`mod/`) that draws the pixel cat in a band above the prompt, 5 rows tall, at 30 fps. It is terminal only: it needs a Claude Code build with the mods API and a 24-bit colour terminal. Without the mod, nothing changes from v4.0.
+
+Try it from a built checkout (`<WT>` is the checkout path; build first with `cd <WT>/rust && cargo build --release`):
+
+```bash
+# Band only: the statusline cat still shows too
+PURR_BIN=<WT>/rust/target/release/purrgotchi claude --plugin-dir <WT>/mod
+
+# Band plus statusline override: the statusline drops its cat and boxes her speech
+PURR_BIN=<WT>/rust/target/release/purrgotchi PURR_BAND_ROWS=5 claude --plugin-dir <WT>/mod \
+  --settings '{"statusLine":{"type":"command","command":"<WT>/rust/target/release/purrgotchi statusline","padding":1,"refreshInterval":1}}'
+
+# A taller cat (6 rows, 12 px art) and a faster one
+PURR_BIN=<WT>/rust/target/release/purrgotchi PURR_BAND_ROWS=6 claude --plugin-dir <WT>/mod
+PURR_BIN=<WT>/rust/target/release/purrgotchi PURR_BAND_FPS=60 claude --plugin-dir <WT>/mod
+```
+
+Settings (environment variables, read when a session starts):
+
+- `PURR_BAND_ROWS`: `5` (default, 10 px art) or `6` (12 px art). Anything else means 5. On a terminal too short for the requested height the band uses the largest that fits, and hides if even 5 rows do not fit.
+- `PURR_BAND_FPS`: frames per second, default `30`, range 15 to 60 (values outside it are clamped; a non-number means 30).
+- `PURR_BIN`: the purrgotchi binary to use.
+
+Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH`, then `~/.claude/purrgotchi/bin/purrgotchi`. If none is found, or the binary is v4.0 and has no `band` verb, the band draws nothing and the statusline keeps her cat.
+
+**Statusline handoff.** While the band is running, the mod writes a heartbeat file (`band-<session id>.alive` in the state directory) about once a second. While that beat is fresh (under 3 s), the statusline drops its own cat and shows her speech in a box on the right of the HUD, joined to the HUD border. If the band stops (crash, collapse, a terminal too short), the cat returns to the statusline within 3 s. The HUD box itself is unchanged.
+
+**Speech box width.** The box is `min(50, COLUMNS - 98)` columns wide and needs at least 20, so about 118 columns. When `COLUMNS` is unknown or too small, the statusline never wraps: it shows the speech as a loose line instead of the box.
+
+**Limitations.**
+
+- Terminal only; it relies on the terminal UI.
+- If the mod cannot learn the session id, it writes a global `band.alive` instead. Only a statusline whose own payload has no valid session id honours it, so a session with an id never reacts to another session's band.
+- The band reads purrgotchi state read-only. The `settings.json` hooks (`feed`, `turn`) still feed the kitten, so keep them installed.
+
+---
+
 ## Your kitten
 
 On first run, Purrgotchi automatically hatches a kitten deterministically from your machine identity (`username:hostname:birth_time` seed). Kittens are permanent — the same machine always produces the same kitten.
@@ -258,4 +297,4 @@ Cost tracking currently captures Anthropic-only API spend; Gemini and OpenAI cal
 - **Implementation plans:** `docs/superpowers/plans/` — bite-sized TDD task lists derived from each spec.
 - **Master plan:** `docs/superpowers/plans/kitten-mechanics-master-plan.md` — phase roadmap and progress log.
 
-All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.0.0** (live pixel-art cat; `PURR_PIXELS=0` keeps the classic ASCII cat — see the [CHANGELOG](./CHANGELOG.md) for migration notes).
+All four phases of the master plan have shipped (Phase 1 identity → Phase 2 character depth → Phase 3 LLM speech → Phase 4 provider-agnostic LLM). Current release: **v4.1.0** (the optional cat band above the prompt, on top of v4.0's pixel-art cat; `PURR_PIXELS=0` keeps the classic ASCII cat — see the [CHANGELOG](./CHANGELOG.md) for notes).

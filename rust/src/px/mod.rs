@@ -1,34 +1,77 @@
-//! Half-block pixel renderer for the statusline sprite column.
+//! Half-block pixel renderer for the statusline sprite column and the cat band.
 //!
-//! A `PxCanvas` is `width x PX_H` pixels. Each terminal cell shows two
-//! vertically stacked pixels as `▀` (fg = top, bg = bottom), so `PX_ROWS`
-//! terminal rows carry `PX_H` pixel rows. Transparent cells are plain spaces
+//! A `PxCanvas` is `width x h.px()` pixels. Each terminal cell shows two
+//! vertically stacked pixels as `▀` (fg = top, bg = bottom), so `h.rows()`
+//! terminal rows carry `h.px()` pixel rows. Transparent cells are plain spaces
 //! with no background active. Every encoded row ends with `\x1b[0m`.
 
 use crate::colors::{self, Rgb};
 use crate::pixel;
 
 pub(crate) mod art;
+pub(crate) mod art10;
+pub(crate) mod band;
 pub(crate) mod fx;
 pub(crate) mod life;
 pub(crate) mod paint;
 pub(crate) mod scene;
+pub(crate) mod tempo;
 
-pub(crate) const PX_ROWS: usize = 6;
-pub(crate) const PX_H: usize = 12;
+/// Canvas height in pixels: 12 (statusline and band, 6 rows) or 10 (band, 5 rows).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PxHeight {
+    H10,
+    H12,
+}
+
+impl PxHeight {
+    pub fn px(self) -> usize {
+        match self {
+            Self::H10 => 10,
+            Self::H12 => 12,
+        }
+    }
+
+    /// Terminal rows: two pixels per row.
+    pub fn rows(self) -> usize {
+        self.px() / 2
+    }
+
+    pub fn from_rows(r: usize) -> Option<Self> {
+        match r {
+            5 => Some(Self::H10),
+            6 => Some(Self::H12),
+            _ => None,
+        }
+    }
+
+    /// Widest painted sprite, outline included.
+    pub fn cat_max_w(self) -> usize {
+        match self {
+            Self::H10 => 14,
+            Self::H12 => 16,
+        }
+    }
+
+    /// `--height 10|12` of the `pixels` dev verbs.
+    pub fn from_px(px: usize) -> Option<Self> {
+        Self::from_rows(px / 2).filter(|h| h.px() == px)
+    }
+}
 
 /// Plain width of the bg test card rows.
 const CARD_W: usize = 24;
 
-/// `width x PX_H` pixel canvas; `None` is transparent.
+/// `width x h.px()` pixel canvas; `None` is transparent.
 pub(crate) struct PxCanvas {
     w: usize,
+    h: PxHeight,
     px: Vec<Option<Rgb>>,
 }
 
 impl PxCanvas {
-    pub fn new(w: usize) -> Self {
-        Self { w, px: vec![None; w * PX_H] }
+    pub fn new(w: usize, h: PxHeight) -> Self {
+        Self { w, h, px: vec![None; w * h.px()] }
     }
 
     pub fn width(&self) -> usize {
@@ -36,10 +79,15 @@ impl PxCanvas {
     }
 
     fn idx(&self, x: i32, y: i32) -> Option<usize> {
-        if x < 0 || y < 0 || x as usize >= self.w || y as usize >= PX_H {
+        if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h.px() {
             return None;
         }
         Some(y as usize * self.w + x as usize)
+    }
+
+    /// The whole canvas as a sprite (sheet cells).
+    fn into_sprite(self) -> PxSprite {
+        PxSprite { w: self.w, h: self.h.px(), px: self.px }
     }
 
     /// Clipped write.
@@ -133,10 +181,10 @@ fn cell(t: Option<Rgb>, b: Option<Rgb>, mode: PixelMode) -> (char, Option<Rgb>, 
     }
 }
 
-/// Canvas to `PX_ROWS` ANSI rows. A reset is emitted only when the (fg, bg)
+/// Canvas to `c.h.rows()` ANSI rows. A reset is emitted only when the (fg, bg)
 /// state changes; every row ends with `\x1b[0m`.
 pub(crate) fn encode(c: &PxCanvas, mode: PixelMode) -> Vec<String> {
-    (0..PX_ROWS)
+    (0..c.h.rows())
         .map(|r| {
             let mut row = String::new();
             let mut state: (Option<Rgb>, Option<Rgb>) = (None, None);
@@ -173,8 +221,8 @@ pub(crate) fn test_card() -> Vec<String> {
     const N: usize = 10;
     let first = |c: &PxCanvas| encode(c, PixelMode::Full).swap_remove(0);
 
-    let mut a = PxCanvas::new(N);
-    let mut d = PxCanvas::new(N);
+    let mut a = PxCanvas::new(N, PxHeight::H12);
+    let mut d = PxCanvas::new(N, PxHeight::H12);
     for x in 0..N as i32 {
         a.set(x, 0, colors::CYAN);
         a.set(x, 1, colors::PINK);
@@ -183,7 +231,7 @@ pub(crate) fn test_card() -> Vec<String> {
         d.set(x, 1, pixel::mix(colors::PINK, colors::CYAN, t));
     }
 
-    let mut heart = PxCanvas::new(N);
+    let mut heart = PxCanvas::new(N, PxHeight::H12);
     let shape = [".XXX..XXX.", "XXXXXXXXXX", ".XXXXXXXX.", "...XXXX..."];
     for (y, line) in shape.iter().enumerate() {
         for (x, ch) in line.chars().enumerate() {
@@ -205,7 +253,7 @@ pub(crate) fn test_card() -> Vec<String> {
     ]
 }
 
-/// The 6 sprite-column rows, in `kitten_view` priority: a celebration, the
+/// The `h.rows()` sprite-column rows, in `kitten_view` priority: a celebration, the
 /// birthday, a visible playground scene, else idle life. (`view.scene` is
 /// already `None` behind the first two, `PURR_PLAYGROUND=0` or a too-narrow
 /// strip.)
@@ -216,13 +264,28 @@ pub(crate) fn cat_area(
     width: usize,
     mode: PixelMode,
     forced: Option<life::Behaviour>,
+    h: PxHeight,
 ) -> Vec<String> {
-    let canvas = match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
-        (Some(o), _) => fx::overlay_canvas(o, now, width, &cat_look(st, now)),
-        (None, Some(sv)) => scene_canvas(st, sv, now, width),
-        (None, None) => life_canvas(st, view.mood, now, width, forced),
-    };
-    encode(&canvas, mode)
+    encode(&band_canvas(view, st, now.saturating_mul(1000), width, forced, h, &tempo::Tempo::STATUSLINE), mode)
+}
+
+/// The canvas behind [`cat_area`] (at `Tempo::STATUSLINE` and whole seconds)
+/// and the cat band: the cat at `now_ms`, `cols` px wide. (`forced` is the
+/// `PURR_FORCE_POSE` dev backdoor.)
+pub(crate) fn band_canvas(
+    view: &crate::statusline::KittenView,
+    st: &crate::state::State,
+    now_ms: u64,
+    cols: usize,
+    forced: Option<life::Behaviour>,
+    h: PxHeight,
+    t: &tempo::Tempo,
+) -> PxCanvas {
+    match (fx::Overlay::pick(st.celebration_kind, view.is_birthday), &view.scene) {
+        (Some(o), _) => fx::overlay_canvas_ms(o, now_ms, cols, &cat_look(st, now_ms / 1000), h, t),
+        (None, Some(sv)) => scene_canvas(st, sv, now_ms, cols, h, t),
+        (None, None) => life_canvas(st, view.mood, now_ms, cols, forced, h, t),
+    }
 }
 
 fn cat_look(st: &crate::state::State, now: u64) -> paint::CatLook<'_> {
@@ -230,45 +293,61 @@ fn cat_look(st: &crate::state::State, now: u64) -> paint::CatLook<'_> {
 }
 
 /// A playground scene second; a shiny cat twinkles here too.
-fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now: u64, width: usize) -> PxCanvas {
-    let f = scene::scene_frame(sv.kind, sv.elapsed, sv.duration, sv.seed, width);
-    let mut c = scene::draw(&f, width, &cat_look(st, now));
-    if st.shiny && now.is_multiple_of(2) {
-        sparkle(&mut c, f.x, paint::CAT_MAX_W as i32, (now / 2) ^ st.birth_time);
-    }
+fn scene_canvas(st: &crate::state::State, sv: &crate::statusline::SceneView, now_ms: u64, width: usize, h: PxHeight, t: &tempo::Tempo) -> PxCanvas {
+    let (now, elapsed_ms) = (now_ms / 1000, sv.elapsed.saturating_mul(1000) + now_ms % 1000);
+    let f = scene::scene_frame_ms(sv.kind, elapsed_ms, sv.duration, sv.seed, width, h, t);
+    let mut c = scene::draw(&f, width, &cat_look(st, now), h);
+    twinkle(&mut c, st, f.x, h.cat_max_w() as i32, now_ms, t);
     c
 }
 
 /// The idle cat on a `width`-px stage, plus her sleep Z and shiny sparkle.
-fn life_canvas(st: &crate::state::State, mood: &str, now: u64, width: usize, forced: Option<life::Behaviour>) -> PxCanvas {
-    let span = width.saturating_sub(paint::CAT_MAX_W);
-    let f = life::life_frame(now, st.birth_time, mood, span, forced);
-    let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink);
-    let (w, top) = (cat.w as i32, (PX_H - cat.h) as i32);
-    let mut c = PxCanvas::new(width);
-    c.blit(&cat, f.x, top);
-    if let Some(k) = f.z {
+fn life_canvas(st: &crate::state::State, mood: &str, now_ms: u64, width: usize, forced: Option<life::Behaviour>, h: PxHeight, t: &tempo::Tempo) -> PxCanvas {
+    let (span, now) = (width.saturating_sub(h.cat_max_w()), now_ms / 1000);
+    let f = life::life_frame_ms(now_ms, st.birth_time, mood, span, forced, t);
+    let cat = paint::paint(f.pose, &cat_look(st, now), f.facing_right, f.tail, f.blink, h);
+    let (w, top) = (cat.w as i32, (h.px() - cat.h) as i32);
+    let mut c = PxCanvas::new(width, h);
+    c.blit(&cat, f.x, (top - i32::from(f.lift)).max(0));
+    if f.z.is_some() {
         // Drifts up and away from the tucked head (right end of the Curl
-        // map), mirrored when she faces left; the top one is the dim frame.
+        // map), a px every `z_ms`, mirrored when she faces left; the top one
+        // is the dim frame.
+        let k = (now_ms / t.z_ms % 3) as u8;
         let z = art::prop(art::Prop::Z, u8::from(k == 2));
         let (k, zw) = (i32::from(k), z.w as i32);
-        let zx = if f.facing_right { f.x + w - 4 + k } else { f.x + 4 - k - zw };
-        c.blit(&z, zx, (top - 3 - k).max(0));
+        let (zx, zy) = match (h, f.facing_right) {
+            (PxHeight::H12, true) => (f.x + w - 4 + k, (top - 3 - k).max(0)),
+            (PxHeight::H12, false) => (f.x + 4 - k - zw, (top - 3 - k).max(0)),
+            // The small cats have no headroom: the Z drifts out past her nose.
+            (_, true) => (f.x + w + k, 0),
+            (_, false) => (f.x - k - zw, 0),
+        };
+        c.blit(&z, zx, zy);
     }
-    if st.shiny && now.is_multiple_of(2) {
-        sparkle(&mut c, f.x, w, (now / 2) ^ st.birth_time);
-    }
+    twinkle(&mut c, st, f.x, w, now_ms, t);
     c
 }
 
-/// A shiny cat twinkles: a sparkle on even seconds at a free spot near her,
-/// a new spot every 2 s. Skipped when no candidate is free.
-fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64) {
-    let s = art::prop(art::Prop::Sparkle, 0);
+/// A shiny cat twinkles: a sparkle for the first half of every
+/// `twinkle_ms` (even seconds at 1 fps), each at a new spot. In the band it
+/// opens from a dot and closes back to one.
+fn twinkle(c: &mut PxCanvas, st: &crate::state::State, x: i32, w: i32, now_ms: u64, t: &tempo::Tempo) {
+    let (on, k) = (t.twinkle_ms / 2, now_ms % t.twinkle_ms);
+    if st.shiny && k < on {
+        let dot = t.smooth && (k < on / 4 || k >= on * 3 / 4);
+        sparkle(c, x, w, (now_ms / t.twinkle_ms) ^ st.birth_time, u8::from(dot));
+    }
+}
+
+/// A sparkle (`frame` 1: just its dot) at a free spot near her, picked by
+/// `key`. Skipped when no candidate is free.
+fn sparkle(c: &mut PxCanvas, x: i32, w: i32, key: u64, frame: u8) {
+    let s = art::prop(art::Prop::Sparkle, frame);
     let (sw, sh) = (s.w as i32, s.h as i32);
     for i in 0..4 {
         let h = life::ihash(key ^ (i << 60));
-        let (sx, sy) = (x - sw + (h % (w + sw) as u64) as i32, ((h >> 20) % (PX_H as u64 - 4)) as i32);
+        let (sx, sy) = (x - sw + (h % (w + sw) as u64) as i32, ((h >> 20) % (c.h.px() as u64 - 4)) as i32);
         let inside = sx >= 0 && sx + sw <= c.width() as i32;
         if inside && (0..sh).all(|dy| (0..sw).all(|dx| c.get(sx + dx, sy + dy).is_none())) {
             c.blit(&s, sx, sy);
@@ -288,7 +367,7 @@ fn canonical_rarity(breed: &str) -> &'static str {
 /// `pixels sheet` cells for one breed: every pose × stage × facing
 /// (tail Curl, eyes open), then adult Sit with tail Up / Flick / blink, the
 /// tail-socket poses with tail Up, and every prop frame.
-fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
+fn sheet_cells(breed: &str, h: PxHeight) -> Vec<(String, PxSprite)> {
     use art::{ALL_POSES, Pose, Tail};
     use paint::{CatLook, paint};
     let rarity = canonical_rarity(breed);
@@ -297,15 +376,15 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
     for st in ["kitten", "young", "adult"] {
         for p in ALL_POSES {
             for f in [true, false] {
-                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false)));
+                cells.push((format!("{p:?} {st} {}", if f { ">" } else { "<" }), paint(p, &look(st), f, Tail::Curl, false, h)));
             }
         }
     }
     for (label, tail, blink) in [("tail up", Tail::Up, false), ("tail flick", Tail::Flick, false), ("blink", Tail::Curl, true)] {
-        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink)));
+        cells.push((format!("Sit adult {label}"), paint(Pose::Sit, &look("adult"), true, tail, blink, h)));
     }
     for p in [Pose::Loaf, Pose::Look, Pose::Cheer, Pose::Wave] {
-        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false)));
+        cells.push((format!("{p:?} adult tail up"), paint(p, &look("adult"), true, Tail::Up, false, h)));
     }
     for p in art::ALL_PROPS {
         for f in 0..2 {
@@ -317,20 +396,22 @@ fn sheet_cells(breed: &str) -> Vec<(String, PxSprite)> {
 
 const SHEET_COLS: usize = 6;
 
-/// Dev verb `pixels sheet [--breed B] [--json]`: every pose and prop.
-pub(crate) fn sheet(breed: &str, json: bool) -> String {
-    render_sheet(breed, sheet_cells(breed), SHEET_COLS, json)
+/// Dev verb `pixels sheet [--breed B] [--height 12|10] [--json]`: every pose
+/// and prop.
+pub(crate) fn sheet(breed: &str, h: PxHeight, json: bool) -> String {
+    let title = if h == PxHeight::H12 { breed.to_string() } else { format!("{breed} ({} px)", h.px()) };
+    render_sheet(&title, sheet_cells(breed, h), SHEET_COLS, json)
 }
 
 /// Dev verb `pixels scene <run|zoomies|ball|butterfly|roll|yarn> [--width W]
 /// [--breed B] [--stage S] [--json]`: the 30 s `PURR_FORCE_SCENE` loop
 /// (duration 30, seed 42), one whole-stage cell per second.
-pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, breed: &str, stage: &str, json: bool) -> String {
+pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, breed: &str, stage: &str, h: PxHeight, json: bool) -> String {
     let look = paint::CatLook { breed, rarity: canonical_rarity(breed), stage, tick: 0 };
     let cells = (0..30u64)
         .map(|e| {
-            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width), width, &look);
-            (format!("{kind:?} {stage} t={e}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+            let c = scene::draw(&scene::scene_frame(kind, e, 30, 42, width, h), width, &look, h);
+            (format!("{kind:?} {stage} t={e}"), c.into_sprite())
         })
         .collect();
     render_sheet(&format!("{kind:?} ({breed} {stage}, {width} px)"), cells, 3, json)
@@ -339,7 +420,7 @@ pub(crate) fn scene_sheet(kind: crate::state::PlaygroundScene, width: usize, bre
 /// Dev verb `pixels celebrate <levelup|young|adult|streak|centurion|veteran|
 /// master|legendary|greeting|drop|birthday> [--width W] [--breed B] [--stage S]
 /// [--json]`: twelve consecutive seconds of the overlay.
-pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str, json: bool) -> Option<String> {
+pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str, h: PxHeight, json: bool) -> Option<String> {
     use crate::state::CelebrationKind as K;
     let o = fx::Overlay::pick(
         match name {
@@ -362,8 +443,7 @@ pub(crate) fn celebrate_sheet(name: &str, width: usize, breed: &str, stage: &str
     let start = 1_800_000_000u64 / 6 * 6;
     let cells = (0..12u64)
         .map(|s| {
-            let c = fx::overlay_canvas(o, start + s, width, &look);
-            (format!("{name} {stage} +{s}"), PxSprite { w: c.w, h: PX_H, px: c.px })
+            (format!("{name} {stage} +{s}"), fx::overlay_canvas(o, start + s, width, &look, h).into_sprite())
         })
         .collect();
     Some(render_sheet(&format!("{name} ({breed} {stage}, {width} px)"), cells, 6, json))
@@ -389,12 +469,12 @@ fn render_sheet(title: &str, cells: Vec<(String, PxSprite)>, cols: usize, json: 
         let encoded: Vec<Vec<String>> = chunk
             .iter()
             .map(|(_, s)| {
-                let mut c = PxCanvas::new(cw);
-                c.blit(s, 1, (PX_H - s.h) as i32);
+                let mut c = PxCanvas::new(cw, PxHeight::H12);
+                c.blit(s, 1, (PxHeight::H12.px() - s.h) as i32);
                 encode(&c, PixelMode::Full)
             })
             .collect();
-        for r in 0..PX_ROWS {
+        for r in 0..PxHeight::H12.rows() {
             out.push(encoded.iter().map(|e| e[r].as_str()).collect::<Vec<_>>().join(" "));
         }
         out.push(chunk.iter().map(|(l, _)| format!("{:<cw$}", l.chars().take(cw).collect::<String>())).collect::<Vec<_>>().join(" "));
@@ -405,6 +485,7 @@ fn render_sheet(title: &str, cells: Vec<(String, PxSprite)>, cols: usize, json: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    const H12: PxHeight = PxHeight::H12;
     use colors::{CYAN, PINK};
 
     #[test]
@@ -427,8 +508,23 @@ mod tests {
     }
 
     #[test]
+    fn heights_size_the_canvas() {
+        for (h, rows) in [(PxHeight::H10, 5), (PxHeight::H12, 6)] {
+            assert_eq!(encode(&PxCanvas::new(10, h), PixelMode::Full).len(), rows, "{h:?}");
+            assert_eq!(h.rows(), rows);
+            assert_eq!(PxHeight::from_rows(rows), Some(h));
+        }
+        for bad in [3, 4, 7] {
+            assert_eq!(PxHeight::from_rows(bad), None, "{bad}");
+        }
+        assert_eq!((PxHeight::H12.px(), PxHeight::H10.px()), (12, 10));
+        assert_eq!((PxHeight::H12.cat_max_w(), PxHeight::H10.cat_max_w()), (16, 14));
+        assert_eq!((PxHeight::from_px(10), PxHeight::from_px(12), PxHeight::from_px(8), PxHeight::from_px(6)), (Some(PxHeight::H10), Some(PxHeight::H12), None, None));
+    }
+
+    #[test]
     fn full_cell_is_fg_top_bg_bottom() {
-        let mut c = PxCanvas::new(1);
+        let mut c = PxCanvas::new(1, H12);
         c.set(0, 0, CYAN);
         c.set(0, 1, PINK);
         let r = encode(&c, PixelMode::Full);
@@ -438,7 +534,7 @@ mod tests {
 
     #[test]
     fn fg_only_never_emits_bg() {
-        let mut c = PxCanvas::new(3);
+        let mut c = PxCanvas::new(3, H12);
         c.set(0, 0, CYAN);
         c.set(0, 1, PINK);
         c.set(1, 1, CYAN);
@@ -451,7 +547,7 @@ mod tests {
 
     #[test]
     fn fg_only_outline_top_keeps_bottom() {
-        let mut c = PxCanvas::new(1);
+        let mut c = PxCanvas::new(1, H12);
         c.set(0, 0, paint::OUTLINE);
         c.set(0, 1, PINK);
         let r = encode(&c, PixelMode::FgOnly);
@@ -464,7 +560,7 @@ mod tests {
         let mut rng = crate::identity::Lcg::new(7);
         for w in [1usize, 24, 60, 120] {
             for _ in 0..50 {
-                let mut c = PxCanvas::new(w);
+                let mut c = PxCanvas::new(w, H12);
                 for _ in 0..w * 4 {
                     let v = rng.next();
                     c.set((v % w as u64) as i32, ((v >> 8) % 12) as i32, Rgb(v as u8, (v >> 16) as u8, 9));
@@ -502,7 +598,7 @@ mod tests {
 
     #[test]
     fn canvas_clips_and_blits() {
-        let mut c = PxCanvas::new(2);
+        let mut c = PxCanvas::new(2, H12);
         c.set(-1, 0, CYAN);
         c.set(2, 0, CYAN);
         c.set(0, 12, CYAN);
@@ -522,7 +618,7 @@ mod tests {
     }
 
     fn assert_rows(rows: &[String], w: usize, what: &str) {
-        assert_eq!(rows.len(), PX_ROWS, "{what}");
+        assert_eq!(rows.len(), H12.rows(), "{what}");
         for r in rows {
             assert_eq!(crate::span::strip_ansi(r).chars().count(), w, "{what}");
             assert!(r.ends_with("\x1b[0m"), "{what}");
@@ -538,7 +634,7 @@ mod tests {
                 for mood in ["calm", "happy", "alert", "hungry", "panic", "sleep"] {
                     for m in [PixelMode::Full, PixelMode::FgOnly] {
                         for now in 1_800_000_000..1_800_000_120u64 {
-                            assert_rows(&encode(&life_canvas(&st, mood, now, w, None), m), w, &format!("{level} {w} {mood} {now}"));
+                            assert_rows(&encode(&life_canvas(&st, mood, now * 1000, w, None, H12, &tempo::Tempo::STATUSLINE), m), w, &format!("{level} {w} {mood} {now}"));
                         }
                     }
                 }
@@ -556,8 +652,8 @@ mod tests {
             // 1_800_000_012 is mid-block (dozing either way) and divisible by 3: Z k = 0, then 1.
             let ys: Vec<i32> = (1_800_000_012..1_800_000_014u64)
                 .map(|now| {
-                    let c = life_canvas(&st, "sleep", now, w, None);
-                    (0..PX_H as i32).find(|&y| (0..w as i32).any(|x| c.get(x, y) == Some(zc))).expect("a Z")
+                    let c = life_canvas(&st, "sleep", now * 1000, w, None, H12, &tempo::Tempo::STATUSLINE);
+                    (0..H12.px() as i32).find(|&y| (0..w as i32).any(|x| c.get(x, y) == Some(zc))).expect("a Z")
                 })
                 .collect();
             assert!(ys[1] < ys[0], "{seed} {w}: Z does not rise {ys:?}");
@@ -570,13 +666,47 @@ mod tests {
         let mut st = crate::state::State::base(1_000);
         st.breed = "Ginger".into();
         let has = |st: &crate::state::State, now| {
-            let c = life_canvas(st, "calm", now, 60, Some(life::Behaviour::Sit));
-            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == white))
+            let c = life_canvas(st, "calm", now * 1000, 60, Some(life::Behaviour::Sit), H12, &tempo::Tempo::STATUSLINE);
+            (0..60).any(|x| (0..H12.px() as i32).any(|y| c.get(x, y) == white))
         };
         assert!(!(1_800_000_000..1_800_000_060u64).any(|t| has(&st, t)), "plain cat sparkles");
         st.shiny = true;
         assert!((1_800_000_000..1_800_000_060u64).step_by(2).filter(|&t| has(&st, t)).count() > 20);
         assert!(!(1_800_000_001..1_800_000_060u64).step_by(2).any(|t| has(&st, t)));
+    }
+
+    /// In the band the Z steps up every `z_ms`, and a twinkle opens from a
+    /// dot to the full sparkle and back over the first half of `twinkle_ms`.
+    #[test]
+    fn band_z_and_twinkle_animate_at_ms() {
+        let t = &tempo::Tempo::BAND;
+        let mut st = crate::state::State::base(1_000);
+        st.breed = "Ginger".into();
+        let frames = |base: u64, n: u64| (0..n).map(move |i| base + i * 1000 / 30);
+        for h in [PxHeight::H10, H12] {
+            let z = |ms| {
+                let c = life_canvas(&st, "sleep", ms, 60, None, h, t);
+                let zs = [crate::pixel::NEON_CYAN, crate::pixel::mix(crate::pixel::NEON_CYAN, paint::OUTLINE, 0.5)];
+                (0..60).flat_map(|x| (0..h.px() as i32).map(move |y| (x, y))).filter(|&(x, y)| c.get(x, y).is_some_and(|p| zs.contains(&p))).collect::<Vec<_>>()
+            };
+            let base = 1_800_000_012_000 / (3 * t.z_ms) * (3 * t.z_ms) + 3 * t.z_ms;
+            let zs: Vec<_> = frames(base, 60).map(|ms| (ms / t.z_ms, z(ms))).collect();
+            for p in zs.windows(2) {
+                assert!(!p[0].1.is_empty());
+                assert_eq!(p[0].0 == p[1].0, p[0].1 == p[1].1, "{h:?}: the Z moves only every z_ms");
+            }
+            let white = |st: &crate::state::State, ms| {
+                let c = life_canvas(st, "calm", ms, 60, Some(life::Behaviour::Sit), h, t);
+                (0..60).flat_map(|x| (0..h.px() as i32).map(move |y| (x, y))).filter(|&(x, y)| c.get(x, y) == Some(crate::pixel::WHITE)).count()
+            };
+            let base = 1_800_000_000_000 / t.twinkle_ms * t.twinkle_ms;
+            let plain: Vec<usize> = frames(base, 42).map(|ms| white(&st, ms)).collect();
+            let mut shiny = st.clone();
+            shiny.shiny = true;
+            let extra: Vec<usize> = frames(base, 42).zip(&plain).map(|(ms, p)| white(&shiny, ms) - p).collect();
+            assert_eq!(extra.iter().copied().max(), Some(5), "{h:?}: {extra:?}");
+            assert_eq!((extra[0], extra[20], *extra.last().unwrap()), (1, 1, 0), "{h:?}: {extra:?}");
+        }
     }
 
     /// The statusline entry point, through a real `kitten_view`.
@@ -591,9 +721,9 @@ mod tests {
             || None,
         );
         assert_eq!(view.mood, "sleep");
-        let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&view, &st, now, 60, PixelMode::Full, None, H12);
         assert_rows(&rows, 60, "cat_area");
-        assert_eq!(rows, encode(&life_canvas(&st, "sleep", now, 60, None), PixelMode::Full));
+        assert_eq!(rows, encode(&life_canvas(&st, "sleep", now * 1000, 60, None, H12, &tempo::Tempo::STATUSLINE), PixelMode::Full));
     }
 
     /// A visible scene replaces idle life; `PURR_PLAYGROUND=0` (or a
@@ -613,21 +743,21 @@ mod tests {
             )
         };
         let v = view(&st, true);
-        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None, H12);
         assert_rows(&rows, 60, "scene");
-        let f = scene::scene_frame(PlaygroundScene::BallChase, 5, 30, 7, 60);
-        assert_eq!(rows, encode(&scene::draw(&f, 60, &cat_look(&st, now)), PixelMode::Full));
-        let life = encode(&life_canvas(&st, v.mood, now, 60, None), PixelMode::Full);
+        let f = scene::scene_frame(PlaygroundScene::BallChase, 5, 30, 7, 60, H12);
+        assert_eq!(rows, encode(&scene::draw(&f, 60, &cat_look(&st, now), H12), PixelMode::Full));
+        let life = encode(&life_canvas(&st, v.mood, now * 1000, 60, None, H12, &tempo::Tempo::STATUSLINE), PixelMode::Full);
         assert_ne!(rows, life);
         let off = view(&st, false);
         assert!(off.scene.is_none());
-        assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None), life);
+        assert_eq!(cat_area(&off, &st, now, 60, PixelMode::Full, None, H12), life);
         st.celebration_kind = CelebrationKind::LevelUp;
         let v = view(&st, true);
         assert!(v.scene.is_none());
-        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None);
+        let rows = cat_area(&v, &st, now, 60, PixelMode::Full, None, H12);
         let o = fx::Overlay::Celebration(CelebrationKind::LevelUp);
-        assert_eq!(rows, encode(&fx::overlay_canvas(o, now, 60, &cat_look(&st, now)), PixelMode::Full));
+        assert_eq!(rows, encode(&fx::overlay_canvas(o, now, 60, &cat_look(&st, now), H12), PixelMode::Full));
         assert_ne!(rows, life);
     }
 
@@ -639,10 +769,96 @@ mod tests {
             kind: crate::state::PlaygroundScene::Run, elapsed: 3, duration: 30, seed: 7, width: 60, finale: false,
         };
         let white = |now| {
-            let c = scene_canvas(&st, &sv, now, 60);
-            (0..60).any(|x| (0..PX_H as i32).any(|y| c.get(x, y) == Some(crate::pixel::WHITE)))
+            let c = scene_canvas(&st, &sv, now * 1000, 60, H12, &tempo::Tempo::STATUSLINE);
+            (0..60).any(|x| (0..H12.px() as i32).any(|y| c.get(x, y) == Some(crate::pixel::WHITE)))
         };
         assert!((1_800_000_000..1_800_000_040u64).step_by(2).any(white));
         assert!(!(1_800_000_001..1_800_000_040u64).step_by(2).any(white));
+    }
+
+    // ---- motion oracle -------------------------------------------------
+
+    /// One FNV-1a line per (seed, mood, span) over an hour of whole-second
+    /// life, per (scene, width, height) over 40 s of scene, and per overlay
+    /// over 12 s of fx. `scene` takes (kind, elapsed, width, height); `fx`
+    /// takes (overlay, now, height).
+    fn motion_lines(
+        life: impl Fn(u64, u64, &str, usize) -> life::CatFrame,
+        scene: impl Fn(crate::state::PlaygroundScene, u64, usize, PxHeight) -> scene::SceneFrame,
+        fx: impl Fn(fx::Overlay, u64, PxHeight) -> scene::SceneFrame,
+    ) -> Vec<String> {
+        const NOW: u64 = 1_800_000_000;
+        let mut lines = Vec::new();
+        for seed in [0u64, 12345, u64::MAX] {
+            for mood in ["calm", "happy", "alert", "hungry", "panic", "sleep"] {
+                for span in [8usize, 29, 104] {
+                    let mut acc = String::new();
+                    for now in NOW..NOW + 3600 {
+                        let f = life(now, seed, mood, span);
+                        acc += &format!("{:?}|{}|{}|{:?}|{}|{:?}\n", f.pose, f.x, f.facing_right, f.tail, f.blink, f.z);
+                    }
+                    lines.push(format!("life {seed} {mood} {span} {:016x}", crate::identity::fnv1a(&acc)));
+                }
+            }
+        }
+        for kind in crate::playground::ACTIVE_SCENES {
+            for width in [45usize, 120] {
+                for h in [PxHeight::H12, PxHeight::H10] {
+                    let acc: String = (0..40).map(|e| format!("{:?}\n", scene(kind, e, width, h))).collect();
+                    lines.push(format!("scene {kind:?} {width} {} {:016x}", h.px(), crate::identity::fnv1a(&acc)));
+                }
+            }
+        }
+        use crate::state::CelebrationKind as K;
+        let kinds = [
+            K::LevelUp, K::EvolvingYoung, K::EvolvingAdult, K::Streak, K::MilestoneCenturion, K::MilestoneVeteran,
+            K::MilestoneMaster, K::MilestoneLegendary, K::Greeting, K::RandomDrop,
+        ];
+        for o in kinds.into_iter().map(fx::Overlay::Celebration).chain([fx::Overlay::Birthday]) {
+            for h in [PxHeight::H12, PxHeight::H10] {
+                let acc: String = (NOW..NOW + 12).map(|now| format!("{:?}\n", fx(o, now, h))).collect();
+                lines.push(format!("fx {o:?} {} {:016x}", h.px(), crate::identity::fnv1a(&acc)));
+            }
+        }
+        lines
+    }
+
+    fn check_motion(lines: Vec<String>) {
+        let path = format!("{}/tests/golden/motion_hashes.txt", env!("CARGO_MANIFEST_DIR"));
+        if std::env::var("UPDATE_GOLDEN").as_deref() == Ok("1") {
+            std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+            return;
+        }
+        let golden = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e} (record with UPDATE_GOLDEN=1)"));
+        let want: Vec<&str> = golden.lines().collect();
+        let bad: Vec<String> = lines.iter().zip(&want).filter(|(g, w)| g != w).take(5).map(|(g, w)| format!("  want {w}\n  got  {g}")).collect();
+        assert!(bad.is_empty() && want.len() == lines.len(), "motion drift ({} golden, {} rendered):\n{}", want.len(), lines.len(), bad.join("\n"));
+    }
+
+    fn oracle_look() -> paint::CatLook<'static> {
+        paint::CatLook { breed: "Ginger", rarity: "common", stage: "adult", tick: 0 }
+    }
+
+    /// Whole-second motion snapshot, recorded before the `Tempo` plumbing.
+    /// Re-record only on purpose: `UPDATE_GOLDEN=1 cargo test motion_oracle`.
+    #[test]
+    fn motion_oracle() {
+        check_motion(motion_lines(
+            |now, seed, mood, span| life::life_frame(now, seed, mood, span, None),
+            |kind, e, w, h| scene::scene_frame(kind, e, 40, 42, w, h),
+            |o, now, h| fx::fx_frame(o, now, 60, &oracle_look(), h),
+        ));
+    }
+
+    /// The `*_ms` samplers at whole seconds and `Tempo::STATUSLINE` are the
+    /// statusline's own output.
+    #[test]
+    fn whole_seconds_match_statusline_tempo() {
+        let t = &tempo::Tempo::STATUSLINE;
+        check_motion(motion_lines(
+            |now, seed, mood, span| life::life_frame_ms(now * 1000, seed, mood, span, None, t),
+            |kind, e, w, h| scene::scene_frame_ms(kind, e * 1000, 40, 42, w, h, t),
+            |o, now, h| fx::fx_frame_ms(o, now * 1000, 60, &oracle_look(), h, t),
+        ));
     }
 }

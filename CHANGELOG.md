@@ -12,6 +12,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v4.1.0 — 2026-10-18
+
+The pixel cat can now live in a band above the prompt, through an optional
+Claude Code mod. Without the mod, behaviour is identical to v4.0.0.
+
+### Added
+
+- **The cat band** (`mod/`): a Claude Code mod that draws the pixel cat above
+  the prompt, 5 rows tall by default, at 30 fps. `PURR_BAND_ROWS` accepts 5 or
+  6; `PURR_BAND_FPS` accepts 15 to 60; `PURR_BIN` picks the binary. The band
+  hides on terminals too short for it.
+- **`purrgotchi band`**: the NDJSON frame stream the mod reads (`--cols`,
+  `--rows`, `--fps`, `--context-pct`). It reads state read-only.
+- **Speech compartment**: a boxed speech area joined to the HUD border.
+- **10-px hand-drawn cat art** (12 px at 6 rows) for the band, with idle life,
+  scenes and celebrations across the full band width at sub-second tempo.
+- Per-session band heartbeat (`band-<session>.alive`) written by the mod.
+
+### Changed
+
+- While the band heartbeat is fresh (under 3 s), the statusline drops the cat
+  and shows her speech in the compartment. When the band stops, the cat comes
+  back within 3 s.
+
+### Fixed
+
+- The statusline no longer loses the payload, and with it the session and HUD
+  values, when Claude Code sends null context fields before the first response
+  or after /clear.
+
+### Unchanged
+
+- The HUD box, and all behaviour without the mod.
+
 ## v4.0.0 — 2026-10-17
 
 **Breaking release.** The ASCII cat in the statusline is replaced by a live,

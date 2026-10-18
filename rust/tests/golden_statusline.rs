@@ -22,12 +22,13 @@ struct Case {
     env: &'static [(&'static str, &'static str)],
     must_contain: &'static [&'static str], // checked on the ANSI-stripped output
     raw_contain: &'static [&'static str],  // raw-byte colour escapes, checked on the classic (PURR_PIXELS=0) output
+    hb: Option<(&'static str, i64)>, // band heartbeat: (session id of the file, offset in ms from `now`)
 }
 
 fn case(name: &'static str) -> Case {
     Case {
         dir: "statusline", name, now: NOW, state: json!({}), payload: Some(json!({})), branch: Some("main"),
-        cwd_outside_home: false, anchor: None, quip: None, env: &[], must_contain: &[], raw_contain: &[],
+        cwd_outside_home: false, anchor: None, quip: None, env: &[], must_contain: &[], raw_contain: &[], hb: None,
     }
 }
 
@@ -91,6 +92,38 @@ fn cases() -> Vec<Case> {
     .into_iter()
     .chain(extra_cases())
     .collect()
+}
+
+const BAND_SESSION: &str = "bandtest";
+
+/// The statusline while a band is live (goldens under `statusline_band/`).
+/// Pixels are on, so a missing cat proves the band switch, not the pixel mode.
+fn band_cases() -> Vec<Case> {
+    let quip = |text: &str| Some(json!({ "quip": text, "generated_at": NOW - 10, "renders_remaining": 6, "last_render_at": 0 }));
+    let band = |name, cols: &'static [(&'static str, &'static str)]| Case {
+        dir: "statusline_band", env: cols, hb: Some((BAND_SESSION, -1000)),
+        payload: Some(json!({ "session_id": BAND_SESSION })), ..case(name)
+    };
+    const PX130: &[(&str, &str)] = &[("PURR_PIXELS", "1"), ("COLUMNS", "130")];
+    let scene = json!({ "scene_kind": "BallChase", "scene_started_at": NOW - 5,
+                        "scene_duration_secs": 30, "scene_seed": 7 });
+    vec![
+        Case { quip: quip("you've been staring at that diff for 20 minutes. maybe the bug is you? (kidding. mostly.)"),
+               ..band("band_cols_130", PX130) },
+        Case { quip: quip("short and sweet"), ..band("band_cols_148_capped", &[("PURR_PIXELS", "1"), ("COLUMNS", "148")]) },
+        Case { quip: quip("tiny box"), ..band("band_cols_118_min", &[("PURR_PIXELS", "1"), ("COLUMNS", "118")]) },
+        Case { quip: quip("too narrow for a box"), ..band("band_cols_117_fallback", &[("PURR_PIXELS", "1"), ("COLUMNS", "117")]) },
+        Case { quip: quip("no width known"), ..band("band_no_columns_fallback", &[("PURR_PIXELS", "1")]) },
+        Case { quip: quip(&"the quick brown fox jumps over the lazy dog. ".repeat(10)), ..band("band_long_quip_truncated", PX130) },
+        Case { quip: quip("猫が好き。猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫猫"), ..band("band_cjk_quip", PX130) },
+        Case { state: scene, ..band("band_scene_caption", PX130) },
+        Case { hb: Some((BAND_SESSION, -4000)), ..band("band_stale_heartbeat", PX130) },
+        Case { hb: Some(("someone-else", -1000)), ..band("band_other_session", PX130) },
+        // Claude Code sends nulls before the first response and after /clear.
+        Case { payload: Some(json!({ "session_id": BAND_SESSION,
+                                     "context_window": { "used_percentage": null, "current_usage": null } })),
+               ..band("band_null_context", PX130) },
+    ]
 }
 
 /// Opt-in pixel-cat cases (goldens under `statusline_px/`).
@@ -248,6 +281,10 @@ fn run_case_with(c: &Case, extra: &[(&str, &str)]) -> (Vec<u8>, Sandbox) {
     if let Some(a) = c.anchor {
         std::fs::write(sb.state.join("turn-start-cost.txt"), a).unwrap();
     }
+    if let Some((id, off)) = c.hb {
+        let ms = (c.now * 1000) as i64 + off;
+        std::fs::write(sb.state.join(format!("band-{id}.alive")), ms.to_string()).unwrap();
+    }
     if let Some(q) = &c.quip {
         std::fs::write(sb.state.join("llm-quip.json"), serde_json::to_string(q).unwrap()).unwrap();
     }
@@ -296,6 +333,67 @@ fn statusline_goldens() {
     }
 }
 
+#[test]
+fn statusline_band_goldens() {
+    for c in band_cases() {
+        let (bytes, _sb) = run_case(&c);
+        let text = String::from_utf8(bytes.clone()).expect("utf8");
+        assert_eq!(text.matches('\n').count(), 7, "{}: expected 7 rows", c.name);
+        let columns: Option<usize> = c.env.iter().find(|(k, _)| *k == "COLUMNS").map(|(_, v)| v.parse().unwrap());
+        let stale = matches!(c.name, "band_stale_heartbeat" | "band_other_session");
+        let cw = columns.and_then(|n| n.checked_sub(98)).map(|w| w.min(50)).filter(|w| *w >= 20);
+        let plain = strip_ansi(&text);
+        for (i, line) in plain.lines().enumerate() {
+            let cells: usize = line.chars().map(cjk_cells).sum();
+            match cw {
+                // Every composed row is HUD (95) + compartment, inside COLUMNS - 3.
+                Some(cw) if !stale => {
+                    assert_eq!(cells, 95 + cw, "{}: row {i}", c.name);
+                    assert!(cells <= columns.unwrap() - 3, "{}: row {i} is {cells} cells", c.name);
+                }
+                // Fallback: bare HUD rows; the loose line (last row) is v4.0.0 behaviour.
+                _ if i < 6 && !stale => assert!(cells <= 96, "{}: row {i} is {cells} cells", c.name),
+                _ => {}
+            }
+        }
+        let junction = plain.lines().next().unwrap().contains('╦');
+        assert_eq!(junction, cw.is_some() && !stale, "{}: row 0 junction", c.name);
+        if stale {
+            // A stale or foreign heartbeat is no heartbeat: byte for byte the same as none.
+            let none = Case { hb: None, ..band_case_by_name(c.name) };
+            assert_eq!(bytes, run_case(&none).0, "{}: differs from the no-heartbeat run", c.name);
+        } else if cw.is_none() {
+            // Fallback: bare HUD rows 0-5, loose line on the last row, and no cat.
+            assert!(plain.lines().last().unwrap().contains('"'), "{}: loose speech line", c.name);
+            for (i, line) in plain.lines().enumerate().take(6) {
+                assert!(line.ends_with('║') || line.ends_with('╗'), "{}: row {i} has a cat: {line}", c.name);
+            }
+        }
+        if c.name == "band_null_context" {
+            // Null context renders as zero context, and the band is live: no cat.
+            let zero = Case {
+                payload: Some(json!({ "session_id": BAND_SESSION, "context_window": {
+                    "used_percentage": 0.0,
+                    "current_usage": { "input_tokens": 0, "output_tokens": 0,
+                                       "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0 } } })),
+                ..band_case_by_name(c.name)
+            };
+            assert_eq!(bytes, run_case(&zero).0, "{}: differs from the zero-context run", c.name);
+            assert!(plain.contains("MODEL: Opus 5.5"), "{}: HUD lost the model", c.name);
+        }
+        assert_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
+    }
+}
+
+/// Independent oracle for the quips used here: punctuation, kana, CJK and fullwidth forms are 2 cells.
+fn cjk_cells(c: char) -> usize {
+    if matches!(c as u32, 0x3000..=0x9FFF | 0xFF00..=0xFF60) { 2 } else { 1 }
+}
+
+fn band_case_by_name(name: &str) -> Case {
+    band_cases().into_iter().find(|c| c.name == name).unwrap()
+}
+
 /// One-off recorder for NEW statusline goldens. Never overwrites an existing
 /// file, so it cannot paper over a regression. A re-record = git mv/delete the
 /// directory, run this, then eyeball the new files. Usage:
@@ -303,7 +401,7 @@ fn statusline_goldens() {
 #[test]
 #[ignore = "recorder: writes golden files that do not exist yet; run by hand"]
 fn record_missing_statusline_goldens() {
-    for c in cases().into_iter().chain(px_cases()) {
+    for c in cases().into_iter().chain(px_cases()).chain(band_cases()) {
         let (bytes, _sb) = run_case(&c);
         common::record_missing_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
     }
