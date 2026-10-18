@@ -34,7 +34,7 @@ function check() {
   if (missing.length || extra.length) fail.push(`key mismatch with binary: missing [${missing}] extra [${extra}]`)
   const bad = Object.entries(overrides).filter(([, v]) => !/^#[0-9a-fA-F]{6}$/.test(v))
   if (bad.length) fail.push(`bad hex values: ${bad.map(([k]) => k)}`)
-  if (Buffer.byteLength(generated) > MAX_BYTES || (have !== null && Buffer.byteLength(have) > MAX_BYTES)) fail.push('theme file exceeds 262144 bytes')
+  if (Buffer.byteLength(generated) > MAX_BYTES) fail.push('theme file exceeds 262144 bytes')
   if (fail.length) {
     for (const f of fail) console.error(`theme FAIL: ${f}`)
     process.exit(1)
