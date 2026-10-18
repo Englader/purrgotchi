@@ -41,6 +41,8 @@ export const PALETTE = {
 export type PaletteName = keyof typeof PALETTE
 
 export const THEME_NAME = 'Neon Grid'
+/** The id `/theme` stores for the theme (`custom:<plugin>:<file>`). */
+export const THEME_ID = 'custom:purrgotchi:neon-grid'
 export const THEME_BASE = 'dark'
 
 /** Claude Code theme keys in the engine's own (2.1.302 `dark`) order. */

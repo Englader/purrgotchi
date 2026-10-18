@@ -12,6 +12,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - Linux/macOS builds (currently Windows-only)
 
+## v4.3.0 — 2026-10-18
+
+The Neon Grid theme now brings its own terminal background.
+
+### Added
+
+- **Neon Grid backdrop**: while the theme is `custom:purrgotchi:neon-grid`, the
+  terminal background is set to `#0d0a14` (OSC 11). Switching to another theme
+  or quitting resets it to the terminal's own (OSC 111). `/clear` keeps it. Only
+  a background the mod set is ever reset; other themes never touch the terminal.
+
+### Known limits
+
+- A workaround, not an official API: the mod writes the sequence to Claude
+  Code's tty by walking up the process tree with `ps`.
+- Ctrl+Z (suspend) and a hard crash leave the background dark.
+- tmux is untested and may not pass the sequence through.
+- Terminals without OSC 11 ignore it; headless (`-p`) runs do nothing.
+
 ## v4.2.0 — 2026-10-18
 
 A cyberpunk restyle of Claude Code's terminal UI, through the same optional

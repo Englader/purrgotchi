@@ -1,6 +1,6 @@
 {
   "name": "purrgotchi",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "Purrgotchi kitten for Claude Code: a pixel cat roaming the band above the prompt, and the Neon Grid restyle",
   "author": { "name": "Englader" },
   "types": "./types/index.d.ts"
