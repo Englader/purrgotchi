@@ -5,8 +5,10 @@ import { B, KEY, MAX_COLS, MIN_COLS, RECONCILE_MS, blankCells, pickRows, prepare
 import { beat } from './heartbeat'
 import type { HeartbeatHost } from './heartbeat'
 import { registerInfoNotice } from './info-notice'
+import { registerPromptHint } from './prompt-hint'
 import { registerSessionMode } from './session-mode'
 import { registerSpinner } from './spinner'
+import { registerToolProgress } from './tool-progress'
 import { registerTurnDuration } from './turn-duration'
 
 /** `PURR_BAND_STATS`: the dev counters file, rewritten once a second. */
@@ -57,4 +59,6 @@ export const register: Register = on => {
   registerTurnDuration(on)
   registerInfoNotice(on)
   registerSessionMode(on)
+  registerPromptHint(on)
+  registerToolProgress(on)
 }
