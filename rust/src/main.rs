@@ -26,6 +26,9 @@ mod render;
 mod spawn;
 mod span;
 mod speech;
+// Wired into the statusline in Task 3.4.
+#[allow(dead_code)]
+mod speech_box;
 mod sprites;
 
 mod state;
