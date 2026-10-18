@@ -174,11 +174,7 @@ pub fn turn_cmd(json: bool) -> i32 {
     use std::io::Read;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
-    let payload: crate::payload::Payload = if input.trim().is_empty() {
-        crate::payload::Payload::default()
-    } else {
-        serde_json::from_str(&input).unwrap_or_default()
-    };
+    let payload = crate::payload::Payload::parse(&input);
     let greeted = state::locked_update(|s| apply_turn_dispatch(s, state::now_secs()));
     let _ = fs::remove_file(paths::turn_anchor_file_for(&payload.session_id));
     // Pre-v3.7.0 binaries wrote a single global anchor; clear it too.

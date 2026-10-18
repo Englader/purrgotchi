@@ -256,11 +256,7 @@ pub fn run() {
         let _ = fs::write(paths::state_dir().join("last-input.json"), &input);
     }
 
-    let payload: Payload = if input.trim().is_empty() {
-        Payload::default()
-    } else {
-        serde_json::from_str(&input).unwrap_or_default()
-    };
+    let payload = Payload::parse(&input);
 
     // v3.4.7 — credit any new cost on this render to the kitten's lifetime tally.
     // Runs BEFORE load_or_hatch so the in-memory `st` below picks up our save.

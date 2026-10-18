@@ -36,6 +36,12 @@ Claude Code mod. Without the mod, behaviour is identical to v4.0.0.
   and shows her speech in the compartment. When the band stops, the cat comes
   back within 3 s.
 
+### Fixed
+
+- The statusline no longer loses the payload, and with it the session and HUD
+  values, when Claude Code sends null context fields before the first response
+  or after /clear.
+
 ### Unchanged
 
 - The HUD box, and all behaviour without the mod.

@@ -119,6 +119,10 @@ fn band_cases() -> Vec<Case> {
         Case { state: scene, ..band("band_scene_caption", PX130) },
         Case { hb: Some((BAND_SESSION, -4000)), ..band("band_stale_heartbeat", PX130) },
         Case { hb: Some(("someone-else", -1000)), ..band("band_other_session", PX130) },
+        // Claude Code sends nulls before the first response and after /clear.
+        Case { payload: Some(json!({ "session_id": BAND_SESSION,
+                                     "context_window": { "used_percentage": null, "current_usage": null } })),
+               ..band("band_null_context", PX130) },
     ]
 }
 
@@ -364,6 +368,18 @@ fn statusline_band_goldens() {
             for (i, line) in plain.lines().enumerate().take(6) {
                 assert!(line.ends_with('║') || line.ends_with('╗'), "{}: row {i} has a cat: {line}", c.name);
             }
+        }
+        if c.name == "band_null_context" {
+            // Null context renders as zero context, and the band is live: no cat.
+            let zero = Case {
+                payload: Some(json!({ "session_id": BAND_SESSION, "context_window": {
+                    "used_percentage": 0.0,
+                    "current_usage": { "input_tokens": 0, "output_tokens": 0,
+                                       "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0 } } })),
+                ..band_case_by_name(c.name)
+            };
+            assert_eq!(bytes, run_case(&zero).0, "{}: differs from the zero-context run", c.name);
+            assert!(plain.contains("MODEL: Opus 5.5"), "{}: HUD lost the model", c.name);
         }
         assert_golden(&format!("{}/{}.ansi", c.dir, c.name), &bytes);
     }
