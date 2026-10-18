@@ -1,0 +1,5 @@
+{
+  "name": "purrgotchi-local",
+  "owner": { "name": "Englader" },
+  "plugins": [{ "name": "purrgotchi", "source": "./mod" }]
+}
