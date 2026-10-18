@@ -105,12 +105,14 @@ test('spec colours are pinned', () => {
     ['claude', '#ea00d9'], ['promptBorder', '#ea00d9'], ['text', '#e4dcff'], ['userMessageBackground', '#2a1640'],
     ['diffAdded', '#0f3a2a'], ['diffRemoved', '#4a1020'], ['bashBorder', '#f3f31b'], ['success', '#57eca6'],
     ['error', '#ff5468'],
+    // The dark base's own value: the HUD statusline's dim labels look as before.
+    ['inactive', '#999999'],
   ]
   for (const [k, v] of pins) expect(hex(k)).toBe(v)
 })
 
 test('foreground keys read on the ground', () => {
-  const floor: Record<string, number> = { inactive: 3.0, subtle: 2.0 }
+  const floor: Record<string, number> = { subtle: 2.0 }
   for (const k of Object.keys(THEME)) {
     if (BG_KEYS.includes(k) || EXEMPT.includes(k)) continue
     expect(contrast(hex(k), PALETTE.ground)).toBeGreaterThanOrEqual(floor[k] ?? 4.5)

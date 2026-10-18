@@ -4,7 +4,7 @@ import { ENGINE, T, engineDraws, mountOn, shape } from './testkit'
 
 const Y = '#f3f31b'
 const pill = (key: string) =>
-  T({ wrap: 'truncate-end' }, T({ color: Y }, `[${key}]`), T({ dimColor: true }, ' SEND TO BACKGROUND'))
+  T({ wrap: 'truncate-end' }, '     ', T({ color: Y }, `[${key}]`), T({ dimColor: true }, ' SEND TO BACKGROUND'))
 const props = (hint: string) => ({ tool_use_id: 't1', kind: 'background_hint' as const, hint })
 
 test('tool progress draws the background key', async ($, on) => {

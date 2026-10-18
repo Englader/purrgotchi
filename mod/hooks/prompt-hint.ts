@@ -5,11 +5,12 @@ import { NEON, PALETTE, parseHint } from './neon'
 import type { KeyHint } from './neon'
 import type { TextCtor } from './turn-duration'
 
-export function keyHintTree(Text: TextCtor, hints: readonly KeyHint[]): RenderElement {
+/** `lead` is plain text before the first pair (an indent). */
+export function keyHintTree(Text: TextCtor, hints: readonly KeyHint[], lead = ''): RenderElement {
   return Text({
     wrap: 'truncate-end',
     children: hints.flatMap((h, i) => [
-      ...(i === 0 ? [] : [NEON.hintGap]),
+      ...(i === 0 ? (lead === '' ? [] : [lead]) : [NEON.hintGap]),
       Text({ color: PALETTE.yellow, children: [`[${h.key}]`] }),
       Text({ dimColor: true, children: [` ${h.word}`] }),
     ]),

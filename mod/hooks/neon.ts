@@ -34,6 +34,8 @@ export const PALETTE = {
   addWordBg: '#1e6b4a',
   delWordBg: '#8a2236',
   meterEmpty: '#3a2f55',
+  /** The dark base's own `inactive`: the HUD's dim labels keep their look under the theme. */
+  engineInactive: '#999999',
 } as const
 
 export type PaletteName = keyof typeof PALETTE
@@ -59,7 +61,7 @@ export const THEME: Readonly<Record<string, PaletteName>> = {
   promptBorderShimmer: 'magentaLight',
   text: 'ice',
   inverseText: 'ground',
-  inactive: 'dim',
+  inactive: 'engineInactive',
   inactiveShimmer: 'dimLight',
   subtle: 'dusk',
   suggestion: 'cyan',
@@ -137,6 +139,8 @@ export const NEON = {
   mode: ['⟦ ', ' ⟧'],
   notice: '▸ ',
   hintGap: '   ',
+  /** The engine's own indent for the background hint, under the tool's `⎿` row. */
+  pillIndent: '     ',
   background: 'SEND TO BACKGROUND',
 } as const
 

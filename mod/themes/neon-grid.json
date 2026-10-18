@@ -18,7 +18,7 @@
     "promptBorderShimmer": "#ff6ef0",
     "text": "#e4dcff",
     "inverseText": "#0d0a14",
-    "inactive": "#6d6488",
+    "inactive": "#999999",
     "inactiveShimmer": "#9a91b8",
     "subtle": "#574c78",
     "suggestion": "#0abdc6",
