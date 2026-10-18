@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { PALETTE, SPINNER_WORDS, THEME, durationText, parseBackgroundHint, parseHint, spinnerWord, turnText, type PaletteName } from './neon'
+import { GROUNDS, GROUND_VIOLET, PALETTE, SPINNER_WORDS, THEME, THEMES, THEME_ID, THEME_VIOLET_ID, durationText, parseBackgroundHint, parseHint, spinnerWord, turnText, type PaletteName } from './neon'
 
 test('spinnerWord is framed, ALL-CAPS and stable per engine word', () => {
   const w = spinnerWord('Sautéing')
@@ -115,8 +115,15 @@ test('foreground keys read on the ground', () => {
   const floor: Record<string, number> = { subtle: 2.0 }
   for (const k of Object.keys(THEME)) {
     if (BG_KEYS.includes(k) || EXEMPT.includes(k)) continue
-    expect(contrast(hex(k), PALETTE.ground)).toBeGreaterThanOrEqual(floor[k] ?? 4.5)
+    for (const t of THEMES) expect(contrast(hex(k), t.ground)).toBeGreaterThanOrEqual(floor[k] ?? 4.5)
   }
+})
+
+test('grounds: black default, violet variant, one entry per theme id', () => {
+  expect(PALETTE.ground).toBe('#000000')
+  expect(GROUND_VIOLET).toBe('#1a1633')
+  expect(GROUNDS).toEqual({ [THEME_ID]: '#000000', [THEME_VIOLET_ID]: '#1a1633' })
+  expect(new Set(THEMES.map(t => t.file)).size).toBe(THEMES.length)
 })
 
 test('background keys keep text readable', () => {

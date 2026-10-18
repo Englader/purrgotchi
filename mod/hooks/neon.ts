@@ -10,7 +10,7 @@ export const PALETTE = {
   red: '#ff5468',
   gold: '#ffc93c',
   blue: '#5096ff',
-  ground: '#0d0a14',
+  ground: '#000000',
   ice: '#e4dcff',
   dim: '#6d6488',
   dusk: '#574c78',
@@ -40,9 +40,20 @@ export const PALETTE = {
 
 export type PaletteName = keyof typeof PALETTE
 
-export const THEME_NAME = 'Neon Grid'
-/** The id `/theme` stores for the theme (`custom:<plugin>:<file>`). */
-export const THEME_ID = 'custom:purrgotchi:neon-grid'
+/** Violet variant: only the ground (terminal backdrop, `inverseText`, `clawd_background`) differs. */
+export const GROUND_VIOLET = '#1a1633'
+
+/** The Claude themes: file name, display name, id `/theme` stores (`custom:<plugin>:<file>`) and the terminal ground each paints. One place for all of it. */
+export const THEMES = [
+  { file: 'neon-grid', name: 'Neon Grid', id: 'custom:purrgotchi:neon-grid', ground: PALETTE.ground },
+  { file: 'neon-grid-violet', name: 'Neon Grid Violet', id: 'custom:purrgotchi:neon-grid-violet', ground: GROUND_VIOLET },
+] as const
+
+export const THEME_NAME = THEMES[0].name
+export const THEME_ID = THEMES[0].id
+export const THEME_VIOLET_ID = THEMES[1].id
+/** Theme id to its ground colour; absent ids are not ours. */
+export const GROUNDS: Readonly<Record<string, string>> = Object.fromEntries(THEMES.map(t => [t.id, t.ground]))
 export const THEME_BASE = 'dark'
 
 /** Claude Code theme keys in the engine's own (2.1.302 `dark`) order. */

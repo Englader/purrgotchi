@@ -5,7 +5,9 @@ import { ok, START, engine } from './testkit'
 import type { EngineOptions } from './testkit'
 
 const ID = 'custom:purrgotchi:neon-grid'
-const PAINT = '\\033]11;#0d0a14\\007'
+const VIOLET_ID = 'custom:purrgotchi:neon-grid-violet'
+const PAINT = '\\033]11;#000000\\007'
+const VIOLET_PAINT = '\\033]11;#1a1633\\007'
 const RESET = '\\033]111\\007'
 const SENT = ok('sent to /dev/pts/3\n')
 
@@ -160,7 +162,8 @@ test('the reset is sent once', async ($, on) => {
 
 // Windows: no ptys; the binary's `term-write` takes the raw bytes in PURR_SEQ.
 const BIN = 'C:/purr/purrgotchi.exe'
-const WIN_PAINT = '\x1b]11;#0d0a14\x07'
+const WIN_PAINT = ']11;#000000'
+const WIN_VIOLET_PAINT = ']11;#1a1633'
 const WIN_RESET = '\x1b]111\x07'
 const isWrite = (argv: string[]) => argv[1] === 'term-write'
 const WIN_ENV = { OS: 'Windows_NT', PURR_BIN: BIN }
@@ -216,4 +219,55 @@ test('windows: session.end resets once; /clear keeps the backdrop', async ($, on
   expect(seen.map(s => s.seq)).toEqual([WIN_PAINT])
   await end($, 'prompt_input_exit')
   expect(seen.map(s => s.seq)).toEqual([WIN_PAINT, WIN_RESET])
+})
+
+test('session.start on Neon Grid Violet paints the violet ground', async ($, on) => {
+  const { seen } = await envs(on, VIOLET_ID)
+  await $.session.start(START)
+  expect(seen).toEqual([VIOLET_PAINT])
+})
+
+test('switching to Neon Grid Violet paints violet', async ($, on) => {
+  const { seen } = await envs(on, 'dark')
+  await $.session.start(START)
+  await set($, 'theme', VIOLET_ID)
+  expect(seen).toEqual([VIOLET_PAINT])
+})
+
+test('switching between the Neon themes repaints, without a reset', async ($, on) => {
+  const { seen } = await envs(on, ID)
+  await $.session.start(START)
+  await set($, 'theme', VIOLET_ID)
+  await set($, 'theme', ID)
+  expect(seen).toEqual([PAINT, VIOLET_PAINT, PAINT])
+})
+
+test('switching away from Neon Grid Violet resets once', async ($, on) => {
+  const { seen } = await envs(on, VIOLET_ID)
+  await $.session.start(START)
+  await set($, 'theme', 'dark')
+  await end($, 'prompt_input_exit')
+  expect(seen).toEqual([VIOLET_PAINT, RESET])
+})
+
+test('a lookalike theme id is not a Neon theme', async ($, on) => {
+  const { spies } = await envs(on, 'dark')
+  await set($, 'theme', 'custom:purrgotchi:neon-grid-x')
+  await set($, 'theme', 'toString')
+  expect(sent(spies)).toBe(0)
+})
+
+test('windows: black and violet paint with their own bytes; switching repaints, then resets', async ($, on) => {
+  const { seen } = winWorld(on, ID)
+  await $.session.start(START)
+  await set($, 'theme', VIOLET_ID)
+  await set($, 'theme', ID)
+  await set($, 'theme', 'dark')
+  expect(seen.map(s => s.seq)).toEqual([WIN_PAINT, WIN_VIOLET_PAINT, WIN_PAINT, WIN_RESET])
+})
+
+test('windows: start on Neon Grid Violet paints violet', async ($, on) => {
+  const { seen } = winWorld(on, VIOLET_ID)
+  await $.session.start(START)
+  expect(seen.map(s => s.seq)).toEqual([WIN_VIOLET_PAINT])
 })
