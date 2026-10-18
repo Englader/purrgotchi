@@ -344,7 +344,12 @@ pub fn run() {
         short_cwd(&cwd, &home)
     };
 
+    // While the mod's band shows the cat, the statusline draws no cat (and
+    // renders no scene): only the HUD and her speech.
+    let band = crate::heartbeat::band_alive(&payload.session_id);
+
     let px_rows: Option<Vec<String>> = match (crate::px::mode(), crate::playground::pixel_width()) {
+        _ if band => None,
         (crate::px::PixelMode::Test, Some(_)) => Some(crate::px::test_card()),
         (m @ (crate::px::PixelMode::Full | crate::px::PixelMode::FgOnly), Some(w)) => {
             Some(crate::px::cat_area(&view, &st, now.max(0) as u64, w, m, crate::px::life::forced(), crate::px::PxHeight::H12))
@@ -358,7 +363,7 @@ pub fn run() {
     // exactly like rarity_color (pinned in colors.rs).
     // Pixel rows replace the ASCII scene, so it is only rendered without them
     // (the speech caption comes from `view.scene`, not from the render).
-    let scene_frame = view.scene.as_ref().filter(|_| px_rows.is_none()).map(|sv| {
+    let scene_frame = view.scene.as_ref().filter(|_| !band && px_rows.is_none()).map(|sv| {
         crate::playground::render_scene(
             sv.kind,
             sv.elapsed,
@@ -494,14 +499,36 @@ pub fn run() {
     let h7 = vec![fg("╚", PINK), fg(format!("{}╝", "═".repeat(BOX_WIDTH)), PINK)];
 
     // --- Compose final output with sprite column + speech bubble ---
-    let rows = [h1, h2, h3, h4, h5, h6, h7];
+    let mut rows = [h1, h2, h3, h4, h5, h6, h7];
+    // Option B: the HUD's right border becomes a junction into the compartment.
+    // Without a usable width the speech stays a loose line under the bare HUD.
+    let compartment = band
+        .then(|| {
+            let cw = crate::speech_box::compartment_width(std::env::var("COLUMNS").ok().as_deref())?;
+            crate::speech_box::compartment(&view.speech, &view.speech_attrs, cw)
+        })
+        .flatten();
+    let compartment_on = compartment.is_some();
+    if let Some(sfx) = compartment {
+        for (i, (row, tail)) in rows.iter_mut().zip(sfx).enumerate() {
+            if i == 0 || i == 6 {
+                // Drop the corner (`╗`/`╝`) that the junction replaces.
+                if let Some(last) = row.last_mut() {
+                    last.text.pop();
+                }
+            }
+            row.extend(tail);
+        }
+    }
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let mut buf = String::with_capacity(4096);
 
     for (i, row) in rows.iter().enumerate() {
         let row = to_ansi(row);
-        if i == 6 {
+        if compartment_on || (band && i != 6) {
+            buf.push_str(&format!("{row}\n"));
+        } else if i == 6 {
             let bubble = to_ansi(&[Span::new(format!("\"{}\"", view.speech), &view.speech_attrs)]);
             buf.push_str(&format!("{row}   {bubble}\n"));
         } else if let Some(px) = &px_rows {

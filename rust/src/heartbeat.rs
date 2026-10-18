@@ -36,8 +36,6 @@ pub(crate) fn band_alive_in(dir: &Path, session_id: &str, now_ms: u64) -> bool {
         || fresh(&dir.join("band.alive"), now_ms)
 }
 
-// Wired into the statusline in Task 3.4.
-#[allow(dead_code)]
 pub(crate) fn band_alive(session_id: &str) -> bool {
     band_alive_in(
         &crate::paths::state_dir(),
