@@ -28,6 +28,8 @@ The Neon Grid theme now brings its own terminal background.
 - A workaround, not an official API: the mod writes the sequence to Claude
   Code's tty by walking up the process tree with `ps`.
 - Ctrl+Z (suspend) and a hard crash leave the background dark.
+- Tested on Linux only (bash in VS Code's terminal). On Windows it most likely
+  does nothing. The README has steps for debugging and fixing it there.
 - tmux is untested and may not pass the sequence through.
 - Terminals without OSC 11 ignore it; headless (`-p`) runs do nothing.
 

@@ -179,6 +179,8 @@ v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same 
 
 **Terminal background (v4.3).** A theme cannot paint the terminal background, so while Neon Grid is the active theme the mod sets it to `#0d0a14` itself (OSC 11). Switching to another theme or quitting puts your terminal's own background back (OSC 111); `/clear` keeps it. This is a workaround, not an official API: the mod writes the sequence to Claude Code's tty via `ps`. Ctrl+Z (suspend) and a hard crash leave the background dark, tmux is untested and may not pass it through, terminals without OSC 11 ignore it, and headless (`-p`) runs do nothing.
 
+**Tested on Linux only** (bash in VS Code's terminal). On Windows it most likely does nothing, because there is no `/dev/pts` terminal for the mod to find. Nothing else breaks: the theme, the HUD and the band work as before. See "Debugging the backdrop on Windows" below.
+
 **What is restyled** (one example per piece):
 
 - Spinner word: `▓▒░ DECRYPTING ░▒▓`. The word rotates per turn; the engine keeps its own `(12s · tokens)` tail.
@@ -204,6 +206,20 @@ node mod/scripts/theme.mjs --check  # fail if the file is out of date
 **Windows.** Windows Terminal is recommended. Use a font that has the glyphs `▓▒░ ◢◤ ⟦⟧ ▸`.
 
 ---
+
+### Debugging the backdrop on Windows
+
+Work through these in order and stop at the first one that fails.
+
+1. **Does the terminal accept the code at all?** In a Git Bash tab in Windows Terminal, run `printf '\e]11;#0d0a14\a'`. Run it in the shell itself, not through Claude Code's `!`, which captures the output instead of passing it to the terminal. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111\a'` resets it.
+2. **Can the mod's command find the terminal?** The mod runs `sh -c "$SEND"` (`SEND` in `mod/hooks/backdrop.ts`). Run the same script in Git Bash with `SEQ='\033]11;#0d0a14\007'` set, then `echo $?`. A `1` means no terminal was found. That is the expected result on Windows, because `ps -o tty=` and `/dev/<tty>` only exist on Linux and macOS. If Claude Code cannot find `sh` at all, nothing is sent either.
+3. **Do the hooks fire?** Start with `claude --debug --plugin-dir <WT>/mod`. A failing hook is logged as `purrgotchi: <event> ...`. A theme switch arrives as `config.set` with key `theme`.
+
+**Making it work without breaking Linux.**
+
+- Leave the Linux path alone: `SEND`, its tests in `mod/hooks/backdrop.test.ts`, and how it behaves. Add a separate Windows path next to it and pick between the two once, by platform (for example `$.env.get('OS') === 'Windows_NT'`).
+- The Windows path needs another way to reach Claude Code's console window. One untested idea: a child process opens the console device `CONOUT$` and writes the code there. That only works if the child shares Claude Code's console. Prove it by hand first, the way the Linux path was proven: a throwaway mod that logs to a file and shows a toast, then switch themes back and forth.
+- Add tests for the Windows path without changing any existing test. Before merging, run the gates on Linux as well: `npx -y -p typescript@5.9 tsc -p mod`, `claude plugin validate mod`, `claude plugin test mod`.
 
 ## Your kitten
 
