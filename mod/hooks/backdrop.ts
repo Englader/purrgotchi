@@ -54,12 +54,8 @@ export function registerBackdrop(on: On): void {
   on('config.set', { key: 'theme' }, async ($, e, next) => {
     const r = await next(e)
     if (r.deny !== undefined) return r
-    try {
-      if (e.value === THEME_ID) await paint($)
-      else await reset($)
-    } catch {
-      // the change stands
-    }
+    // paint and reset never throw: the change stands.
+    await (e.value === THEME_ID ? paint($) : reset($))
     return r
   }).catch(($, e, next) => next(e))
 
