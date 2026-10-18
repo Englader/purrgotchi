@@ -227,7 +227,7 @@ node mod/scripts/theme.mjs --check  # fail if the file is out of date
 
 ### If the backdrop does not change
 
-1. **Does the terminal accept the code at all?** In a shell tab (not through Claude Code's `!`, which captures the output), run `printf '\e]11;#0d0a14'`. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111'` resets it.
+1. **Does the terminal accept the code at all?** In a shell tab (not through Claude Code's `!`, which captures the output), run `printf '\e]11;#0d0a14\a'`. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111\a'` resets it.
 2. **Do the hooks fire?** Start with `claude --debug`. A failing hook is logged as `purrgotchi: <event> ...`. A theme switch arrives as `config.set` with key `theme`.
 3. **Is the binary found?** On Windows the mod needs `purrgotchi.exe` (see "Loading the mod" above).
 
