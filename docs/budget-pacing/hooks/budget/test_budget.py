@@ -145,6 +145,34 @@ class T(unittest.TestCase):
                            env=dict(self.env, CLAUDE_CODE_SESSION_ID="", PYTHONIOENCODING="", PYTHONUTF8="0"))
         self.assertIn("plan usage unavailable \u00b7 ctx".encode("utf-8"), r.stdout)
 
+    def test_hook_timing_log_and_rotation(self):
+        log = os.path.join(self.h, "hooks", "budget", "cache", "_hooklog.txt")
+        # the module computes paths from BUDGET_HOME, so the log lands under the temp home
+        out = self.run_b("hook-prompt", inp=json.dumps({"session_id": "abcdef12-3456"}))
+        self.assertIn("UserPromptSubmit", out)  # output unchanged
+        lines = open(log, encoding="utf-8").read().splitlines()
+        self.assertEqual(len(lines), 1)
+        kv = dict(p.split("=", 1) for p in lines[0].split()[1:])
+        self.assertEqual(kv["cmd"], "hook-prompt")
+        self.assertEqual(kv["sid"], "abcdef12")
+        for k in ("spawn_ms", "import_ms", "work_ms", "total_ms", "fresh", "fetch", "os_exit"):
+            self.assertIn(k, kv)
+        datetime_ok = lines[0].split()[0]
+        self.assertRegex(datetime_ok, r"^\d{4}-\d\d-\d\dT")
+        for k in ("import_ms", "work_ms", "total_ms"):
+            self.assertGreaterEqual(int(kv[k]), 0)
+        self.assertEqual(kv["os_exit"], "0")
+        self.run_b("line")  # non-hook commands do not log
+        self.assertEqual(len(open(log, encoding="utf-8").read().splitlines()), 1)
+        with open(log, "w", encoding="utf-8") as f:
+            f.write("x" * (201 * 1024))
+        self.run_b("hook-posttool", inp=json.dumps({"session_id": "abcdef12-3456"}))
+        rot = os.path.join(os.path.dirname(log), "_hooklog.1.txt")
+        self.assertTrue(os.path.getsize(rot) > 200 * 1024)
+        fresh = open(log, encoding="utf-8").read().splitlines()
+        self.assertEqual(len(fresh), 1)
+        self.assertIn("cmd=hook-posttool", fresh[0])
+
     def test_hook_reads_utf8_stdin(self):
         tdir = os.path.join(self.h, "St\u00e9fan \u0436")
         os.makedirs(tdir)

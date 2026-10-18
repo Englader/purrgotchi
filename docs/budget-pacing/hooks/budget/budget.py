@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Budget awareness for Claude Code: plan usage + context size via hooks."""
+import time
+T0 = time.time()  # first thing: lets the hook log show import cost
 import bisect
 import glob
 import json
@@ -8,7 +10,6 @@ import re
 import subprocess
 import sys
 import threading
-import time
 from datetime import datetime, timezone
 
 HOME = os.environ.get("BUDGET_HOME") or os.path.expanduser("~/.claude")
@@ -23,6 +24,7 @@ HOOK_BUDGET = 3.0   # wall-clock seconds a hook may spend on slow work (hook tim
 FETCH_CAP = 2.0     # max seconds for the endpoint fetch
 GIT_CAP = 1.5
 _deadline = None    # monotonic time; set by hooks only (watch loops run unbounded)
+_LOG = {}           # per-run facts for the hook timing log
 _stuck = False      # a fetch thread outlived its deadline
 CTX_CAP = 400_000
 CTX_HANDOVER = 300_000
@@ -186,8 +188,10 @@ def fetch_endpoint():
         return None  # out of time budget; not the endpoint's fault, so no failure record
     box = []
     th = threading.Thread(target=lambda: box.append(_fetch_remote()), daemon=True)
+    tf = time.time()
     th.start()
     th.join(left)  # urlopen's timeout is per socket op; DNS/proxy lookup is unbounded
+    _LOG["fetch_ms"] = int((time.time() - tf) * 1000)
     data = box[0] if box else None
     if th.is_alive():
         global _stuck
@@ -230,6 +234,7 @@ def get_status(sid, tpath):
     t = now()
     cache = read_json(os.path.join(CACHE_DIR, safe_sid(sid) + ".json")) if sid else None
     fresh = bool(cache) and t - (num(cache.get("ts")) or 0) < FRESH
+    _LOG["fresh"] = int(fresh)
     ctx = None
     if fresh:
         cw = cache.get("context_window")
@@ -392,6 +397,7 @@ def cmd_hook_prompt():
     start_deadline()
     d = read_stdin_json()
     sid = d.get("session_id")
+    _LOG["sid"] = sid
     st = get_status(sid, d.get("transcript_path"))
     emit("UserPromptSubmit", fmt_line(st))
     if sid:
@@ -407,6 +413,7 @@ def cmd_hook_posttool():
     if d.get("agent_id"):
         return
     sid = d.get("session_id")
+    _LOG["sid"] = sid
     if not sid:
         return
     st = get_status(sid, d.get("transcript_path"))
@@ -440,6 +447,7 @@ def cmd_hook_sessionstart():
     d = read_stdin_json()
     cwd = project_root(d.get("cwd") or os.getcwd())
     sid = d.get("session_id")
+    _LOG["sid"] = sid
     line = fmt_line(get_status(sid, d.get("transcript_path")))
     text = line
     hp = handover_path(cwd)
@@ -474,7 +482,59 @@ def utf8_stdio():
             pass
 
 
+HOOK_CMDS = ("hook-prompt", "hook-posttool", "hook-sessionstart")
+LOG_MAX = 200 * 1024
+
+
+def _proc_created():
+    """Process creation time as epoch seconds (Windows only, else None)."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        ft = (ctypes.c_uint64 * 4)()  # creation, exit, kernel, user (FILETIME = 100ns since 1601)
+        # GetCurrentProcess() is the constant pseudo-handle -1
+        k.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.c_void_p] * 4
+        if not k.GetProcessTimes(ctypes.c_void_p(-1), *[ctypes.addressof(ft) + 8 * i for i in range(4)]):
+            return None
+        v = ft[0]
+        return v / 1e7 - 11644473600
+    except Exception:
+        return None
+
+
+def log_hook(cmd, t_main, t_done, exited):
+    """One key=value line per hook run in cache/_hooklog.txt. Never raises."""
+    try:
+        pc = _proc_created()
+        ms = lambda a, b: int(round((b - a) * 1000))
+        sid = ""
+        if _LOG.get("sid"):
+            sid = str(_LOG["sid"])[:8]
+        parts = [datetime.now().astimezone().isoformat(timespec="milliseconds"), "cmd=" + cmd,
+                 "sid=" + (sid or "-"),
+                 "spawn_ms=" + (str(ms(pc, T0)) if pc else "na"),
+                 "import_ms=%d" % ms(T0, t_main), "work_ms=%d" % ms(t_main, t_done),
+                 "total_ms=%d" % ms(pc if pc else T0, time.time()),
+                 "fresh=%s" % _LOG.get("fresh", "na"),
+                 "fetch=%s" % ("1 fetch_ms=%d" % _LOG["fetch_ms"] if "fetch_ms" in _LOG else "0"),
+                 "os_exit=%d" % int(exited)]
+        path = os.path.join(CACHE_DIR, "_hooklog.txt")
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        try:
+            if os.path.getsize(path) > LOG_MAX:
+                os.replace(path, os.path.join(CACHE_DIR, "_hooklog.1.txt"))
+        except OSError:
+            pass
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(" ".join(parts) + "\n")
+    except Exception:
+        pass
+
+
 def main():
+    t_main = time.time()
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     utf8_stdio()
     try:
@@ -496,6 +556,9 @@ def main():
     except Exception:
         pass
     sys.stdout.flush()
+    t_done = time.time()
+    if cmd in HOOK_CMDS:
+        log_hook(cmd, t_main, t_done, _stuck)
     if _stuck:
         os._exit(0)  # don't let a hung fetch thread delay interpreter shutdown
 
