@@ -12,6 +12,26 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - macOS builds (built and run on Linux and Windows 11 so far)
 
+## v4.4.0 — 2026-10-18
+
+Neon Grid is now a true-black theme, gets a violet sibling, and comes to VS Code.
+
+### Added
+
+- **Neon Grid VS Code theme.** A new extension in `vscode-theme/` with two
+  themes, "Neon Grid" (true black) and "Neon Grid Violet" (`#1a1633`).
+  Cyberpunk 2077 inspired: cyan filenames, yellow selection and accents, red
+  hover, magenta search matches and red UI accents, matching the statusline.
+  Switch with Ctrl+K Ctrl+T.
+- **Neon Grid Violet** for Claude Code. A second custom theme in the mod, with a
+  `#1a1633` terminal backdrop.
+
+### Changed
+
+- **Neon Grid now paints a true-black backdrop** (was `#0d0a14`).
+- The backdrop follows whichever theme you pick in `/theme`. Works on Linux and
+  Windows.
+
 ## v4.3.1 — 2026-10-18
 
 Neon Grid now works on Windows, and the budget cache no longer needs a wrapper.

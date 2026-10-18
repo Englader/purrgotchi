@@ -189,13 +189,16 @@ Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH
 - If the mod cannot learn the session id, it writes a global `band.alive` instead. Only a statusline whose own payload has no valid session id honours it, so a session with an id never reacts to another session's band.
 - The band reads purrgotchi state read-only. The `settings.json` hooks (`feed`, `turn`) still feed the kitten, so keep them installed.
 
-## Neon Grid (v4.2, backdrop v4.3)
+## Neon Grid (v4.2, backdrop v4.3, Violet v4.4)
 
-v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same mod (`mod/`). It is a custom theme plus six restyled pieces. Terminal only; it needs the mod loaded (for example `alias claude='claude --plugin-dir <WT>/mod'`) and 24-bit colour.
+v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same mod (`mod/`). It is two custom themes plus six restyled pieces. Terminal only; it needs the mod loaded (for example `alias claude='claude --plugin-dir <WT>/mod'`) and 24-bit colour.
 
-**Pick the theme once.** Run `/theme` and choose "Neon Grid". It is stored as `custom:purrgotchi:neon-grid`. The mod never sets it, so without picking it your current theme stays.
+**Pick the theme once.** Run `/theme` and choose a Neon Grid theme. The mod never sets it, so without picking it your current theme stays.
 
-**Terminal background (v4.3).** A theme cannot paint the terminal background, so while Neon Grid is the active theme the mod sets it to `#0d0a14` itself (OSC 11). Switching to another theme or quitting puts your terminal's own background back (OSC 111); `/clear` keeps it. This is a workaround, not an official API: on Linux the mod writes the sequence to Claude Code's tty via `ps`. Ctrl+Z (suspend) and a hard crash leave the background dark, tmux is untested and may not pass it through, terminals without OSC 11 ignore it, and headless (`-p`) runs do nothing.
+- **Neon Grid** (`custom:purrgotchi:neon-grid`): true-black backdrop.
+- **Neon Grid Violet** (`custom:purrgotchi:neon-grid-violet`): deep violet `#1a1633` backdrop.
+
+**Terminal background.** A theme cannot paint the terminal background, so while a Neon Grid theme is active the mod sets it itself (OSC 11): black for Neon Grid, `#1a1633` for Neon Grid Violet. The backdrop follows the theme you pick in `/theme`. Switching to another theme or quitting puts your terminal's own background back (OSC 111); `/clear` keeps it. This is a workaround, not an official API: on Linux the mod writes the sequence to Claude Code's tty via `ps`. Ctrl+Z (suspend) and a hard crash leave the background dark, tmux is untested and may not pass it through, terminals without OSC 11 ignore it, and headless (`-p`) runs do nothing.
 
 **Platforms.** Linux, and Windows (Windows Terminal, VS Code terminal). On Windows the mod reaches Claude Code's console directly, so no extra setup is needed.
 
@@ -214,20 +217,32 @@ v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same 
 
 The HUD statusline and the band cat are unchanged.
 
-**Regenerating the theme.** `mod/themes/neon-grid.json` is generated from `mod/hooks/neon.ts`:
+**Regenerating the theme.** `mod/themes/neon-grid.json` and `neon-grid-violet.json` are generated from `mod/hooks/neon.ts`:
 
 ```bash
-node mod/scripts/theme.mjs          # rewrite the theme file
+node mod/scripts/theme.mjs          # rewrite the theme files
 node mod/scripts/theme.mjs --check  # fail if the file is out of date
 ```
 
 **Windows.** Windows Terminal or the VS Code terminal. Use a font that has the glyphs `▓▒░ ◢◤ ⟦⟧ ▸`.
 
+### VS Code theme (v4.4)
+
+The same look for your editor: a theme extension in `vscode-theme/` with two variants, **Neon Grid** (true black, the default) and **Neon Grid Violet** (`#1a1633`). Cyan filenames, yellow selection and accents, red hover, magenta search matches, red UI accents, matching the statusline.
+
+```bash
+cd vscode-theme
+npx @vscode/vsce package --skip-license
+code --install-extension neon-grid-4.4.0.vsix
+```
+
+Switch themes with Ctrl+K Ctrl+T. To regenerate the theme files, run `python build.py` in `vscode-theme/`.
+
 ---
 
 ### If the backdrop does not change
 
-1. **Does the terminal accept the code at all?** In a shell tab (not through Claude Code's `!`, which captures the output), run `printf '\e]11;#0d0a14\a'`. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111\a'` resets it.
+1. **Does the terminal accept the code at all?** In a shell tab (not through Claude Code's `!`, which captures the output), run `printf '\e]11;#1a1633\a'`. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111\a'` resets it.
 2. **Do the hooks fire?** Start with `claude --debug`. A failing hook is logged as `purrgotchi: <event> ...`. A theme switch arrives as `config.set` with key `theme`.
 3. **Is the binary found?** On Windows the mod needs `purrgotchi.exe` (see "Loading the mod" above).
 
