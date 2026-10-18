@@ -1,11 +1,9 @@
 // Composition root: the cat band above the prompt.
 import type { EngineInterface, Register } from 'claude-code'
 
-import { B, KEY, MAX_COLS, MIN_COLS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
+import { B, KEY, MAX_COLS, MIN_COLS, RECONCILE_MS, blankCells, pickRows, prepareBand, reconcile, statsJson } from './band'
 import { beat } from './heartbeat'
 import type { HeartbeatHost } from './heartbeat'
-
-const RECONCILE_MS = 100
 
 /** `PURR_BAND_STATS`: the dev counters file, rewritten once a second. */
 async function writeStats($: Pick<EngineInterface, 'fs' | 'clock'>, path: string): Promise<void> {
@@ -45,6 +43,7 @@ export const register: Register = on => {
     B.rows = rows
     if (rows === 0) return next(e)
     B.requestId = e.requestId
+    B.denyRun = 0 // a render ends a deny pause
     B.cols = Math.min(MAX_COLS, e.props.bodyColumns)
     const cells = B.cells !== null && B.helloCols === B.cols && B.helloRows === rows ? B.cells : blankCells(B.cols, rows)
     const { Raster } = $.ui.resolve(e)

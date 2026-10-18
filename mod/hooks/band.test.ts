@@ -237,3 +237,65 @@ test('missing binary passes', async ($, on) => {
   await spies.clock.advance(1000)
   expect(spies.spawns).toEqual([])
 })
+
+const HIDDEN = props(115, 40, true)
+
+test('a band hidden for 10 s stops its child and respawns once when shown', async ($, on) => {
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5)]) })
+  const band = await mountBand($)
+  await spies.clock.advance(100)
+  expect(spies.spawns).toHaveLength(1)
+  await band.redraw(HIDDEN)
+  await spies.clock.advance(9000)
+  expect(spies.stops).toBe(0)
+  await spies.clock.advance(1500)
+  expect(spies.stops).toBe(1)
+  await spies.clock.advance(5000)
+  expect(spies.spawns).toHaveLength(1)
+  await band.redraw(props(115))
+  await spies.clock.advance(100)
+  expect(spies.spawns).toHaveLength(2)
+  await spies.clock.advance(5000)
+  expect(spies.spawns).toHaveLength(2)
+})
+
+test('a band hidden under 10 s keeps its child', async ($, on) => {
+  const spies = await started($, on, { spawn: silent([bandHello(115, 5)]) })
+  const band = await mountBand($)
+  await spies.clock.advance(100)
+  await band.redraw(HIDDEN)
+  await spies.clock.advance(8000)
+  await band.redraw(props(115))
+  await spies.clock.advance(8000) // the hide clock restarted at the show
+  await band.redraw(HIDDEN)
+  await spies.clock.advance(8000)
+  expect(spies.stops).toBe(0)
+  expect(spies.spawns).toHaveLength(1)
+})
+
+test('5 straight denies pause blitting until the next render', async ($, on) => {
+  const g = gate()
+  const frames = [1, 2, 3, 4, 5, 6, 7, 8].map(n => bandFrame(n, cells(10 + n)))
+  const spies = await started($, on, {
+    blit: n => (n <= 5 ? { deny: 'no' } : {}),
+    spawn: silent([bandHello(115, 5), ...frames, { wait: g.wait }, bandFrame(9, cells(30))]),
+  })
+  const band = await mountBand($)
+  await spies.clock.advance(100)
+  expect(spies.blits).toHaveLength(5) // frames 6-8 were skipped
+  await band.redraw(props(115)) // a render: blitting resumes
+  g.release()
+  await spies.clock.settle()
+  expect(spies.blits).toHaveLength(6)
+  expect(spies.blits[5]?.cells).toBe(cells(30))
+})
+
+test('the first no-Raster deny does not count toward the backoff', async ($, on) => {
+  const spies = await started($, on, {
+    blit: n => (n === 1 ? { deny: 'no Raster "purr-band" mounted' } : n <= 6 ? { deny: 'no' } : {}),
+    spawn: silent([bandHello(115, 5), ...[1, 2, 3, 4, 5, 6, 7].map(n => bandFrame(n, cells(10 + n)))]),
+  })
+  await mountBand($)
+  await spies.clock.advance(100)
+  expect(spies.blits).toHaveLength(6) // 1 uncounted + 5 counted
+})

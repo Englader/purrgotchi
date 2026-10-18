@@ -7,9 +7,9 @@
 // too). stdin is closed from the start, so there is no control channel: a new
 // size or mood is a new argv, and a new argv is a respawn (debounced 300 ms).
 //
-// After an unexpected exit it respawns with backoff 1 s, 2 s, 4 s ... 30 s.
-// Three exits within 60 s (an old binary without `band` exits 2 at once)
-// slow it to one try a minute, never a permanent stop. The module scan needs
+// After an unexpected exit it respawns after 1 s, then 2 s. The third exit
+// within 60 s (an old binary without `band` exits 2 at once) slows it to one
+// try a minute, never a permanent stop. The module scan needs
 // every `$` passed by name to a plain function, so `BandStream` is state only.
 import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Timer } from 'claude-code'
 

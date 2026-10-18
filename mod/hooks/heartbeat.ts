@@ -1,7 +1,8 @@
 // The band's heartbeat: `band-<session id>.alive` in the stream's state dir,
-// holding the epoch ms, once a second while the cat is really on screen. The
-// statusline drops its own cat only while that beat is fresh (3 s), so a
-// crashed, collapsed or surveyed band hands the cat back within seconds.
+// holding the epoch ms of the last accepted blit, once a second while the cat
+// is really on screen. The statusline drops its own cat only while that beat
+// is fresh (3 s), so a crashed, collapsed or surveyed band hands the cat back
+// within 3 s of its last accepted blit.
 //
 // The beat is written only while a blit was accepted in the last 2 s (an
 // accepted blit means the Raster is mounted). The id is read on every tick:
@@ -45,7 +46,9 @@ export async function beat($: HeartbeatHost): Promise<void> {
     if (B.stateDir !== null && (await $.clock.now()) - B.lastOkAt <= FRESH_MS) {
       const id = await sessionId($)
       const file = id === null ? 'band.alive' : `band-${id}.alive`
-      await $.fs.write(`${B.stateDir}/${file}`, String(await $.clock.now()))
+      // The last accepted blit, not now: once blits stop the stamp stops moving,
+      // and Rust's 3 s rule releases the cat by lastOkAt + 3 s.
+      await $.fs.write(`${B.stateDir}/${file}`, String(B.lastOkAt))
     }
     const pct = (await $.session.usage()).context.percent ?? 0
     if (moodBucket(pct) !== moodBucket(B.ctxPct)) {

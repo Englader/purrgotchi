@@ -29,11 +29,14 @@ fn fresh(path: &Path, now_ms: u64) -> bool {
     hb <= now_ms.saturating_add(MAX_SKEW_MS) && now_ms.saturating_sub(hb) <= MAX_AGE_MS
 }
 
-/// Is a band live for this session? Falls back to the global `band.alive`, which the mod
-/// writes only when it could not learn a session id.
+/// Is a band live for this session? A valid id reads only its own beat. The global
+/// `band.alive` (written by the mod only when it could not learn a session id) is
+/// consulted just when this payload's id is missing or invalid.
 pub(crate) fn band_alive_in(dir: &Path, session_id: &str, now_ms: u64) -> bool {
-    heartbeat_path(dir, session_id).is_some_and(|p| fresh(&p, now_ms))
-        || fresh(&dir.join("band.alive"), now_ms)
+    match heartbeat_path(dir, session_id) {
+        Some(p) => fresh(&p, now_ms),
+        None => fresh(&dir.join("band.alive"), now_ms),
+    }
 }
 
 pub(crate) fn band_alive(session_id: &str) -> bool {
@@ -95,9 +98,11 @@ mod tests {
     fn global_fallback() {
         let d = dir();
         beat(&d, "band.alive", &format!(" {NOW}\n"));
-        assert!(band_alive_in(&d, "s1", NOW));
-        // An invalid id can still see the global beat, never a path.
+        // A valid id never reaches the global beat: it is some other session's.
+        assert!(!band_alive_in(&d, "s1", NOW));
+        // Only a missing or invalid id falls back to it (and never builds a path).
         assert!(band_alive_in(&d, "../x", NOW));
+        assert!(band_alive_in(&d, "", NOW));
     }
 
     #[test]

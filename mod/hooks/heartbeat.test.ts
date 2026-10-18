@@ -47,6 +47,29 @@ test('heartbeat stops when blits are denied', async ($, on) => {
   expect(beats(spies.writes)).toHaveLength(n)
 })
 
+test('the stamp is the last accepted blit, so the cat is back by T0 + 3 s', async ($, on) => {
+  let t0 = -1
+  let clock: { now: () => number } | null = null
+  const spies = engine(on, {
+    ...ENV,
+    blit: n => {
+      if (n === 1) t0 = clock?.now() ?? -1
+      return n === 1 ? {} : { deny: 'no' }
+    },
+    spawn: () => ({ steps: [bandHello(115, 5, STATE) + bandFrame(1)] }),
+  })
+  clock = spies.clock
+  await $.session.start(START)
+  await spies.clock.advance(5000) // a clock well past 0
+  await mount($)
+  await spies.clock.advance(2100) // blits stopped at t0; beats at t0 + ~1 s and + ~2 s
+  expect(t0).toBeGreaterThan(0)
+  const stamps = beats(spies.writes).map(w => Number(w.text))
+  expect(stamps.length).toBeGreaterThan(0)
+  // Rust accepts a stamp for 3 s: every stamp <= t0 expires by t0 + 3000.
+  for (const t of stamps) expect(t).toBeLessThanOrEqual(t0)
+})
+
 test('heartbeat follows a new session id after clear', async ($, on) => {
   let id = 'sess-1'
   const spies = await live($, on, { sessionId: () => id })

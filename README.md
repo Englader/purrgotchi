@@ -168,7 +168,7 @@ Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH
 **Limitations.**
 
 - Terminal only; it relies on the terminal UI.
-- If the mod cannot learn the session id, it writes a global `band.alive` instead, which every session's statusline will honour.
+- If the mod cannot learn the session id, it writes a global `band.alive` instead. Only a statusline whose own payload has no valid session id honours it, so a session with an id never reacts to another session's band.
 - The band reads purrgotchi state read-only. The `settings.json` hooks (`feed`, `turn`) still feed the kitten, so keep them installed.
 
 ---

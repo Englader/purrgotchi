@@ -20,6 +20,12 @@ export const KEY = 'purr-band'
 export const MIN_COLS = 24
 /** The widest band (`purrgotchi band --cols` caps there too). */
 export const MAX_COLS = 512
+/** session.start's reconcile clock (ms). */
+export const RECONCILE_MS = 100
+/** A band hidden this long (ms) stops its child; the next shown render respawns it. */
+export const HIDDEN_STOP_MS = 10_000
+/** This many denies in a row pause blitting until the next render. */
+export const DENY_LIMIT = 5
 const DEFAULT_COLOR = 0x0100_0000
 const SPACE = 0x20
 
@@ -44,6 +50,10 @@ type BandState = {
   helloRows: number
   cells: string | null
   lastOkAt: number
+  /** Consecutive counted blit denies; DENY_LIMIT pauses blitting until a render. */
+  denyRun: number
+  /** reconcile ticks since the band was last shown (rows > 0). */
+  hiddenTicks: number
   stateDir: string | null
   ctxPct: number
   stream: BandStream | null
@@ -60,6 +70,8 @@ const fresh = (): BandState => ({
   helloRows: 0,
   cells: null,
   lastOkAt: 0,
+  denyRun: 0,
+  hiddenTicks: 0,
   stateDir: null,
   ctxPct: 0,
   stream: null,
@@ -120,18 +132,22 @@ function countDeny(why: string): void {
 }
 
 async function blitCells($: BlitHost, cells: string): Promise<void> {
-  if (B.requestId === '') return
+  if (B.requestId === '' || B.denyRun >= DENY_LIMIT) return
   B.stats.sent++
   try {
     const r = await $.ui.blit({ requestId: B.requestId, key: KEY, cells })
     if (r.deny !== undefined) {
       countDeny(r.deny)
+      // The very first blit can beat the first mount: a harmless "no Raster" deny.
+      if (!(B.stats.sent === 1 && /^no Raster/.test(r.deny))) B.denyRun++
       return
     }
+    B.denyRun = 0
     B.stats.ok++
     B.lastOkAt = await $.clock.now()
   } catch (e) {
     countDeny(`throw: ${errText(e)}`)
+    B.denyRun++
   }
 }
 
@@ -170,10 +186,22 @@ export function onBandLines($: BlitHost, lines: readonly string[]): void {
 /**
  * session.start's 100 ms clock: spawn the stream once the band is mounted,
  * respawn (debounced) when its size changes. A band hidden for a moment (a
- * survey, a short terminal) keeps its child.
+ * survey, a short terminal) keeps its child; hidden for HIDDEN_STOP_MS it
+ * stops, and the next render that shows the band spawns it again.
  */
 export function reconcile($: BandHost): void {
-  if (B.opts === null || B.bin === null || B.rows === 0) return
+  if (B.opts === null || B.bin === null) return
+  if (B.rows === 0) {
+    if (B.stream !== null && ++B.hiddenTicks * RECONCILE_MS >= HIDDEN_STOP_MS) {
+      stopStream(B.stream)
+      B.stream = null
+      B.cells = null
+      B.helloCols = 0
+      B.helloRows = 0
+    }
+    return
+  }
+  B.hiddenTicks = 0
   const argv = bandArgv(B.bin, B.cols, B.rows, B.opts.fps, B.ctxPct)
   if (B.stream === null) {
     B.stream = newStream(argv, lines => onBandLines($, lines))
