@@ -178,9 +178,15 @@ fi
 
 # Command strings quote the binary path — an unquoted path with spaces
 # (C:/Users/John Doe/...) word-splits when Claude Code runs it via the shell.
-STATUSLINE_CMD="\"$RUST_BIN\" statusline"
-FEED_CMD="\"$RUST_BIN\" feed"
-TURN_CMD="\"$RUST_BIN\" turn"
+# Under Git Bash $RUST_BIN is MSYS-style (/c/Users/...), which Claude Code
+# (running outside MSYS) can't resolve. Write the mixed form (C:/Users/...).
+CMD_BIN="$RUST_BIN"
+if [ -n "$BIN_EXT" ] && command -v cygpath >/dev/null 2>&1; then
+    CMD_BIN="$(cygpath -m "$RUST_BIN")"
+fi
+STATUSLINE_CMD="\"$CMD_BIN\" statusline"
+FEED_CMD="\"$CMD_BIN\" feed"
+TURN_CMD="\"$CMD_BIN\" turn"
 
 # Merge our keys while preserving any existing config. Replace our managed
 # hook entries (any command containing "purrgotchi" — matches both legacy
