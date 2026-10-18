@@ -30,7 +30,14 @@ ap.add_argument('--fps', default='30')
 ap.add_argument('--resize-at', type=float, default=None)
 ap.add_argument('--statusline', action='store_true')
 ap.add_argument('--no-mod', action='store_true')
+# timed events: t:send:TEXT (python-escaped bytes), t:rows:N (pty height), t:probe (band procs + counters)
+ap.add_argument('--ev', action='append', default=[])
+ap.add_argument('--claude-arg', action='append', default=[])
+ap.add_argument('--dur', type=float, default=22.0)
 opt = ap.parse_args()
+DUR = opt.dur
+events = sorted((float(e.split(':', 2)[0]), e.split(':', 2)[1], (e.split(':', 2) + [''])[2]) for e in opt.ev)
+probes = []
 label, outdir = opt.label, opt.outdir
 if not os.path.realpath(outdir).startswith('/tmp/claude-1000/'):
     sys.exit('live-check: outdir must be under /tmp/claude-1000/')
@@ -52,6 +59,7 @@ if os.environ.get('SPIKE_FULLSCREEN'):
 if opt.statusline:
     sl = {'statusLine': {'type': 'command', 'command': f'{purr_bin} statusline', 'padding': 1, 'refreshInterval': 1}}
     argv += ['--settings', json.dumps(sl)]
+argv += opt.claude_arg
 if not opt.no_mod:
     argv += ['--plugin-dir', MOD]
 env = dict(os.environ, COLUMNS=str(COLS), LINES=str(LINES), TERM='xterm-256color', COLORTERM='truecolor',
@@ -146,6 +154,16 @@ while True:
     if s1 is None and now >= W1:
         s1 = (now, sample())
         st1 = stats()
+    while events and events[0][0] <= now:
+        _, kind, arg = events.pop(0)
+        if kind == 'send':
+            os.write(fd, arg.encode().decode('unicode_escape').encode('latin1'))
+        elif kind == 'rows':
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', int(arg), COLS, 0, 0))
+            os.kill(pid, signal.SIGWINCH)
+        elif kind == 'probe':
+            probes.append({'t': round(now, 1), 'band_procs': len(set(band_procs()) - procs_before), 'stats': stats(),
+                           'hb': sorted(n for n in os.listdir(state_dir) if n.startswith('band-')) if state_dir else None})
     if opt.resize_at is not None and not resized and now >= opt.resize_at:
         resized = True
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', LINES, 120, 0, 0))
@@ -221,5 +239,28 @@ if st0 and st1 and st1['t'] > st0['t']:
     for k in ('sent', 'ok', 'lines', 'frames'):
         res[f'mod_{k}_per_s'] = round((st1[k] - st0[k]) / dt, 2)
 res['mod'] = c if c is not None else 'no stats'
+res['probes'] = probes
+# per-second band bursts over the whole run, plus decoded screens (needs pyte on PYTHONPATH)
+per_s = [0] * int(DUR + 1)
+for a, b in zip(starts, starts[1:]):
+    t = chunks[bisect.bisect_right(offs, a) - 1][0]
+    if b'\xe2\x96\x80' in raw[a:b] or b'\x1b[3' in raw[a:b]:
+        per_s[int(t)] += 1
+res['band_bursts_by_second'] = per_s
+try:
+    import pyte
+    scr = pyte.Screen(COLS, LINES)
+    stm = pyte.Stream(scr)
+    snaps = sorted(set([float(x) for x in os.environ.get('SNAPS', '').split(',') if x] + [DUR - 0.5]))
+    out = []
+    ci = 0
+    for sn in snaps:
+        while ci < len(chunks) and chunks[ci][0] <= sn:
+            stm.feed(chunks[ci][1].decode('utf-8', 'replace'))
+            ci += 1
+        out.append(f'=== t={sn} ===\n' + '\n'.join(l.rstrip() for l in scr.display))
+    open(f'{outdir}/{label}.screens.txt', 'w').write('\n'.join(out))
+except ImportError:
+    res['screens'] = 'pyte missing'
 json.dump(res, open(f'{outdir}/{label}.result.json', 'w'), indent=1)
 print(json.dumps(res, indent=1))
