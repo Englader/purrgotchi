@@ -2,15 +2,15 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
 /// Claude Code sends `null` for fields it has no value for yet (before the first
-/// API response, after /clear). Treat null like an absent field.
+/// API response, after /clear). Treat null, and any wrong-typed value, like an
+/// absent field so one odd field cannot zero the whole HUD.
 fn null_default<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
-    T: Deserialize<'de> + Default,
+    T: serde::de::DeserializeOwned + Default,
 {
-    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+    Ok(T::deserialize(Value::deserialize(d)?).unwrap_or_default())
 }
-
 
 #[derive(Deserialize, Default)]
 pub struct Payload {
@@ -93,59 +93,10 @@ pub struct CostField {
 }
 
 impl Payload {
-    /// Parse a statusline/hook payload. Never fails: strict parsing first; if one
-    /// field has the wrong type, salvage every field that is fine from the raw
-    /// JSON so one odd field cannot zero the whole HUD or lose the session id.
+    /// Parse a statusline/hook payload. Never fails: every field is tolerant, so a
+    /// null or wrong-typed field falls back to its default without losing the rest.
     pub fn parse(input: &str) -> Payload {
-        if input.trim().is_empty() {
-            return Payload::default();
-        }
-        if let Ok(p) = serde_json::from_str::<Payload>(input) {
-            return p;
-        }
-        match serde_json::from_str::<Value>(input) {
-            Ok(v) => Payload::from_value(&v),
-            Err(_) => Payload::default(),
-        }
-    }
-
-    fn from_value(v: &Value) -> Payload {
-        let s = |p: &str| v.pointer(p).and_then(Value::as_str).unwrap_or_default().to_string();
-        let f = |p: &str| v.pointer(p).and_then(Value::as_f64).unwrap_or_default();
-        let i = |p: &str| v.pointer(p).and_then(Value::as_i64).unwrap_or_default();
-        let usage = "/context_window/current_usage";
-        Payload {
-            session_id: s("/session_id"),
-            transcript_path: s("/transcript_path"),
-            model: ModelField { display_name: s("/model/display_name") },
-            workspace: WorkspaceField { current_dir: s("/workspace/current_dir") },
-            cwd: s("/cwd"),
-            context_window: ContextWindow {
-                used_percentage: f("/context_window/used_percentage"),
-                current_usage: CurrentUsage {
-                    input_tokens: i(&format!("{usage}/input_tokens")),
-                    output_tokens: i(&format!("{usage}/output_tokens")),
-                    cache_creation_input_tokens: i(&format!("{usage}/cache_creation_input_tokens")),
-                    cache_read_input_tokens: i(&format!("{usage}/cache_read_input_tokens")),
-                },
-            },
-            rate_limits: RateLimits {
-                five_hour: RateWindow {
-                    used_percentage: f("/rate_limits/five_hour/used_percentage"),
-                    resets_at: i("/rate_limits/five_hour/resets_at"),
-                },
-                seven_day: RateWindow {
-                    used_percentage: f("/rate_limits/seven_day/used_percentage"),
-                    resets_at: i("/rate_limits/seven_day/resets_at"),
-                },
-            },
-            cost: CostField {
-                total_cost_usd: f("/cost/total_cost_usd"),
-                total_lines_added: i("/cost/total_lines_added"),
-                total_lines_removed: i("/cost/total_lines_removed"),
-                total_duration_ms: i("/cost/total_duration_ms"),
-            },
-        }
+        serde_json::from_str(input).unwrap_or_default()
     }
 }
 
@@ -187,7 +138,6 @@ mod tests {
         let json = r#"{"session_id":"s2","model":{"display_name":"Sonnet"},"workspace":{"current_dir":"/w/d"},
             "context_window":{"used_percentage":"lots","current_usage":{"input_tokens":7}},
             "cost":{"total_cost_usd":2.5}}"#;
-        assert!(serde_json::from_str::<Payload>(json).is_err());
         let p = Payload::parse(json);
         assert_eq!(p.session_id, "s2");
         assert_eq!(p.model.display_name, "Sonnet");
