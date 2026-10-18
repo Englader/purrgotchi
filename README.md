@@ -171,6 +171,38 @@ Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH
 - If the mod cannot learn the session id, it writes a global `band.alive` instead. Only a statusline whose own payload has no valid session id honours it, so a session with an id never reacts to another session's band.
 - The band reads purrgotchi state read-only. The `settings.json` hooks (`feed`, `turn`) still feed the kitten, so keep them installed.
 
+## Neon Grid (v4.2)
+
+v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same mod (`mod/`). It is a custom theme plus six restyled pieces. Terminal only; it needs the mod loaded (for example `alias claude='claude --plugin-dir <WT>/mod'`) and 24-bit colour.
+
+**Pick the theme once.** Run `/theme` and choose "Neon Grid". It is stored as `custom:purrgotchi:neon-grid`. The mod never sets it, so without picking it your current theme stays.
+
+**Terminal background.** A theme cannot paint the terminal background. For the intended look, set your terminal's own background to `#0d0a14`.
+
+**What is restyled** (one example per piece):
+
+- Spinner word: `▓▒░ DECRYPTING ░▒▓`. The word rotates per turn; the engine keeps its own `(12s · tokens)` tail.
+- Turn duration: `◢◤ EXECUTED IN 12.3s`
+- Info notices: `▸ ` before the notice text.
+- Session mode: `⟦ AUTO MODE ⟧`
+- Idle hint line: `[?] SHORTCUTS`. Only hints the engine shows and the mod knows are redrawn.
+- Background pill: `[CTRL+B] SEND TO BACKGROUND`
+
+**Engine-drawn, only recoloured by the theme:** the logo, the input box, the permission dialog, the menus, and the left `⏵⏵ auto mode on` indicator.
+
+**Passes through untouched:** hints the mod does not recognise (the engine draws them as before), the engine's own spinner messages, and the desktop app.
+
+The HUD statusline and the band cat are unchanged.
+
+**Regenerating the theme.** `mod/themes/neon-grid.json` is generated from `mod/hooks/neon.ts`:
+
+```bash
+node mod/scripts/theme.mjs          # rewrite the theme file
+node mod/scripts/theme.mjs --check  # fail if the file is out of date
+```
+
+**Windows.** Windows Terminal is recommended. Use a font that has the glyphs `▓▒░ ◢◤ ⟦⟧ ▸`.
+
 ---
 
 ## Your kitten
