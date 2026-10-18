@@ -2,6 +2,7 @@
 """Live check of the cat band: run interactive claude in a pty with the mod, measure CPU and shown frames.
 
 usage: live-check.py <label> <outdir> [--rows R] [--fps F] [--resize-at S] [--statusline] [--no-mod]
+                     [--theme NAME] [--mod-dir PATH]
 
 The binary is $PURR_BIN when set (e.g. a release wrapper that pins
 PURR_STATE_DIR), else the dev-sandbox wrapper under /tmp/claude-1000/purr-band-smoke.
@@ -9,12 +10,20 @@ claude keeps the real HOME and runs with --setting-sources project,local, so
 user hooks and the user statusline do not run. PURR_STATE_DIR is passed
 through when set. The mod writes its counters to <outdir>/<label>.stats.json
 (PURR_BAND_STATS). --statusline runs `$PURR_BIN statusline` as the statusline.
+--theme NAME adds `"theme": NAME` to the same per-run --settings JSON (one
+argument, alongside the statusLine), so the user's settings files are not written.
+--mod-dir PATH loads that mod folder instead of WT/mod (e.g. an older checkout's).
 
 The result adds `orphans_after_exit` (`purrgotchi band` processes left after
 claude is killed) and `heartbeats` (`band-*.alive` files in the state dir with
 their age in seconds; the state dir is $PURR_STATE_DIR, else the sandbox's).
+
+With pyte on PYTHONPATH, the SNAPS screens (comma-separated seconds, plus the
+end) go to <label>.screens.txt, and their colours to <label>.colors.txt: for each
+non-blank row `NN|` then runs `fg/bg:"text"` of equal (fg, bg), using pyte's
+Char.fg/Char.bg (hex or a colour name, `default` when unset).
 """
-import argparse, fcntl, json, os, pty, re, select, signal, struct, subprocess, sys, termios, time
+import argparse, codecs, fcntl, json, os, pty, re, select, signal, struct, subprocess, sys, termios, time
 
 WT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MOD = WT + '/mod'
@@ -30,6 +39,8 @@ ap.add_argument('--fps', default='30')
 ap.add_argument('--resize-at', type=float, default=None)
 ap.add_argument('--statusline', action='store_true')
 ap.add_argument('--no-mod', action='store_true')
+ap.add_argument('--theme', default=None)
+ap.add_argument('--mod-dir', default=MOD)
 # timed events: t:send:TEXT (python-escaped bytes), t:rows:N (pty height), t:probe (band procs + counters)
 ap.add_argument('--ev', action='append', default=[])
 ap.add_argument('--claude-arg', action='append', default=[])
@@ -54,14 +65,18 @@ if not purr_bin:
     state_dir = state_dir or sb + '/state'
 
 argv = ['claude', '--setting-sources', 'project,local', '--debug-file', f'{outdir}/{label}.debug.log']
+settings = {}
 if os.environ.get('SPIKE_FULLSCREEN'):
-    argv += ['--settings', '{"tui":"fullscreen"}']
+    settings['tui'] = 'fullscreen'
 if opt.statusline:
-    sl = {'statusLine': {'type': 'command', 'command': f'{purr_bin} statusline', 'padding': 1, 'refreshInterval': 1}}
-    argv += ['--settings', json.dumps(sl)]
+    settings['statusLine'] = {'type': 'command', 'command': f'{purr_bin} statusline', 'padding': 1, 'refreshInterval': 1}
+if opt.theme:
+    settings['theme'] = opt.theme
+if settings:
+    argv += ['--settings', json.dumps(settings)]
 argv += opt.claude_arg
 if not opt.no_mod:
-    argv += ['--plugin-dir', MOD]
+    argv += ['--plugin-dir', opt.mod_dir]
 env = dict(os.environ, COLUMNS=str(COLS), LINES=str(LINES), TERM='xterm-256color', COLORTERM='truecolor',
            PURR_BIN=purr_bin, PURR_BAND_ROWS=opt.rows, PURR_BAND_FPS=opt.fps, PURR_BAND_STATS=counters)
 for k in list(env):
@@ -247,19 +262,45 @@ for a, b in zip(starts, starts[1:]):
     if b'\xe2\x96\x80' in raw[a:b] or b'\x1b[3' in raw[a:b]:
         per_s[int(t)] += 1
 res['band_bursts_by_second'] = per_s
+def color_rows(scr):
+    """`NN|fg/bg:"text" ...` per non-blank row, one run per equal (fg, bg)."""
+    rows = []
+    for y in range(scr.lines):
+        line = scr.buffer[y]
+        cells = [line[x] for x in range(scr.columns)]
+        if not ''.join(c.data for c in cells).strip():
+            continue
+        runs, cur, txt = [], None, ''
+        for c in cells:
+            if (c.fg, c.bg) != cur:
+                if cur is not None:
+                    runs.append(f'{cur[0]}/{cur[1]}:{json.dumps(txt, ensure_ascii=False)}')
+                cur, txt = (c.fg, c.bg), ''
+            txt += c.data
+        if cur == ('default', 'default'):
+            txt = txt.rstrip()
+        if txt:
+            runs.append(f'{cur[0]}/{cur[1]}:{json.dumps(txt, ensure_ascii=False)}')
+        rows.append(f'{y:02d}|' + ' '.join(runs))
+    return '\n'.join(rows)
+
+
 try:
     import pyte
     scr = pyte.Screen(COLS, LINES)
     stm = pyte.Stream(scr)
     snaps = sorted(set([float(x) for x in os.environ.get('SNAPS', '').split(',') if x] + [DUR - 0.5]))
-    out = []
+    out, colors = [], []
     ci = 0
+    dec = codecs.getincrementaldecoder('utf-8')('replace')
     for sn in snaps:
         while ci < len(chunks) and chunks[ci][0] <= sn:
-            stm.feed(chunks[ci][1].decode('utf-8', 'replace'))
+            stm.feed(dec.decode(chunks[ci][1]))
             ci += 1
         out.append(f'=== t={sn} ===\n' + '\n'.join(l.rstrip() for l in scr.display))
+        colors.append(f'=== t={sn} ===\n' + color_rows(scr))
     open(f'{outdir}/{label}.screens.txt', 'w').write('\n'.join(out))
+    open(f'{outdir}/{label}.colors.txt', 'w').write('\n'.join(colors))
 except ImportError:
     res['screens'] = 'pyte missing'
 json.dump(res, open(f'{outdir}/{label}.result.json', 'w'), indent=1)
