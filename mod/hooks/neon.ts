@@ -92,7 +92,7 @@ export function parseHint(hint: string): KeyHint[] | null {
       }
     }
     if (!hit) return null
-    out.push({ key: hit.m[1].toUpperCase(), word: hit.word })
+    out.push({ key: (hit.m[1] ?? '').toUpperCase(), word: hit.word })
     i += hit.m[0].length
     if (s.startsWith(' · ', i)) i += 3
     else if (s[i] === ' ') i += 1
@@ -104,5 +104,5 @@ export const BACKGROUND_HINT = /^\((\S+) to run in background\)$/
 
 export function parseBackgroundHint(hint: string): KeyHint | null {
   const m = BACKGROUND_HINT.exec(hint)
-  return m ? { key: m[1].toUpperCase(), word: NEON.background } : null
+  return m ? { key: (m[1] ?? '').toUpperCase(), word: NEON.background } : null
 }
