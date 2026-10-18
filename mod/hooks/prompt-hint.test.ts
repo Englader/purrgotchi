@@ -47,6 +47,12 @@ test('every mapped corpus hint draws, every other corpus hint passes', async ($,
   }
 })
 
+test('the agents corpus hint draws its two pairs', async ($, on) => {
+  engineDraws(on)
+  const ui = await mountOn($, 'PromptHint', { isDraft: false, isWorking: false, hint: '(shift+tab to cycle) · ← for agents' })
+  expect(shape(await ui.drawn())).toEqual(hintTree(['SHIFT+TAB', 'CYCLE'], ['←', 'AGENTS']))
+})
+
 test('mixed known and unknown parts pass', async ($, on) => {
   engineDraws(on)
   const ui = await mountOn($, 'PromptHint', { isDraft: false, isWorking: false, hint: '? for shortcuts 2 background tasks' })
