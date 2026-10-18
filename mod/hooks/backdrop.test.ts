@@ -27,7 +27,7 @@ function world(on: Parameters<typeof engine>[0], theme: string, o: EngineOptions
   return spies
 }
 /** The `sh -c` sends; the band's own probes (`purrgotchi --version`) are not ours. */
-const isSend = (argv: string[]) => argv[0] === 'sh'
+const isSend = (argv: string[]) => argv[0] === 'sh' || argv[1] === 'term-write'
 const sent = (spies: { runs: string[][] }) => spies.runs.filter(isSend).length
 
 async function envs(on: Parameters<typeof engine>[0], theme: string, o: EngineOptions = {}) {
@@ -156,4 +156,64 @@ test('the reset is sent once', async ($, on) => {
   await set($, 'theme', 'dark')
   await end($, 'prompt_input_exit')
   expect(seen).toEqual([PAINT, RESET])
+})
+
+// Windows: no ptys; the binary's `term-write` takes the raw bytes in PURR_SEQ.
+const BIN = 'C:/purr/purrgotchi.exe'
+const WIN_PAINT = '\x1b]11;#0d0a14\x07'
+const WIN_RESET = '\x1b]111\x07'
+const isWrite = (argv: string[]) => argv[1] === 'term-write'
+const WIN_ENV = { OS: 'Windows_NT', PURR_BIN: BIN }
+
+function winWorld(on: Parameters<typeof engine>[0], theme: string, o: { env?: Record<string, string>; exists?: string[]; exit?: () => number } = {}) {
+  const seen: { argv: string[]; seq: string | undefined; ms: number | undefined }[] = []
+  const spies = world(on, theme, {
+    env: o.env ?? WIN_ENV,
+    exists: o.exists ?? [BIN],
+    run: (argv, init) => {
+      if (isWrite(argv)) seen.push({ argv, seq: init?.env?.PURR_SEQ, ms: init?.timeoutMs })
+      return ok('', isWrite(argv) ? (o.exit?.() ?? 0) : 1)
+    },
+  })
+  return { spies, seen }
+}
+
+test('windows: start on Neon Grid runs term-write with real ESC/BEL bytes', async ($, on) => {
+  const { spies, seen } = winWorld(on, ID)
+  await $.session.start(START)
+  expect(seen).toEqual([{ argv: [BIN, 'term-write'], seq: WIN_PAINT, ms: 1000 }])
+  expect(spies.runs.filter(a => a[0] === 'sh')).toEqual([]) // never the sh path
+})
+
+test('windows: switching away after a paint resets with OSC 111', async ($, on) => {
+  const { seen } = winWorld(on, ID)
+  await $.session.start(START)
+  expect(await set($, 'theme', 'dark')).toEqual({ value: 'dark' })
+  expect(seen.map(s => s.seq)).toEqual([WIN_PAINT, WIN_RESET])
+})
+
+test('windows: no binary found skips silently', async ($, on) => {
+  const { seen } = winWorld(on, 'dark', { env: { OS: 'Windows_NT' }, exists: [] })
+  await $.session.start(START)
+  expect(await set($, 'theme', ID)).toEqual({ value: ID })
+  expect(await set($, 'theme', 'dark')).toEqual({ value: 'dark' })
+  expect(seen).toEqual([])
+})
+
+test('windows: a failed paint (no console) is never reset', async ($, on) => {
+  const { seen } = winWorld(on, 'dark', { exit: () => 1 })
+  await $.session.start(START)
+  await set($, 'theme', ID)
+  await set($, 'theme', 'dark')
+  await end($, 'prompt_input_exit')
+  expect(seen.map(s => s.seq)).toEqual([WIN_PAINT])
+})
+
+test('windows: session.end resets once; /clear keeps the backdrop', async ($, on) => {
+  const { seen } = winWorld(on, ID)
+  await $.session.start(START)
+  await end($, 'clear')
+  expect(seen.map(s => s.seq)).toEqual([WIN_PAINT])
+  await end($, 'prompt_input_exit')
+  expect(seen.map(s => s.seq)).toEqual([WIN_PAINT, WIN_RESET])
 })

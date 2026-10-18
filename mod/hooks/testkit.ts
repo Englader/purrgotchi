@@ -74,14 +74,18 @@ export type EngineOptions = {
   contextPercent?: () => number | undefined
 }
 
+/** Windows hands the engine's own paths back as `C:\x\y`: compare without drive letter or separator style. */
+const samePath = (a: string, b: string): boolean => norm(a) === norm(b)
+const norm = (p: string): string => p.replace(/^[A-Za-z]:/, '').replaceAll('\\', '/')
+
 /** Answers every op the mod uses and records what it saw. */
 export function engine(on: On, o: EngineOptions = {}): Spies {
   const spies: Spies = { runs: [], spawns: [], stops: 0, blits: [], writes: [], logs: [], clock: mock.clock(on) }
   mock.env(on, o.env ?? {})
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('fs.exists', ($, e) => ({ value: (o.exists ?? []).includes(e.path) }))
+  on('fs.exists', ($, e) => ({ value: (o.exists ?? []).some(p => samePath(p, e.path)) }))
   on('fs.write', ($, e) => {
-    spies.writes.push({ path: e.path, text: e.text })
+    spies.writes.push({ path: norm(e.path), text: e.text })
     return { value: undefined }
   })
   on('ui.log', ($, e) => {
