@@ -16,7 +16,7 @@ Renders a 7-row HUD showing model, DIR, GIT, rate-limit bars + reset times, per-
 - **`jq`** and **Bash** (for `install.sh`) — `winget install jqlang.jq` on Windows, `brew install jq` on macOS, your package manager on Linux. On Windows, use Git Bash, MSYS2, or WSL.
 - **(Optional) An LLM provider API key** — Anthropic, Gemini, or OpenAI — to enable AI-generated personality blurbs and in-character react quips. Without one, Purrgotchi falls back to a curated static phrase pool with no errors.
 
-Built and validated on Windows 11 (`x86_64-pc-windows-msvc`). Linux and macOS builds compile cleanly via `cargo build --release` but are not yet exercised in production.
+Built and run on Windows 11 (`x86_64-pc-windows-msvc`) and Linux. macOS compiles via `cargo build --release` but is untested.
 
 ---
 
@@ -138,6 +138,20 @@ To check that your terminal renders background colours, run `purrgotchi pixels t
 
 v4.1 adds an optional Claude Code **mod** (`mod/`) that draws the pixel cat in a band above the prompt, 5 rows tall, at 30 fps. It is terminal only: it needs a Claude Code build with the mods API and a 24-bit colour terminal. Without the mod, nothing changes from v4.0.
 
+**Loading the mod automatically.** The repo is also a local plugin marketplace, so plain `claude` can load the mod:
+
+```bash
+# from GitHub
+claude plugin marketplace add Englader/purrgotchi
+claude plugin install purrgotchi@purrgotchi-local
+
+# or from a local clone (loads in place; edits apply on the next session or /reload-plugins)
+claude plugin marketplace add <path to clone>
+claude plugin install purrgotchi@purrgotchi-local
+```
+
+`--plugin-dir` (below) stays useful for one-off runs. Do not combine it with `CLAUDE_CODE_PLUGIN_DIRS` for the same plugin: the names collide.
+
 Try it from a built checkout (`<WT>` is the checkout path; build first with `cd <WT>/rust && cargo build --release`):
 
 ```bash
@@ -157,9 +171,13 @@ Settings (environment variables, read when a session starts):
 
 - `PURR_BAND_ROWS`: `5` (default, 10 px art) or `6` (12 px art). Anything else means 5. On a terminal too short for the requested height the band uses the largest that fits, and hides if even 5 rows do not fit.
 - `PURR_BAND_FPS`: frames per second, default `30`, range 15 to 60 (values outside it are clamped; a non-number means 30).
-- `PURR_BIN`: the purrgotchi binary to use.
+- `PURR_BIN`: the purrgotchi binary to use. On Windows, set it once in `~/.claude/settings.json` so every session sees it:
 
-Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH`, then `~/.claude/purrgotchi/bin/purrgotchi`. If none is found, or the binary is v4.0 and has no `band` verb, the band draws nothing and the statusline keeps her cat.
+  ```json
+  { "env": { "PURR_BIN": "C:/path/to/purrgotchi.exe" } }
+  ```
+
+Binary lookup order: `PURR_BIN` (if the file exists), then `purrgotchi` on `PATH`, then `~/.claude/purrgotchi/bin/purrgotchi` (`purrgotchi.exe` on Windows). If none is found, or the binary is v4.0 and has no `band` verb, the band draws nothing and the statusline keeps her cat.
 
 **Statusline handoff.** While the band is running, the mod writes a heartbeat file (`band-<session id>.alive` in the state directory) about once a second. While that beat is fresh (under 3 s), the statusline drops its own cat and shows her speech in a box on the right of the HUD, joined to the HUD border. If the band stops (crash, collapse, a terminal too short), the cat returns to the statusline within 3 s. The HUD box itself is unchanged.
 
@@ -177,9 +195,9 @@ v4.2 adds a cyberpunk restyle of Claude Code's terminal UI, shipped in the same 
 
 **Pick the theme once.** Run `/theme` and choose "Neon Grid". It is stored as `custom:purrgotchi:neon-grid`. The mod never sets it, so without picking it your current theme stays.
 
-**Terminal background (v4.3).** A theme cannot paint the terminal background, so while Neon Grid is the active theme the mod sets it to `#0d0a14` itself (OSC 11). Switching to another theme or quitting puts your terminal's own background back (OSC 111); `/clear` keeps it. This is a workaround, not an official API: the mod writes the sequence to Claude Code's tty via `ps`. Ctrl+Z (suspend) and a hard crash leave the background dark, tmux is untested and may not pass it through, terminals without OSC 11 ignore it, and headless (`-p`) runs do nothing.
+**Terminal background (v4.3).** A theme cannot paint the terminal background, so while Neon Grid is the active theme the mod sets it to `#0d0a14` itself (OSC 11). Switching to another theme or quitting puts your terminal's own background back (OSC 111); `/clear` keeps it. This is a workaround, not an official API: on Linux the mod writes the sequence to Claude Code's tty via `ps`. Ctrl+Z (suspend) and a hard crash leave the background dark, tmux is untested and may not pass it through, terminals without OSC 11 ignore it, and headless (`-p`) runs do nothing.
 
-**Tested on Linux only** (bash in VS Code's terminal). On Windows it most likely does nothing, because there is no `/dev/pts` terminal for the mod to find. Nothing else breaks: the theme, the HUD and the band work as before. See "Debugging the backdrop on Windows" below.
+**Platforms.** Linux, and Windows (Windows Terminal, VS Code terminal). On Windows the mod reaches Claude Code's console directly, so no extra setup is needed.
 
 **What is restyled** (one example per piece):
 
@@ -203,23 +221,17 @@ node mod/scripts/theme.mjs          # rewrite the theme file
 node mod/scripts/theme.mjs --check  # fail if the file is out of date
 ```
 
-**Windows.** Windows Terminal is recommended. Use a font that has the glyphs `▓▒░ ◢◤ ⟦⟧ ▸`.
+**Windows.** Windows Terminal or the VS Code terminal. Use a font that has the glyphs `▓▒░ ◢◤ ⟦⟧ ▸`.
 
 ---
 
-### Debugging the backdrop on Windows
+### If the backdrop does not change
 
-Work through these in order and stop at the first one that fails.
+1. **Does the terminal accept the code at all?** In a shell tab (not through Claude Code's `!`, which captures the output), run `printf '\e]11;#0d0a14'`. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111'` resets it.
+2. **Do the hooks fire?** Start with `claude --debug`. A failing hook is logged as `purrgotchi: <event> ...`. A theme switch arrives as `config.set` with key `theme`.
+3. **Is the binary found?** On Windows the mod needs `purrgotchi.exe` (see "Loading the mod" above).
 
-1. **Does the terminal accept the code at all?** In a Git Bash tab in Windows Terminal, run `printf '\e]11;#0d0a14\a'`. Run it in the shell itself, not through Claude Code's `!`, which captures the output instead of passing it to the terminal. If the background does not change, the terminal does not support OSC 11 and no mod change can fix it. `printf '\e]111\a'` resets it.
-2. **Can the mod's command find the terminal?** The mod runs `sh -c "$SEND"` (`SEND` in `mod/hooks/backdrop.ts`). Run the same script in Git Bash with `SEQ='\033]11;#0d0a14\007'` set, then `echo $?`. A `1` means no terminal was found. That is the expected result on Windows, because `ps -o tty=` and `/dev/<tty>` only exist on Linux and macOS. If Claude Code cannot find `sh` at all, nothing is sent either.
-3. **Do the hooks fire?** Start with `claude --debug --plugin-dir <WT>/mod`. A failing hook is logged as `purrgotchi: <event> ...`. A theme switch arrives as `config.set` with key `theme`.
-
-**Making it work without breaking Linux.**
-
-- Leave the Linux path alone: `SEND`, its tests in `mod/hooks/backdrop.test.ts`, and how it behaves. Add a separate Windows path next to it and pick between the two once, by platform (for example `$.env.get('OS') === 'Windows_NT'`).
-- The Windows path needs another way to reach Claude Code's console window. One untested idea: a child process opens the console device `CONOUT$` and writes the code there. That only works if the child shares Claude Code's console. Prove it by hand first, the way the Linux path was proven: a throwaway mod that logs to a file and shows a toast, then switch themes back and forth.
-- Add tests for the Windows path without changing any existing test. Before merging, run the gates on Linux as well: `npx -y -p typescript@5.9 tsc -p mod`, `claude plugin validate mod`, `claude plugin test mod`.
+---
 
 ## Your kitten
 

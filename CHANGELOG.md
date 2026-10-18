@@ -10,7 +10,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ### Planned
 
 - Nerd Font icon mode (`PURR_NERD=1` gate)
-- Linux/macOS builds (currently Windows-only)
+- macOS builds (built and run on Linux and Windows 11 so far)
+
+## v4.3.1 — 2026-10-18
+
+Neon Grid now works on Windows, and the budget cache no longer needs a wrapper.
+
+### Added
+
+- **Neon Grid backdrop on native Windows.** The mod now sets and resets the
+  terminal background there too (Windows Terminal, VS Code terminal). Linux
+  behaves as before.
+- **Native budget-pacing cache.** The statusline writes
+  `~/.claude/hooks/budget/cache/<session>.json` itself, but only if
+  `~/.claude/hooks/budget/` exists. No Python statusline wrapper is needed
+  (it cost 200-500 ms per render on Windows).
+- **Auto-load the mod.** A local plugin marketplace (`.claude-plugin/marketplace.json`)
+  lets plain `claude` load the mod, in place. Edits apply on the next session
+  or `/reload-plugins`.
+- The mod finds the binary at `~/.claude/purrgotchi/bin/purrgotchi.exe` on
+  Windows, besides `PURR_BIN` and `PATH`.
+
+### Fixed
+
+- `install.sh` writes `C:/...` paths under Git Bash instead of `/c/...`.
+- The budget-pacing hooks give up after about 3 s, so a slow network can no
+  longer stall a prompt (Claude Code's hook timeout is 5 s).
+- Mod and Rust tests now pass on Windows.
 
 ## v4.3.0 — 2026-10-18
 
@@ -28,8 +54,7 @@ The Neon Grid theme now brings its own terminal background.
 - A workaround, not an official API: the mod writes the sequence to Claude
   Code's tty by walking up the process tree with `ps`.
 - Ctrl+Z (suspend) and a hard crash leave the background dark.
-- Tested on Linux only (bash in VS Code's terminal). On Windows it most likely
-  does nothing. The README has steps for debugging and fixing it there.
+- Linux only in v4.3.0; Windows support arrived in v4.3.1.
 - tmux is untested and may not pass the sequence through.
 - Terminals without OSC 11 ignore it; headless (`-p`) runs do nothing.
 

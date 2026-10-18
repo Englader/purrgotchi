@@ -111,7 +111,8 @@ We built it in about a day, starting from one request: work the full 5 hours "wi
 Ported and verified on Windows 11. The section below is the original plan; what actually shipped differs:
 
 - **budget.py patches are already in the bundled file** (shared by both OSes): regex `slug_of()`, UTF-8 stdin/stdout, `write_json_atomic` retries the Windows `PermissionError` and never leaves a tmp file, lazy `urllib` import, and `handover-path` prints forward slashes.
-- **No Python statusline wrapper.** Every process launch costs ~200 ms on this machine, so a wrapper took the statusline from 186 ms to 514 ms. Instead, `purrgotchi.exe statusline` will write the budget cache itself (v4.3 port). Until then, plan numbers come from the OAuth fallback and ctx from the transcript; both work.
+- **No Python statusline wrapper.** Every process launch costs ~200 ms on this machine, so a wrapper took the statusline from 186 ms to 514 ms. From purrgotchi v4.3.1, `purrgotchi statusline` writes the budget cache itself, on Windows and Linux. It is opt-in: it only writes if `~/.claude/hooks/budget/` exists. So no statusline wrapper is needed; steps 3 and the wrapper part of step 4 below can be skipped. Before v4.3.1, plan numbers come from the OAuth fallback and ctx from the transcript.
+- **Hook deadline.** The hooks give up after about 3 s, so a slow network never stalls a prompt (Claude Code's own hook timeout is 5 s).
 - **Tests:** 24 total. Windows: 22 pass, 2 skipped (bash wrapper, Linux-only). Linux: run `python3 test_budget.py`; expect 24 passing.
 - **On Linux after pulling:** copy `hooks/budget/budget.py` and `test_budget.py` to `~/.claude/hooks/budget/` and run the tests. Note that slugs now replace every non-alphanumeric character, so a pending handover for a path containing `_` or spaces gets a new filename.
 
