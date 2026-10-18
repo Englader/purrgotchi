@@ -31,6 +31,7 @@ mod speech_box;
 mod sprites;
 
 mod state;
+mod term_write;
 mod statusline;
 
 use std::env;
@@ -65,6 +66,8 @@ fn main() {
             };
             process::exit(hooks::feed_cmd(count, json));
         }
+        // Hidden: not in usage or README. Used by the mod backdrop hook.
+        "term-write" => process::exit(term_write::run()),
         "turn" => process::exit(hooks::turn_cmd(json)),
         "rename" => {
             let name = cli::positionals(&args, &["--json"], &[]).first().copied().unwrap_or("");
