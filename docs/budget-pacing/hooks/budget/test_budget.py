@@ -260,6 +260,28 @@ class T(unittest.TestCase):
                          env=dict(self.env, CLAUDE_CODE_SESSION_ID="s1"))
         self.assertIn("5h: 61% used", out)
 
+    def test_fetch_deadline_bounds_slow_endpoint(self):
+        saved = (budget.CACHE_DIR, budget.FETCH_CAP, budget._fetch_remote, budget._deadline)
+        os.makedirs(os.path.join(self.h, "cache"))
+        budget.CACHE_DIR = os.path.join(self.h, "cache")
+        budget.FETCH_CAP = 0.5
+        budget._fetch_remote = lambda: time.sleep(30)
+        budget._deadline = None
+        os.environ.pop("BUDGET_NO_NET", None)
+        fp = os.path.join(budget.CACHE_DIR, "_endpoint_fail.json")
+        try:
+            t0 = time.monotonic()
+            self.assertIsNone(budget.fetch_endpoint())
+            self.assertLess(time.monotonic() - t0, 2.0)
+            self.assertTrue(os.path.exists(fp))  # failure cached: no refetch for ENDPOINT_TTL
+            os.remove(fp)
+            budget._deadline = time.monotonic() - 1  # budget already spent: no fetch, no failure record
+            self.assertIsNone(budget.fetch_endpoint())
+            self.assertFalse(os.path.exists(fp))
+        finally:
+            budget.CACHE_DIR, budget.FETCH_CAP, budget._fetch_remote, budget._deadline = saved
+            budget._stuck = False
+
     @unittest.skipIf(WIN, "bash wrapper is Linux-only; Windows caches natively in purrgotchi")
     def test_wrapper(self):
         env = dict(self.env, BUDGET_WRAPPED_CMD="cat; echo EXTRA; exit 7")

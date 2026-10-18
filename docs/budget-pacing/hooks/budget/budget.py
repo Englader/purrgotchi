@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -18,6 +19,11 @@ HANDOVER_DIR = os.path.join(HOME, "handovers")
 
 FRESH = 300
 ENDPOINT_TTL = 120
+HOOK_BUDGET = 3.0   # wall-clock seconds a hook may spend on slow work (hook timeout is 5s)
+FETCH_CAP = 2.0     # max seconds for the endpoint fetch
+GIT_CAP = 1.5
+_deadline = None    # monotonic time; set by hooks only (watch loops run unbounded)
+_stuck = False      # a fetch thread outlived its deadline
 CTX_CAP = 400_000
 CTX_HANDOVER = 300_000
 MAX_CTX_CHARS = 9500
@@ -141,6 +147,28 @@ def parse_iso(s):
         return None
 
 
+def _fetch_remote():
+    try:
+        import urllib.request  # lazy: only the fallback path pays for it
+        cred = read_json(os.path.join(HOME, ".credentials.json")) or {}
+        tok = cred["claudeAiOauth"]["accessToken"]
+        req = urllib.request.Request(
+            "https://api.anthropic.com/api/oauth/usage",
+            headers={"Authorization": "Bearer " + tok,
+                     "anthropic-beta": "oauth-2025-04-20"})
+        with urllib.request.urlopen(req, timeout=FETCH_CAP) as r:
+            j = json.loads(r.read().decode())
+        data = {}
+        for k in ("five_hour", "seven_day"):
+            w = j.get(k)
+            if isinstance(w, dict) and num(w.get("utilization")) is not None:
+                data[k] = {"used": float(w["utilization"]),
+                           "resets": parse_iso(w.get("resets_at"))}
+        return data if "five_hour" in data else None
+    except Exception:
+        return None
+
+
 def fetch_endpoint():
     """Returns {'five_hour': {used, resets}, 'seven_day': {...}} or None."""
     cp = os.path.join(CACHE_DIR, "_endpoint.json")
@@ -153,27 +181,17 @@ def fetch_endpoint():
     f = read_json(fp)
     if f and 0 <= now() - f.get("ts", 0) < ENDPOINT_TTL:
         return None  # recent failure: don't hammer the endpoint
-    data = None
-    try:
-        import urllib.request  # lazy: only the fallback path pays for it
-        cred = read_json(os.path.join(HOME, ".credentials.json")) or {}
-        tok = cred["claudeAiOauth"]["accessToken"]
-        req = urllib.request.Request(
-            "https://api.anthropic.com/api/oauth/usage",
-            headers={"Authorization": "Bearer " + tok,
-                     "anthropic-beta": "oauth-2025-04-20"})
-        with urllib.request.urlopen(req, timeout=3) as r:
-            j = json.loads(r.read().decode())
-        data = {}
-        for k in ("five_hour", "seven_day"):
-            w = j.get(k)
-            if isinstance(w, dict) and num(w.get("utilization")) is not None:
-                data[k] = {"used": float(w["utilization"]),
-                           "resets": parse_iso(w.get("resets_at"))}
-        if "five_hour" not in data:
-            data = None
-    except Exception:
-        data = None
+    left = FETCH_CAP if _deadline is None else min(FETCH_CAP, _deadline - time.monotonic())
+    if left <= 0.1:
+        return None  # out of time budget; not the endpoint's fault, so no failure record
+    box = []
+    th = threading.Thread(target=lambda: box.append(_fetch_remote()), daemon=True)
+    th.start()
+    th.join(left)  # urlopen's timeout is per socket op; DNS/proxy lookup is unbounded
+    data = box[0] if box else None
+    if th.is_alive():
+        global _stuck
+        _stuck = True
     try:
         if data:
             write_json_atomic(cp, {"ts": now(), "data": data})
@@ -365,7 +383,13 @@ def cmd_watch(argv):
     print(fmt_line(get_status(sid, tp)))
 
 
+def start_deadline():
+    global _deadline
+    _deadline = time.monotonic() + HOOK_BUDGET
+
+
 def cmd_hook_prompt():
+    start_deadline()
     d = read_stdin_json()
     sid = d.get("session_id")
     st = get_status(sid, d.get("transcript_path"))
@@ -378,6 +402,7 @@ def cmd_hook_prompt():
 
 
 def cmd_hook_posttool():
+    start_deadline()
     d = read_stdin_json()
     if d.get("agent_id"):
         return
@@ -397,7 +422,7 @@ def project_root(cwd):
     """Main repo root for any subdir or worktree of it, else cwd itself."""
     try:
         r = subprocess.run(["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                           capture_output=True, text=True, timeout=2)
+                           capture_output=True, text=True, timeout=GIT_CAP)
         d = r.stdout.strip()
         if r.returncode == 0 and os.path.basename(d) == ".git":
             return os.path.dirname(d)
@@ -411,6 +436,7 @@ def handover_path(cwd):
 
 
 def cmd_hook_sessionstart():
+    start_deadline()
     d = read_stdin_json()
     cwd = project_root(d.get("cwd") or os.getcwd())
     sid = d.get("session_id")
@@ -470,6 +496,8 @@ def main():
     except Exception:
         pass
     sys.stdout.flush()
+    if _stuck:
+        os._exit(0)  # don't let a hung fetch thread delay interpreter shutdown
 
 
 if __name__ == "__main__":
