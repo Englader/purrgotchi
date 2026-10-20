@@ -304,8 +304,9 @@ pub fn acquire_lock() -> Option<StateLock> {
 
 /// Run a read-modify-write cycle on state.json under the exclusive lock.
 /// Missing state hatches fresh inside the lock; corrupt state is preserved
-/// aside first, then restored from state.json.bak when that is valid; a transient read failure aborts with Err — the next event
-/// retries — rather than mutating a stale or fabricated snapshot.
+/// aside first, then restored from state.json.bak when that is valid; a
+/// transient read failure aborts with Err — the next event retries — rather
+/// than mutating a stale or fabricated snapshot.
 pub fn locked_update<R>(f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
     let _lock = acquire_lock()
         .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "state lock busy"))?;
