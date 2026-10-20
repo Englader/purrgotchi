@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Planned
+
+- Nerd Font icon mode (`PURR_NERD=1` gate)
+- macOS builds (built and run on Linux and Windows 11 so far)
+
+## v4.4.1 — 2026-10-20
+
+A Windows crash can no longer erase your kitten. The mod is unchanged (still 4.4.0).
+
 ### Fixed
 
 - **State durability.** `state.json` writes are now fsynced before the rename;
@@ -15,11 +24,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   hourly) is restored automatically when `state.json` is corrupt, and corrupt
   files are kept as `state.json.corrupt-<unix_secs>` instead of overwriting
   each other.
-
-### Planned
-
-- Nerd Font icon mode (`PURR_NERD=1` gate)
-- macOS builds (built and run on Linux and Windows 11 so far)
+- **Budget hook timeouts.** The suggested settings timeout for the three budget
+  hooks is now 15 s (was 5 s). The hooks still bound their own work to ~3 s;
+  the headroom absorbs Windows process-start stalls, which killed the hook and
+  discarded its output. Each run now logs a `phase=start` line before any work
+  and a `phase=end` line after, paired by `pid`, so a killed run shows up as a
+  start with no end.
 
 ## v4.4.0 — 2026-10-18
 
