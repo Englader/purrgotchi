@@ -151,27 +151,40 @@ class T(unittest.TestCase):
         out = self.run_b("hook-prompt", inp=json.dumps({"session_id": "abcdef12-3456"}))
         self.assertIn("UserPromptSubmit", out)  # output unchanged
         lines = open(log, encoding="utf-8").read().splitlines()
-        self.assertEqual(len(lines), 1)
-        kv = dict(p.split("=", 1) for p in lines[0].split()[1:])
+        self.assertEqual(len(lines), 2)  # start + end
+        kv = dict(p.split("=", 1) for p in lines[1].split()[1:])
         self.assertEqual(kv["cmd"], "hook-prompt")
         self.assertEqual(kv["sid"], "abcdef12")
         for k in ("spawn_ms", "import_ms", "work_ms", "total_ms", "fresh", "fetch", "os_exit"):
             self.assertIn(k, kv)
-        datetime_ok = lines[0].split()[0]
+        datetime_ok = lines[1].split()[0]
         self.assertRegex(datetime_ok, r"^\d{4}-\d\d-\d\dT")
         for k in ("import_ms", "work_ms", "total_ms"):
             self.assertGreaterEqual(int(kv[k]), 0)
         self.assertEqual(kv["os_exit"], "0")
         self.run_b("line")  # non-hook commands do not log
-        self.assertEqual(len(open(log, encoding="utf-8").read().splitlines()), 1)
+        self.assertEqual(len(open(log, encoding="utf-8").read().splitlines()), 2)
         with open(log, "w", encoding="utf-8") as f:
             f.write("x" * (201 * 1024))
         self.run_b("hook-posttool", inp=json.dumps({"session_id": "abcdef12-3456"}))
         rot = os.path.join(os.path.dirname(log), "_hooklog.1.txt")
         self.assertTrue(os.path.getsize(rot) > 200 * 1024)
         fresh = open(log, encoding="utf-8").read().splitlines()
-        self.assertEqual(len(fresh), 1)
+        self.assertEqual(len(fresh), 2)  # rotation happens on the start line
         self.assertIn("cmd=hook-posttool", fresh[0])
+
+    def test_hook_log_start_before_end(self):
+        log = os.path.join(self.h, "hooks", "budget", "cache", "_hooklog.txt")
+        for cmd in ("hook-prompt", "hook-posttool"):
+            self.run_b(cmd, inp=json.dumps({"session_id": "abcdef12-3456"}))
+        rows = [dict(p.split("=", 1) for p in l.split()[1:])
+                for l in open(log, encoding="utf-8").read().splitlines()]
+        self.assertEqual([r["phase"] for r in rows], ["start", "end", "start", "end"])
+        for st, en in (rows[0:2], rows[2:4]):
+            self.assertEqual(st["cmd"], en["cmd"])
+            self.assertEqual(st["pid"], en["pid"])
+            self.assertIn("spawn_ms", st)
+        self.assertEqual([r["cmd"] for r in rows[::2]], ["hook-prompt", "hook-posttool"])
 
     def test_hook_reads_utf8_stdin(self):
         tdir = os.path.join(self.h, "St\u00e9fan \u0436")

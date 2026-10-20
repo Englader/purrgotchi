@@ -20,7 +20,8 @@ HANDOVER_DIR = os.path.join(HOME, "handovers")
 
 FRESH = 300
 ENDPOINT_TTL = 120
-HOOK_BUDGET = 3.0   # wall-clock seconds a hook may spend on slow work (hook timeout is 5s)
+HOOK_BUDGET = 3.0   # wall-clock seconds a hook may spend on slow work (settings hook timeout is 15s; the extra
+                    # headroom only absorbs Windows process-start stalls, not our own work)
 FETCH_CAP = 2.0     # max seconds for the endpoint fetch
 GIT_CAP = 1.5
 _deadline = None    # monotonic time; set by hooks only (watch loops run unbounded)
@@ -504,22 +505,9 @@ def _proc_created():
         return None
 
 
-def log_hook(cmd, t_main, t_done, exited):
-    """One key=value line per hook run in cache/_hooklog.txt. Never raises."""
+def _append_log(parts):
+    """Append one space-joined line to cache/_hooklog.txt, rotating at LOG_MAX. Never raises."""
     try:
-        pc = _proc_created()
-        ms = lambda a, b: int(round((b - a) * 1000))
-        sid = ""
-        if _LOG.get("sid"):
-            sid = str(_LOG["sid"])[:8]
-        parts = [datetime.now().astimezone().isoformat(timespec="milliseconds"), "cmd=" + cmd,
-                 "sid=" + (sid or "-"),
-                 "spawn_ms=" + (str(ms(pc, T0)) if pc else "na"),
-                 "import_ms=%d" % ms(T0, t_main), "work_ms=%d" % ms(t_main, t_done),
-                 "total_ms=%d" % ms(pc if pc else T0, time.time()),
-                 "fresh=%s" % _LOG.get("fresh", "na"),
-                 "fetch=%s" % ("1 fetch_ms=%d" % _LOG["fetch_ms"] if "fetch_ms" in _LOG else "0"),
-                 "os_exit=%d" % int(exited)]
         path = os.path.join(CACHE_DIR, "_hooklog.txt")
         os.makedirs(CACHE_DIR, exist_ok=True)
         try:
@@ -533,9 +521,42 @@ def log_hook(cmd, t_main, t_done, exited):
         pass
 
 
+def log_start(cmd):
+    """phase=start line, written before any work: a start with no matching end = the run was killed."""
+    try:
+        pc = _proc_created()
+        _append_log([datetime.now().astimezone().isoformat(timespec="milliseconds"), "cmd=" + cmd,
+                     "sid=-", "pid=%d" % os.getpid(), "phase=start",
+                     "spawn_ms=" + (str(int(round((T0 - pc) * 1000))) if pc else "na")])
+    except Exception:
+        pass
+
+
+def log_hook(cmd, t_main, t_done, exited):
+    """phase=end line per hook run in cache/_hooklog.txt. Never raises."""
+    try:
+        pc = _proc_created()
+        ms = lambda a, b: int(round((b - a) * 1000))
+        sid = ""
+        if _LOG.get("sid"):
+            sid = str(_LOG["sid"])[:8]
+        _append_log([datetime.now().astimezone().isoformat(timespec="milliseconds"), "cmd=" + cmd,
+                     "sid=" + (sid or "-"), "pid=%d" % os.getpid(), "phase=end",
+                     "spawn_ms=" + (str(ms(pc, T0)) if pc else "na"),
+                     "import_ms=%d" % ms(T0, t_main), "work_ms=%d" % ms(t_main, t_done),
+                     "total_ms=%d" % ms(pc if pc else T0, time.time()),
+                     "fresh=%s" % _LOG.get("fresh", "na"),
+                     "fetch=%s" % ("1 fetch_ms=%d" % _LOG["fetch_ms"] if "fetch_ms" in _LOG else "0"),
+                     "os_exit=%d" % int(exited)])
+    except Exception:
+        pass
+
+
 def main():
     t_main = time.time()
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd in HOOK_CMDS:
+        log_start(cmd)
     utf8_stdio()
     try:
         if cmd == "cache":

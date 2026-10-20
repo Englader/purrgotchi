@@ -12,10 +12,12 @@
 {
   "statusLine": {"type": "command", "command": "/home/englader/.claude/hooks/budget/statusline-wrap.sh"},
   "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-prompt", "timeout": 5}]}],
-    "PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-posttool", "timeout": 5}]}],
-    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-sessionstart", "timeout": 5}]}]
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-prompt", "timeout": 15}]}],
+    "PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-posttool", "timeout": 15}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 /home/englader/.claude/hooks/budget/budget.py hook-sessionstart", "timeout": 15}]}]
   }
 }
 ```
 (Merge into existing `hooks` arrays; keep any existing statusLine fields such as padding.)
+
+The hooks bound their own work to ~3 s. The 15 s `timeout` exists because on Windows starting bash and python can stall several seconds under security-agent scanning or load, and a killed hook discards its output. Each hook run appends a `phase=start` and a `phase=end` line (same `cmd` and `pid`) to `cache/_hooklog.txt`: a start without an end means the run was killed, and a large `spawn_ms` means a process-start stall.
