@@ -103,8 +103,8 @@ pub fn generate_from_seed(seed: u64, now: u64, opts: &HatchOpts) -> state::State
 /// (Windows sharing violation from an AV scanner, etc.) is retried briefly
 /// and then answered with an in-memory placeholder that is never saved — the
 /// real kitten on disk must survive. A corrupt file is preserved aside
-/// (state.json.corrupt) before the fresh hatch, so the data stays
-/// recoverable.
+/// (state.json.corrupt-<unix_secs>) and replaced by state.json.bak when that
+/// is valid; only then does a fresh hatch happen.
 pub fn load_or_hatch() -> state::State {
     use crate::state::LoadOutcome;
     match state::load_outcome_retry() {

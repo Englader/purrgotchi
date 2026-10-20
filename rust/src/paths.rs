@@ -39,6 +39,12 @@ pub fn state_file() -> PathBuf {
     state_dir().join("state.json")
 }
 
+/// Last-good copy of state.json, refreshed at most hourly; restored when
+/// state.json turns out corrupt.
+pub fn state_backup_file() -> PathBuf {
+    state_dir().join("state.json.bak")
+}
+
 /// Legacy global anchor — kept only as the empty-session-id fallback and so
 /// `hooks::turn` can clean up files left by pre-v3.7.0 binaries.
 pub fn turn_anchor_file() -> PathBuf {

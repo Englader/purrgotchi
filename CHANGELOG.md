@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **State durability.** `state.json` writes are now fsynced before the rename;
+  a crash between rename and data flush could leave a zero-filled file and
+  cost the user their kitten. A last-good `state.json.bak` (refreshed at most
+  hourly) is restored automatically when `state.json` is corrupt, and corrupt
+  files are kept as `state.json.corrupt-<unix_secs>` instead of overwriting
+  each other.
+
 ### Planned
 
 - Nerd Font icon mode (`PURR_NERD=1` gate)

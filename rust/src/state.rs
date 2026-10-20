@@ -304,7 +304,7 @@ pub fn acquire_lock() -> Option<StateLock> {
 
 /// Run a read-modify-write cycle on state.json under the exclusive lock.
 /// Missing state hatches fresh inside the lock; corrupt state is preserved
-/// aside first; a transient read failure aborts with Err — the next event
+/// aside first, then restored from state.json.bak when that is valid; a transient read failure aborts with Err — the next event
 /// retries — rather than mutating a stale or fabricated snapshot.
 pub fn locked_update<R>(f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
     let _lock = acquire_lock()
@@ -314,7 +314,15 @@ pub fn locked_update<R>(f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
         LoadOutcome::Missing => crate::hatch::generate(&crate::hatch::HatchOpts::default()),
         LoadOutcome::Corrupt => {
             preserve_corrupt_aside();
-            crate::hatch::generate(&crate::hatch::HatchOpts::default())
+            // Prefer the last-good backup over a fresh kitten; only an absent
+            // or equally unparseable .bak falls through to hatching.
+            match load_backup() {
+                Some(b) => {
+                    crate::debug::log("state.json corrupt — recovered from state.json.bak");
+                    b
+                }
+                None => crate::hatch::generate(&crate::hatch::HatchOpts::default()),
+            }
         }
         LoadOutcome::Unreadable => {
             return Err(io::Error::other("state.json unreadable"));
@@ -325,13 +333,66 @@ pub fn locked_update<R>(f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
     Ok(r)
 }
 
-/// Move an unparseable state.json aside (state.json.corrupt) so a fresh hatch
-/// can't destroy recoverable data. Best-effort; keeps the most recent corpse.
+/// Move an unparseable state.json aside (state.json.corrupt-<unix_secs>) so a
+/// fresh hatch can't destroy recoverable data. Best-effort. Every corpse is
+/// kept under its own name: a second corruption must never overwrite the
+/// first, which may be the only copy of a long-lived kitten.
 pub fn preserve_corrupt_aside() {
-    let dst = paths::state_dir().join("state.json.corrupt");
-    let _ = fs::remove_file(&dst);
-    let _ = fs::rename(paths::state_file(), &dst);
-    crate::debug::log("state.json unparseable — preserved as state.json.corrupt");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    preserve_corrupt_aside_in(&paths::state_dir(), secs);
+}
+
+fn preserve_corrupt_aside_in(dir: &Path, secs: u64) {
+    let base = format!("state.json.corrupt-{secs}");
+    let mut dst = dir.join(&base);
+    if dst.exists() {
+        let pid = process::id();
+        dst = dir.join(format!("{base}-{pid}"));
+        let mut n = 1;
+        while dst.exists() {
+            dst = dir.join(format!("{base}-{pid}-{n}"));
+            n += 1;
+        }
+    }
+    let _ = fs::rename(dir.join("state.json"), &dst);
+    crate::debug::log(&format!(
+        "state.json unparseable — preserved as {}",
+        dst.file_name().unwrap_or_default().to_string_lossy()
+    ));
+}
+
+/// The last-good backup, if it exists and parses as valid v2 state.
+fn load_backup() -> Option<State> {
+    load_backup_at(&paths::state_backup_file())
+}
+
+fn load_backup_at(bak: &Path) -> Option<State> {
+    parse_state(&fs::read(bak).ok()?)
+}
+
+/// A backup older than this is refreshed on the next save.
+const BACKUP_MAX_AGE_SECS: u64 = 3600;
+
+/// Refresh state.json.bak from a just-saved state when it is missing or older
+/// than an hour. Best-effort: never fails the save. Written atomically (tmp +
+/// fsync + rename) so the backup itself can't be half-written.
+fn refresh_backup_at(bak: &Path, state: &State) {
+    let fresh = fs::metadata(bak)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|m| SystemTime::now().duration_since(m).ok())
+        .is_some_and(|age| age.as_secs() < BACKUP_MAX_AGE_SECS);
+    if fresh {
+        return;
+    }
+    // ".state.*.tmp" so sweep_stale_files reaps a leaked one.
+    let tmp = bak.with_file_name(format!(".state.bak.{}.tmp", process::id()));
+    if write_json(&tmp, state).is_err() || fs::rename(&tmp, bak).is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
 }
 
 /// Remove orphaned atomic-write temp files (>24h) and stale per-session turn
@@ -375,7 +436,10 @@ pub fn save_atomic(state: &State) -> io::Result<()> {
         return Err(e);
     }
     match fs::rename(&tmp, &final_path) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            refresh_backup_at(&paths::state_backup_file(), state);
+            Ok(())
+        }
         Err(e) => {
             let _ = fs::remove_file(&tmp);
             Err(e)
@@ -384,8 +448,10 @@ pub fn save_atomic(state: &State) -> io::Result<()> {
 }
 
 fn write_json(path: &Path, state: &State) -> io::Result<()> {
-    // Atomicity comes from tempfile + rename below; fsync would add Windows
-    // latency on every feed hook without changing crash behaviour.
+    // Atomicity comes from tempfile + rename; the fsync below is what makes it
+    // crash-safe. Without it the rename can reach disk before the data does, so
+    // a power loss between the two leaves a zero-filled state.json (observed
+    // on Windows: 953 NUL bytes in place of the kitten).
     let mut f = fs::File::create(path)?;
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -648,5 +714,85 @@ mod tests {
         let real = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
         let got = now_micros_from(None);
         assert!(got >= real && got - real < 5_000_000, "{got} vs {real}");
+    }
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("purr-ut-{tag}-{}", process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn write_json_round_trips_after_fsync() {
+        let d = scratch("roundtrip");
+        let mut s = State::base(1000);
+        s.name = "Thalia".into();
+        write_json(&d.join("s.json"), &s).unwrap();
+        let back = parse_state(&fs::read(d.join("s.json")).unwrap()).unwrap();
+        assert_eq!(back.name, "Thalia");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn backup_created_when_missing_and_not_rewritten_when_fresh() {
+        let d = scratch("bak-fresh");
+        let bak = d.join("state.json.bak");
+        let mut s = State::base(1000);
+        s.name = "First".into();
+        refresh_backup_at(&bak, &s);
+        assert_eq!(load_backup_at(&bak).unwrap().name, "First");
+        s.name = "Second".into();
+        refresh_backup_at(&bak, &s);
+        assert_eq!(load_backup_at(&bak).unwrap().name, "First", "fresh backup must be kept");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn backup_refreshed_when_older_than_an_hour() {
+        let d = scratch("bak-stale");
+        let bak = d.join("state.json.bak");
+        let mut s = State::base(1000);
+        s.name = "Old".into();
+        refresh_backup_at(&bak, &s);
+        let old = SystemTime::now() - std::time::Duration::from_secs(2 * 3600);
+        fs::File::options().write(true).open(&bak).unwrap().set_modified(old).unwrap();
+        s.name = "New".into();
+        refresh_backup_at(&bak, &s);
+        assert_eq!(load_backup_at(&bak).unwrap().name, "New");
+        assert!(!d.join(format!(".state.bak.{}.tmp", process::id())).exists());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn load_backup_rejects_nul_garbage_and_missing() {
+        let d = scratch("bak-bad");
+        let bak = d.join("state.json.bak");
+        assert!(load_backup_at(&bak).is_none());
+        fs::write(&bak, vec![0u8; 953]).unwrap();
+        assert!(load_backup_at(&bak).is_none());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn corpses_do_not_overwrite_each_other() {
+        let d = scratch("corpses");
+        fs::write(d.join("state.json"), vec![0u8; 953]).unwrap();
+        preserve_corrupt_aside_in(&d, 42);
+        fs::write(d.join("state.json"), b"{not json").unwrap();
+        preserve_corrupt_aside_in(&d, 42);
+        fs::write(d.join("state.json"), b"third").unwrap();
+        preserve_corrupt_aside_in(&d, 42);
+        let mut corpses: Vec<_> = fs::read_dir(&d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("state.json.corrupt-"))
+            .collect();
+        corpses.sort();
+        assert_eq!(corpses.len(), 3, "{corpses:?}");
+        assert!(!d.join("state.json").exists());
+        assert_eq!(fs::read(d.join("state.json.corrupt-42")).unwrap(), vec![0u8; 953]);
+        let _ = fs::remove_dir_all(&d);
     }
 }
