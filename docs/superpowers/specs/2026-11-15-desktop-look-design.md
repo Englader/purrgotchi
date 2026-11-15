@@ -62,8 +62,9 @@ conversation. The terminal theme, HUD and band cat stay as they are.
     genre, not copied from any game or show).
   - `image`: `{ image: { source: 'backdrops/custom.jpg' } }` (or `.png`), a file the
     person drops into `mod/backdrops/`, which is gitignored. Limits from the API:
-    JPEG/PNG, at most 1 MiB and 4096 px a side. A `glass` veil (dark tint + blur)
-    keeps text readable over it. Missing file falls back to `grid`.
+    JPEG/PNG, at most 1 MiB and 4096 px a side. The API allows no veil over a
+    still image, so the picture shows as it is: a dark, low-contrast one reads
+    best. Missing file falls back to `grid`.
 - Tests beside the file (`look.test.ts`): each variant has no "won't paint" problem;
   option parsing; `off` sets nothing; scene SVG under the 131,072-character limit;
   hook passes on the terminal surface.
@@ -74,7 +75,6 @@ conversation. The terminal theme, HUD and band cat stay as they are.
 ## Left to the builder
 
 - The exact scene art and animation timing.
-- Glass tint/blur values for the image backdrop.
 
 ## Not verifiable here
 

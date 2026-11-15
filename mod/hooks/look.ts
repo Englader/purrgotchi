@@ -80,6 +80,7 @@ export function lookFor(variant: LookVariant, backdrop: BackdropChoice, image: s
     case 'city':
       return { colors, backdrop: { scene: 'purr-city', glass: false } }
     case 'image':
-      return { colors, backdrop: { image: { source: image }, glass: { blur: 18, tint: SURFACES[variant][0], opacity: 0.72 } } }
+      // A still ground takes no glass: the picture shows as it is.
+      return { colors, backdrop: { image: { source: image } } }
   }
 }

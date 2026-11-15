@@ -30,10 +30,7 @@ test('lookFor shapes', async () => {
     expect(lookFor(v, 'none').backdrop).toBeUndefined()
     expect(lookFor(v, 'grid').backdrop).toEqual({ scene: 'purr-grid', glass: false })
     expect(lookFor(v, 'city').backdrop).toEqual({ scene: 'purr-city', glass: false })
-    expect(lookFor(v, 'image', 'backdrops/custom.png').backdrop).toEqual({
-      image: { source: 'backdrops/custom.png' },
-      glass: { blur: 18, tint: SURFACES[v][0], opacity: 0.72 },
-    })
+    expect(lookFor(v, 'image', 'backdrops/custom.png').backdrop).toEqual({ image: { source: 'backdrops/custom.png' } })
     expect(lookFor(v, 'image').backdrop).toMatchObject({ image: { source: IMAGE_FILES[0] } })
     expect(lookFor(v, 'grid').colors).toEqual(colorsFor(v).theme)
   }

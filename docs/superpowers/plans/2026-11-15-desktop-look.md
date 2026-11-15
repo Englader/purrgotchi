@@ -24,7 +24,7 @@
 - The Backdrop hook draws only on `desktop` and `mobile`, and only for scenes this plugin set (`e.props.plugin`); otherwise `next(e)`.
 - Existing terminal behaviour (band, terminal backdrop, Neon pieces) is untouched; their tests keep passing.
 - Options (`userConfig` in `plugin.json`, string pickers): `desktopLook` = `grid` (default) | `violet` | `off`; `desktopBackdrop` = `grid` (default) | `city` | `image` | `none`.
-- Custom image: `backdrops/custom.jpg`, else `backdrops/custom.png`, inside `mod/`; `mod/backdrops/` is gitignored except a `.gitkeep`. Glass over an image: `{ blur: 18, tint: <variant surface-0>, opacity: 0.72 }`.
+- Custom image: `backdrops/custom.jpg`, else `backdrops/custom.png`, inside `mod/`; `mod/backdrops/` is gitignored except a `.gitkeep`. A still image takes no glass (the API refuses it).
 - Gates: `tsc` over the mod, `claude plugin validate mod`, `claude plugin test mod`.
 - Commits: no attribution lines.
 
@@ -71,13 +71,13 @@ export function colorsFor(variant: LookVariant): { theme: ThemeColors; problems:
 export function lookFor(variant: LookVariant, backdrop: BackdropChoice, image?: string): ThemeSetArgs
 ```
 
-`lookFor` backdrops: `grid`/`city` → `{ scene: 'purr-grid' | 'purr-city', glass: false }`; `image` → `{ image: { source: image ?? IMAGE_FILES[0] }, glass: {...} }` per Global Constraints; `none` → no `backdrop` key.
+`lookFor` backdrops: `grid`/`city` → `{ scene: 'purr-grid' | 'purr-city', glass: false }`; `image` → `{ image: { source: image ?? IMAGE_FILES[0] } }`; `none` → no `backdrop` key.
 
 - [ ] **Step 1:** Copy the two helper files from the skill folder.
 - [ ] **Step 2:** Write `look.test.ts`:
   - `each variant paints`: for both variants, `colorsFor(v).problems` has no line starting `Desktop won't paint`, and `theme.inputs.dark['gray-900']` equals `SURFACES[v][0]`.
   - `parse falls back to defaults`: `parseLook('violet') === 'violet'`, `parseLook('off') === 'off'`, `parseLook('nope') === 'grid'`, `parseLook(undefined) === 'grid'`, `parseLook(3) === 'grid'`; same shape for `parseBackdrop` with `'city'`, `'image'`, `'none'`, junk → `'grid'`.
-  - `lookFor shapes`: `none` has no `backdrop`; `grid` is `{ scene: 'purr-grid', glass: false }`; `city` is `purr-city`; `image` with `'backdrops/custom.png'` carries that source and glass tint `SURFACES[v][0]`.
+  - `lookFor shapes`: `none` has no `backdrop`; `grid` is `{ scene: 'purr-grid', glass: false }`; `city` is `purr-city`; `image` with `'backdrops/custom.png'` carries that source.
 - [ ] **Step 3:** Run `claude plugin test mod`; the new tests fail (module missing).
 - [ ] **Step 4:** Implement `look.ts`.
 - [ ] **Step 5:** Run the gates; all pass. Commit `feat(mod): desktop look colours and options`.
