@@ -12,6 +12,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Nerd Font icon mode (`PURR_NERD=1` gate)
 - macOS builds (built and run on Linux and Windows 11 so far)
 
+## v4.5.0 — 2026-11-15
+
+The Neon Grid look for the Claude desktop app's Code tab. Mod only; the binary is unchanged (still 4.4.1).
+
+### Added
+
+- **Desktop look.** The mod paints the desktop app's Code tab in Neon Grid or
+  Neon Grid Violet (`Desktop look` in `/config`, or `/purr-look grid|violet|off`).
+- **Backdrops.** A neon grid horizon or a neon city skyline, each with the cat,
+  drawn behind the conversation; or your own picture from `mod/backdrops/`;
+  or none (`Desktop backdrop` in `/config`).
+
 ## v4.4.1 — 2026-10-20
 
 A Windows crash can no longer erase your kitten. The mod is unchanged (still 4.4.0).
