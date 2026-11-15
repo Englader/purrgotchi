@@ -250,7 +250,7 @@ Switch themes with Ctrl+K Ctrl+T. To regenerate the theme files, run `python bui
 
 ## Desktop look (v4.5)
 
-The Neon Grid look for the **Claude desktop app's Code tab**, from the same mod: Neon Grid colours and a backdrop behind the conversation. It needs Claude Code 2.1.324 or later in the Code tab (run `/status` in a local session there and read the **Claude Code** row) and the mod installed at the user scope or named in `CLAUDE_CODE_PLUGIN_DIRS`. It is dark mode only, and does nothing in a terminal session.
+The Neon Grid look for the **Claude desktop app's Code tab**, from the same mod: Neon Grid colours and a backdrop behind the conversation. It needs Claude Code 2.1.324 or later in the Code tab (run `/status` in a local session there and read the **Claude Code** row) and the mod installed at the user scope or named in `CLAUDE_CODE_PLUGIN_DIRS`. It is made for dark mode (switch the app to dark), and does nothing in a terminal session.
 
 Two options, both rows in `/config`:
 
@@ -261,9 +261,11 @@ Two options, both rows in `/config`:
 
 `/purr-look grid|violet|off` switches the colours for the running session.
 
-**Your own picture.** Set the backdrop to `image` and save the file as `mod/backdrops/custom.jpg` (or `custom.png`). The app takes a JPEG or PNG of at most 1 MiB and 4096 px a side; about 2560 px wide is plenty. It fills the window, centred, with nothing laid over it, so a dark, low-contrast picture keeps the text readable. The folder is git-ignored: the picture stays on your machine. If there is no file, or the app refuses it, the grid scene is used.
+**Your own picture.** Set the backdrop to `image` and save the file as `mod/backdrops/custom.jpg` (or `custom.png`). The app takes a JPEG or PNG of at most 1 MiB and 4096 px a side; about 2560 px wide is plenty. It fills the window, centred, with nothing laid over it, so a dark, low-contrast picture keeps the text readable. The folder is git-ignored: the picture stays on your machine. If the picture cannot be used you get the grid scene, or the app's own background where the app only finds out when it draws.
 
 **What it cannot paint.** Regular chat outside the Code tab, and permission prompts, keep the app's own look. Fonts and layout do not change.
+
+**If the scene makes text hard to read**, switch the backdrop to `none`. The scenes are kept dim behind the words, but this has not been tuned in every window size.
 
 **Removing it.** Set Desktop look to `off` (or disable the mod) and start a new session. The desktop app keeps the last colours a mod set: to remove them, open Settings, search for **code appearance**, and choose **Remove colors**.
 

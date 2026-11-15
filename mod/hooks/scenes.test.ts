@@ -15,6 +15,7 @@ test('every scene is a self-contained svg within the limit', async () => {
       expect(svg).toContain('viewBox="0 0 1200 800"')
       expect(svg).toContain('preserveAspectRatio="xMidYMax slice"')
       expect(svg).toContain('prefers-reduced-motion')
+      expect(svg).toContain('@media (max-aspect-ratio:4/3){.cat-wide{display:none}')
       expect(svg).toContain(SURFACES[v][0])
       expect(/<script/i.test(svg)).toBe(false)
       expect(/https?:/.test(svg.replace('xmlns="http://www.w3.org/2000/svg"', ''))).toBe(false)
@@ -29,6 +30,10 @@ test('the variants and the scenes differ, and a scene is stable', async () => {
   expect(sceneSvg('purr-grid', 'grid')).not.toBe(sceneSvg('purr-grid', 'violet'))
   expect(sceneSvg('purr-grid', 'grid')).not.toBe(sceneSvg('purr-city', 'grid'))
   expect(sceneSvg('purr-city', 'violet')).toBe(sceneSvg('purr-city', 'violet'))
+})
+
+test('the floor gradient is in user space, so the vertical ray draws', async () => {
+  expect(sceneSvg('purr-grid', 'grid')).toContain('<linearGradient id="pg-floor" gradientUnits="userSpaceOnUse"')
 })
 
 test('isScene knows only our scenes', async () => {

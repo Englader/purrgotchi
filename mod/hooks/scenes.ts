@@ -63,8 +63,8 @@ function cat(x: number, y: number, ground: string, where: 'wide' | 'narrow'): st
 }
 
 const CAT_CSS =
-  // A tall, narrow box (a phone) crops the sides: a second cat nearer the middle takes over.
-  '.cat-narrow{display:none}@media (max-aspect-ratio:1/1){.cat-wide{display:none}.cat-narrow{display:inline}}' +
+  // A box narrower than 4:3 crops the sides past the right-hand cat: a second one nearer the middle takes over.
+  '.cat-narrow{display:none}@media (max-aspect-ratio:4/3){.cat-wide{display:none}.cat-narrow{display:inline}}' +
   '@keyframes purr-tail{0%,70%,100%{transform:rotate(0)}80%{transform:rotate(9deg)}90%{transform:rotate(-5deg)}}' +
   '@keyframes purr-blink{0%,92%,100%{opacity:1}95%{opacity:0}}'
 const CAT_MOTION = '.tail{animation:purr-tail 7s ease-in-out infinite}.eyes{animation:purr-blink 6s steps(1) infinite}'
@@ -84,7 +84,8 @@ function grid(ground: string): string {
   const defs =
     vertical('pg-sky', stop(0.3, PALETTE.purple, 0) + stop(1, PALETTE.purple, 0.4)) +
     vertical('pg-sun', stop(0, PALETTE.yellow, 1) + stop(1, PALETTE.magenta, 1)) +
-    vertical('pg-floor', stop(0, PALETTE.magenta, 0.05) + stop(1, PALETTE.magenta, 0.55)) +
+    // In user space: a vertical ray has no box of its own for a gradient to fill.
+    `<linearGradient id="pg-floor" gradientUnits="userSpaceOnUse" x1="0" y1="${HORIZON}" x2="0" y2="${H}">${stop(0, PALETTE.magenta, 0.05) + stop(1, PALETTE.magenta, 0.42)}</linearGradient>` +
     `<clipPath id="pg-above"><rect width="${W}" height="${HORIZON}"/></clipPath>`
   // The sun's lower half is cut by widening bands of ground.
   let bands = ''
@@ -109,8 +110,8 @@ function grid(ground: string): string {
     `<rect width="${W}" height="${HORIZON}" fill="url(#pg-sky)"/>` +
     `<g clip-path="url(#pg-above)" opacity="0.5"><circle cx="900" cy="${HORIZON}" r="96" fill="url(#pg-sun)"/>${bands}</g>` +
     `<g stroke="url(#pg-floor)" stroke-width="1.2">${rays}</g>` +
-    `<g stroke="${PALETTE.magenta}" stroke-opacity="0.32" stroke-width="1">${rows}</g>` +
-    `<line x1="0" y1="${HORIZON}" x2="${W}" y2="${HORIZON}" stroke="${PALETTE.cyan}" stroke-opacity="0.85" stroke-width="1.5"/>` +
+    `<g stroke="${PALETTE.magenta}" stroke-opacity="0.26" stroke-width="1">${rows}</g>` +
+    `<line x1="0" y1="${HORIZON}" x2="${W}" y2="${HORIZON}" stroke="${PALETTE.cyan}" stroke-opacity="0.55" stroke-width="1.5"/>` +
     cat(1040, HORIZON, ground, 'wide') +
     cat(690, HORIZON, ground, 'narrow') +
     '</svg>'

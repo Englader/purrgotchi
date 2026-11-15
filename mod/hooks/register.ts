@@ -60,7 +60,11 @@ export const register: Register = (on, options) => {
     return Raster({ key: KEY, columns: B.cols, rows, cells })
   })
   registerBackdrop(on)
-  registerLook(on, options)
+  try {
+    registerLook(on, options)
+  } catch {
+    // an engine without the desktop look's hooks: the band and the terminal pieces still load
+  }
   registerSpinner(on)
   registerTurnDuration(on)
   registerInfoNotice(on)
