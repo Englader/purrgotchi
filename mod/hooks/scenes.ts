@@ -39,7 +39,7 @@ const CAT = [
 const CAT_PX = 5
 
 /** The cat with its feet on (`x`, `y`), `x` its left edge. `where` says which box shape shows it. */
-function cat(x: number, y: number, ground: string, where: 'wide' | 'narrow'): string {
+function cat(x: number, y: number, ground: string, where: 'wide' | 'narrow' | 'always'): string {
   const top = y - CAT.length * CAT_PX
   const cell = (c: number, r: number, extra = '') => `<rect x="${x + c * CAT_PX}" y="${top + r * CAT_PX}" width="${CAT_PX}" height="${CAT_PX}"${extra}/>`
   let body = ''
@@ -63,7 +63,7 @@ function cat(x: number, y: number, ground: string, where: 'wide' | 'narrow'): st
 }
 
 const CAT_CSS =
-  // A box narrower than 4:3 crops the sides past the right-hand cat: a second one nearer the middle takes over.
+  // A box narrower than 4:3 crops the sides past the `wide` cat: the `narrow` one nearer the middle takes over.
   '.cat-narrow{display:none}@media (max-aspect-ratio:4/3){.cat-wide{display:none}.cat-narrow{display:inline}}' +
   '@keyframes purr-tail{0%,70%,100%{transform:rotate(0)}80%{transform:rotate(9deg)}90%{transform:rotate(-5deg)}}' +
   '@keyframes purr-blink{0%,92%,100%{opacity:1}95%{opacity:0}}'
@@ -89,7 +89,7 @@ function grid(ground: string): string {
     `<clipPath id="pg-above"><rect width="${W}" height="${HORIZON}"/></clipPath>`
   // The sun's lower half is cut by widening bands of ground.
   let bands = ''
-  for (let i = 0; i < 5; i++) bands += `<rect x="800" y="${HORIZON - 12 - i * 14}" width="200" height="${6 - i}" fill="${ground}"/>`
+  for (let i = 0; i < 5; i++) bands += `<rect x="580" y="${HORIZON - 12 - i * 14}" width="200" height="${6 - i}" fill="${ground}"/>`
   let rays = ''
   for (let i = -16; i <= 16; i++) rays += `<line x1="${W / 2 + i * 16}" y1="${HORIZON}" x2="${W / 2 + i * 170}" y2="${H}"/>`
   // Each cross line eases down to the next one's place, so the loop is seamless.
@@ -108,12 +108,12 @@ function grid(ground: string): string {
       defs,
     ) +
     `<rect width="${W}" height="${HORIZON}" fill="url(#pg-sky)"/>` +
-    `<g clip-path="url(#pg-above)" opacity="0.3"><circle cx="900" cy="${HORIZON}" r="80" fill="url(#pg-sun)"/>${bands}</g>` +
+    `<g clip-path="url(#pg-above)" opacity="0.3"><circle cx="680" cy="${HORIZON}" r="80" fill="url(#pg-sun)"/>${bands}</g>` +
     `<g stroke="url(#pg-floor)" stroke-width="1.2">${rays}</g>` +
     `<g stroke="${PALETTE.magenta}" stroke-opacity="0.26" stroke-width="1">${rows}</g>` +
     `<line x1="0" y1="${HORIZON}" x2="${W}" y2="${HORIZON}" stroke="${PALETTE.cyan}" stroke-opacity="0.55" stroke-width="1.5"/>` +
-    cat(1040, HORIZON, ground, 'wide') +
-    cat(690, HORIZON, ground, 'narrow') +
+    // In front of the sun, near the middle: an open side panel covers the right of the box.
+    cat(690, HORIZON, ground, 'always') +
     '</svg>'
   )
 }
@@ -142,8 +142,8 @@ function city(ground: string, near: string): string {
     { top: [HORIZON + 95, HORIZON + 150], width: [70, 140], fill: near, opacity: 1, lit: 0.22 },
   ] as const
   let out = ''
-  // The cats' rooftops: the nearest layer's blocks under x = 1075 and x = 640.
-  const roofs = { wide: { at: 1075, x: 1040, y: 700 }, narrow: { at: 640, x: 610, y: 700 } }
+  // The cats' rooftops: the nearest layer's blocks under x = 820 (clear of an open side panel on the right) and x = 640.
+  const roofs = { wide: { at: 820, x: 785, y: 700 }, narrow: { at: 640, x: 610, y: 700 } }
   LAYERS.forEach((layer, depth) => {
     let blocks = ''
     let lights = ''
