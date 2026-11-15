@@ -1,1 +1,3 @@
 .claude-plugin/types/
+backdrops/*
+!backdrops/.gitkeep

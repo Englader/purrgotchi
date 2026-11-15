@@ -1,7 +1,34 @@
 {
   "name": "purrgotchi",
-  "version": "4.4.0",
-  "description": "Purrgotchi kitten for Claude Code: a pixel cat roaming the band above the prompt, and the Neon Grid restyle",
-  "author": { "name": "Englader" },
-  "types": "./types/index.d.ts"
+  "version": "4.5.0",
+  "description": "Purrgotchi kitten for Claude Code: a pixel cat roaming the band above the prompt, the Neon Grid restyle, and the Neon Grid desktop look",
+  "author": {
+    "name": "Englader"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "desktopLook": {
+      "type": "string",
+      "title": "Desktop look",
+      "description": "Colours for the Claude desktop app's Code tab: Neon Grid, Neon Grid Violet, or off",
+      "default": "grid",
+      "options": [
+        "grid",
+        "violet",
+        "off"
+      ]
+    },
+    "desktopBackdrop": {
+      "type": "string",
+      "title": "Desktop backdrop",
+      "description": "What sits behind the conversation: the grid scene, the city scene, your own image (mod/backdrops/custom.jpg or .png), or none",
+      "default": "grid",
+      "options": [
+        "grid",
+        "city",
+        "image",
+        "none"
+      ]
+    }
+  }
 }

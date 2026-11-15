@@ -1,4 +1,4 @@
-// Composition root: the cat band above the prompt.
+// Composition root: the cat band above the prompt, the Neon Grid pieces and the desktop look.
 import type { EngineInterface, Register } from 'claude-code'
 
 import { registerBackdrop, startBackdrop } from './backdrop'
@@ -6,6 +6,7 @@ import { B, KEY, MAX_COLS, MIN_COLS, RECONCILE_MS, blankCells, pickRows, prepare
 import { beat } from './heartbeat'
 import type { HeartbeatHost } from './heartbeat'
 import { registerInfoNotice } from './info-notice'
+import { registerLook, startLook } from './look-hooks'
 import { registerPromptHint } from './prompt-hint'
 import { registerSessionMode } from './session-mode'
 import { registerSpinner } from './spinner'
@@ -31,10 +32,11 @@ async function startBand($: HeartbeatHost & Pick<EngineInterface, 'env' | 'fs' |
   $.ui.invalidate('ui.render')
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     await startBackdrop($)
+    await startLook($, options)
     await startBand($)
     return r
   })
@@ -58,6 +60,7 @@ export const register: Register = on => {
     return Raster({ key: KEY, columns: B.cols, rows, cells })
   })
   registerBackdrop(on)
+  registerLook(on, options)
   registerSpinner(on)
   registerTurnDuration(on)
   registerInfoNotice(on)
