@@ -16,8 +16,8 @@ export function isScene(name: string): name is SceneName {
 
 const W = 1200
 const H = 800
-/** The horizon: the words sit above it, the prompt box below. */
-const HORIZON = 470
+/** The horizon, low in the box: most of the words sit above it, the prompt box below. */
+const HORIZON = 610
 
 const n = (v: number) => String(Math.round(v * 10) / 10)
 
@@ -82,14 +82,14 @@ const vertical = (id: string, stops: string) => `<linearGradient id="${id}" x1="
 
 function grid(ground: string): string {
   const defs =
-    vertical('pg-sky', stop(0.3, PALETTE.purple, 0) + stop(1, PALETTE.purple, 0.4)) +
+    vertical('pg-sky', stop(0.3, PALETTE.purple, 0) + stop(1, PALETTE.purple, 0.3)) +
     vertical('pg-sun', stop(0, PALETTE.yellow, 1) + stop(1, PALETTE.magenta, 1)) +
     // In user space: a vertical ray has no box of its own for a gradient to fill.
     `<linearGradient id="pg-floor" gradientUnits="userSpaceOnUse" x1="0" y1="${HORIZON}" x2="0" y2="${H}">${stop(0, PALETTE.magenta, 0.05) + stop(1, PALETTE.magenta, 0.42)}</linearGradient>` +
     `<clipPath id="pg-above"><rect width="${W}" height="${HORIZON}"/></clipPath>`
   // The sun's lower half is cut by widening bands of ground.
   let bands = ''
-  for (let i = 0; i < 5; i++) bands += `<rect x="780" y="${HORIZON - 14 - i * 16}" width="240" height="${6 - i}" fill="${ground}"/>`
+  for (let i = 0; i < 5; i++) bands += `<rect x="800" y="${HORIZON - 12 - i * 14}" width="200" height="${6 - i}" fill="${ground}"/>`
   let rays = ''
   for (let i = -16; i <= 16; i++) rays += `<line x1="${W / 2 + i * 16}" y1="${HORIZON}" x2="${W / 2 + i * 170}" y2="${H}"/>`
   // Each cross line eases down to the next one's place, so the loop is seamless.
@@ -108,7 +108,7 @@ function grid(ground: string): string {
       defs,
     ) +
     `<rect width="${W}" height="${HORIZON}" fill="url(#pg-sky)"/>` +
-    `<g clip-path="url(#pg-above)" opacity="0.5"><circle cx="900" cy="${HORIZON}" r="96" fill="url(#pg-sun)"/>${bands}</g>` +
+    `<g clip-path="url(#pg-above)" opacity="0.3"><circle cx="900" cy="${HORIZON}" r="80" fill="url(#pg-sun)"/>${bands}</g>` +
     `<g stroke="url(#pg-floor)" stroke-width="1.2">${rays}</g>` +
     `<g stroke="${PALETTE.magenta}" stroke-opacity="0.26" stroke-width="1">${rows}</g>` +
     `<line x1="0" y1="${HORIZON}" x2="${W}" y2="${HORIZON}" stroke="${PALETTE.cyan}" stroke-opacity="0.55" stroke-width="1.5"/>` +
@@ -133,13 +133,13 @@ function city(ground: string, near: string): string {
   const rand = rng(0x70757272)
   const LIGHTS = [PALETTE.cyan, PALETTE.yellow, PALETTE.magenta, PALETTE.violet]
   const defs =
-    vertical('pc-sky', stop(0.2, PALETTE.purple, 0) + stop(1, PALETTE.purple, 0.34)) +
+    vertical('pc-sky', stop(0.2, PALETTE.purple, 0) + stop(1, PALETTE.purple, 0.26)) +
     vertical('pc-haze', stop(0, PALETTE.magenta, 0) + stop(1, PALETTE.magenta, 0.2))
   // Far to near: lower tops, wider blocks, more solid.
   const LAYERS = [
-    { top: [HORIZON, 600], width: [34, 70], fill: PALETTE.purple, opacity: 0.2, lit: 0.1 },
-    { top: [560, 680], width: [50, 100], fill: PALETTE.purple, opacity: 0.36, lit: 0.16 },
-    { top: [650, 740], width: [70, 140], fill: near, opacity: 1, lit: 0.22 },
+    { top: [HORIZON, HORIZON + 70], width: [34, 70], fill: PALETTE.purple, opacity: 0.2, lit: 0.1 },
+    { top: [HORIZON + 50, HORIZON + 110], width: [50, 100], fill: PALETTE.purple, opacity: 0.32, lit: 0.16 },
+    { top: [HORIZON + 95, HORIZON + 150], width: [70, 140], fill: near, opacity: 1, lit: 0.22 },
   ] as const
   let out = ''
   // The cats' rooftops: the nearest layer's blocks under x = 1075 and x = 640.
